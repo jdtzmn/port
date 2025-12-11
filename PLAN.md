@@ -39,11 +39,11 @@ A Node.js CLI tool that manages git worktrees and automatically configures Traef
 ┌──────────────────────────────────────────────────────────────────┐
 │  Traefik (runs on demand, managed by CLI)                        │
 │  ~/.code/traefik/                                                │
-│  ├── docker-compose.yml          # Traefik container            │
-│  └── traefik.yml                 # Dynamic config               │
+│  ├── docker-compose.yml          # Traefik container             │
+│  └── traefik.yml                 # Dynamic config                │
 │                                                                  │
 │  - Started on first `port up`                                    │
-│  - Shut down when last `port down` is run (with prompt)         │
+│  - Shut down when last `port down` is run (with prompt)          │
 │  - Dynamic entrypoints per project ports                         │
 └──────────────────────────────────────────────────────────────────┘
 ```
