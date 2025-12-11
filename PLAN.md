@@ -1,10 +1,10 @@
-# Code CLI Tool - Implementation Plan
+# Port CLI Tool - Implementation Plan
 
 ## Overview
 
 A Node.js CLI tool that manages git worktrees and automatically configures Traefik reverse proxy to expose services via local domains (e.g., `feature-1.local:3000`).
 
-**Use Case:** Developers working with git worktrees can use `code up feature-1` to instantly start a worktree with all services accessible at `feature-1.local:PORT`.
+**Use Case:** Developers working with git worktrees can use `port up feature-1` to instantly start a worktree with all services accessible at `feature-1.local:PORT`.
 
 ---
 
@@ -14,12 +14,12 @@ A Node.js CLI tool that manages git worktrees and automatically configures Traef
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  CLI Tool: `code` (installed globally)                           │
-│  npm install -g @yourname/code-cli                               │
+│  CLI Tool: `port` (installed globally)                           │
+│  npm install -g @yourname/port-cli                               │
 │  Lives in its own repo                                           │
 └──────────────────────────────────────────────────────────────────┘
                               │
-                              │  User: cd ~/projects/my-app && code up feature-1
+                              │  User: cd ~/projects/my-app && port up feature-1
                               ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │  Target Project Repo: ~/projects/my-app                          │
@@ -42,8 +42,8 @@ A Node.js CLI tool that manages git worktrees and automatically configures Traef
 │  ├── docker-compose.yml          # Traefik container            │
 │  └── traefik.yml                 # Dynamic config               │
 │                                                                  │
-│  - Started on first `code up`                                    │
-│  - Shut down when last `code down` is run (with prompt)         │
+│  - Started on first `port up`                                    │
+│  - Shut down when last `port down` is run (with prompt)         │
 │  - Dynamic entrypoints per project ports                         │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -55,19 +55,19 @@ A Node.js CLI tool that manages git worktrees and automatically configures Traef
 ### CLI Tool Repository
 
 ```
-code-cli/
+port-cli/
 ├── package.json
 ├── tsconfig.json
 ├── src/
 │   ├── index.ts                 # Entry point, commander setup
 │   ├── commands/
-│   │   ├── init.ts              # code init (setup .code directory)
-│   │   ├── install.ts           # code install (DNS setup)
-│   │   ├── enter.ts             # code <branch> (spawn subshell)
-│   │   ├── up.ts                # code up (start services)
-│   │   ├── down.ts              # code down (stop services)
-│   │   ├── remove.ts            # code remove <branch>
-│   │   └── list.ts              # code list (show worktrees)
+│   │   ├── init.ts              # port init (setup .code directory)
+│   │   ├── install.ts           # port install (DNS setup)
+│   │   ├── enter.ts             # port <branch> (spawn subshell)
+│   │   ├── up.ts                # port up (start services)
+│   │   ├── down.ts              # port down (stop services)
+│   │   ├── remove.ts            # port remove <branch>
+│   │   └── list.ts              # port list (show worktrees)
 │   ├── lib/
 │   │   ├── config.ts            # Load/validate .code/config.jsonc
 │   │   ├── git.ts               # simple-git: worktree ops
@@ -85,7 +85,7 @@ code-cli/
 
 ### Target Project Structure
 
-After running `code up feature-1`:
+After running `port up feature-1`:
 
 ```
 my-app/
@@ -126,32 +126,32 @@ Each project defines its own services and ports. This file is **checked into git
 {
   // Domain suffix - services available at <branch-name>.local
   "domain": "local",
-  
+
   // Optional: path to docker-compose file (default: docker-compose.yml)
   "compose": "docker-compose.yml",
-  
+
   // List of services to expose via Traefik
   // Each service name must exist in docker-compose.yml
   "services": [
     {
-      "name": "web",        // Service name in docker-compose.yml
-      "ports": [3000, 3001] // Ports to expose via Traefik
+      "name": "web", // Service name in docker-compose.yml
+      "ports": [3000, 3001], // Ports to expose via Traefik
     },
     {
       "name": "api",
-      "ports": [4000, 4001]
+      "ports": [4000, 4001],
     },
     {
       "name": "admin",
-      "ports": [5000]
-    }
-  ]
+      "ports": [5000],
+    },
+  ],
 }
 ```
 
 ### Project Registry (`.code/registry.json`)
 
-Tracks all active code projects across different repos. Used to determine when Traefik should be shut down.
+Tracks all active port projects across different repos. Used to determine when Traefik should be shut down.
 
 ```json
 {
@@ -174,11 +174,12 @@ Tracks all active code projects across different repos. Used to determine when T
 
 ## Commands
 
-### `code init`
+### `port init`
 
 **Purpose:** Set up `.code/` directory structure in the current project repo. Check and warn if DNS is not configured.
 
 **Flow:**
+
 1. Verify we're in a git repository
 2. Create `.code/` directory structure:
    - `.code/config.jsonc` (template if doesn't exist)
@@ -188,19 +189,20 @@ Tracks all active code projects across different repos. Used to determine when T
    - Detect OS (macOS/Linux)
    - Check if `*.local` is resolving to `127.0.0.1`
    - If not configured:
-     - Warn: "DNS not configured for *.local domains"
-     - Advise: "Run `code install` to set up DNS"
+     - Warn: "DNS not configured for \*.local domains"
+     - Advise: "Run `port install` to set up DNS"
 4. Output success message
 
 ---
 
-### `code install`
+### `port install`
 
 **Purpose:** One-time global DNS setup across the entire system.
 
 **Flow:**
+
 1. Detect OS (macOS/Linux)
-2. Prompt: "Configure DNS to resolve *.local to 127.0.0.1? (y/n)"
+2. Prompt: "Configure DNS to resolve \*.local to 127.0.0.1? (y/n)"
 3. If yes:
    - **macOS:** Install dnsmasq via Homebrew, configure `/etc/resolver/local`
    - **Linux:** Configure dnsmasq or systemd-resolved for `*.local` → `127.0.0.1`
@@ -209,14 +211,15 @@ Tracks all active code projects across different repos. Used to determine when T
 
 ---
 
-### `code <branch>`
+### `port <branch>`
 
 **Purpose:** Enter a worktree in a new shell. Creates worktree if it doesn't exist. Does NOT start services automatically.
 
 **Flow:**
+
 1. Get git repo root (ensure we're in a git repo)
 2. Load `.code/config.jsonc`
-   - Error if missing (user must run `code init` first)
+   - Error if missing (user must run `port init` first)
    - Validate: `domain`, `compose` file exists, `services` array not empty
 3. **Sanitize branch name:**
    - `feature/auth-api` → `feature-auth-api`
@@ -234,32 +237,34 @@ Tracks all active code projects across different repos. Used to determine when T
 6. **Spawn new shell in worktree directory:**
    - `spawn($SHELL, [], { cwd: worktreePath, stdio: 'inherit' })`
 7. **Output message before exiting:**
+
    ```
    ✓ Entered worktree: feature-1
    ✓ Services available at:
-     
+
      web:
        • http://feature-1.local:3000
        • http://feature-1.local:3001
-     
+
      api:
        • http://feature-1.local:4000
        • http://feature-1.local:4001
-     
+
      admin:
        • http://feature-1.local:5000
-   
-   Run 'code up' to start services
+
+   Run 'port up' to start services
    Type 'exit' to return to parent shell
    ```
 
 ---
 
-### `code up`
+### `port up`
 
 **Purpose:** Start docker-compose services in the current worktree.
 
 **Flow:**
+
 1. Verify we're inside a worktree (check if `.code/trees/<branch>` is in current path)
 2. Load `.code/config.jsonc` from repo root
 3. **Check if Traefik is running:**
@@ -282,11 +287,12 @@ Tracks all active code projects across different repos. Used to determine when T
 
 ---
 
-### `code down`
+### `port down`
 
 **Purpose:** Stop docker-compose services in the current worktree.
 
 **Flow:**
+
 1. Verify we're inside a worktree
 2. Load `.code/config.jsonc` from repo root
 3. **Stop docker-compose:**
@@ -294,7 +300,7 @@ Tracks all active code projects across different repos. Used to determine when T
 4. **Check if Traefik should shutdown:**
    - Scan `~/.code/registry.json` for other active projects
    - If this is the last project:
-     - Prompt: "No other code projects running. Stop Traefik? (y/n)"
+     - Prompt: "No other port projects running. Stop Traefik? (y/n)"
      - If yes: `docker-compose down` in `~/.code/traefik/`
 5. **Update registry:**
    - Remove current project entry from `~/.code/registry.json`
@@ -302,11 +308,12 @@ Tracks all active code projects across different repos. Used to determine when T
 
 ---
 
-### `code remove <branch>`
+### `port remove <branch>`
 
 **Purpose:** Stop services and remove a worktree entirely.
 
 **Flow:**
+
 1. Get git repo root
 2. Sanitize branch name
 3. Find worktree at `.code/trees/<branch>/`
@@ -319,17 +326,18 @@ Tracks all active code projects across different repos. Used to determine when T
    - Remove project entry from `~/.code/registry.json`
 7. **Check if Traefik should shutdown:**
    - If registry is empty (no active projects):
-     - Prompt: "No other code projects running. Stop Traefik? (y/n)"
+     - Prompt: "No other port projects running. Stop Traefik? (y/n)"
      - If yes: `docker-compose down` in `~/.code/traefik/`
 8. Output success message
 
 ---
 
-### `code list`
+### `port list`
 
 **Purpose:** Show all worktrees in the current project and their status.
 
 **Flow:**
+
 1. Get git repo root
 2. Scan `.code/trees/` for subdirectories
 3. For each worktree:
@@ -338,9 +346,10 @@ Tracks all active code projects across different repos. Used to determine when T
    - Read config and show ports for each service
 4. Check Traefik status globally
 5. **Output:**
+
    ```
    Active worktrees in my-app:
-   
+
    feature-1 (running)
      web:
        • 3000 (running)
@@ -348,11 +357,11 @@ Tracks all active code projects across different repos. Used to determine when T
      api:
        • 4000 (running)
        • 4001 (running)
-   
+
    fix-bug (stopped)
      admin:
        • 5000 (not running)
-   
+
    Global Traefik: running (dashboard: http://localhost:8080)
    ```
 
@@ -361,6 +370,7 @@ Tracks all active code projects across different repos. Used to determine when T
 ## Generated Override File
 
 The CLI generates a `docker-compose.override.yml` file in each worktree. This file:
+
 - **Removes host port bindings** from services using `!override` to prevent port conflicts between worktrees
 - Adds Traefik labels to each service
 - Attaches services to the shared `traefik-network`
@@ -375,6 +385,7 @@ When multiple worktrees run simultaneously (e.g., `feature-1` and `feature-2` bo
 3. Traefik routes traffic based on Host header: `feature-1.local:3000` vs `feature-2.local:3000` to different containers
 
 **Example conflict resolution:**
+
 ```
 Original docker-compose.yml:
   web:
@@ -396,17 +407,19 @@ Result: No port conflicts! Both services run simultaneously.
 ### Example: Multiple Services with Multiple Ports
 
 **Config:**
+
 ```jsonc
 {
   "services": [
     { "name": "web", "ports": [3000, 3001] },
     { "name": "api", "ports": [4000] },
-    { "name": "admin", "ports": [5000] }
-  ]
+    { "name": "admin", "ports": [5000] },
+  ],
 }
 ```
 
 **Generated Override File (`.code/trees/feature-1/docker-compose.override.yml`):**
+
 ```yaml
 version: '3.8'
 
@@ -417,37 +430,37 @@ services:
     networks:
       - traefik-network
     labels:
-      - "traefik.enable=true"
+      - 'traefik.enable=true'
       # Port 3000
-      - "traefik.http.routers.feature-1-web-3000.rule=Host(`feature-1.local`)"
-      - "traefik.http.routers.feature-1-web-3000.entrypoints=port3000"
-      - "traefik.http.services.feature-1-web-3000.loadbalancer.server.port=3000"
+      - 'traefik.http.routers.feature-1-web-3000.rule=Host(`feature-1.local`)'
+      - 'traefik.http.routers.feature-1-web-3000.entrypoints=port3000'
+      - 'traefik.http.services.feature-1-web-3000.loadbalancer.server.port=3000'
       # Port 3001
-      - "traefik.http.routers.feature-1-web-3001.rule=Host(`feature-1.local`)"
-      - "traefik.http.routers.feature-1-web-3001.entrypoints=port3001"
-      - "traefik.http.services.feature-1-web-3001.loadbalancer.server.port=3001"
+      - 'traefik.http.routers.feature-1-web-3001.rule=Host(`feature-1.local`)'
+      - 'traefik.http.routers.feature-1-web-3001.entrypoints=port3001'
+      - 'traefik.http.services.feature-1-web-3001.loadbalancer.server.port=3001'
 
   api:
     ports: !override []
     networks:
       - traefik-network
     labels:
-      - "traefik.enable=true"
+      - 'traefik.enable=true'
       # Port 4000
-      - "traefik.http.routers.feature-1-api-4000.rule=Host(`feature-1.local`)"
-      - "traefik.http.routers.feature-1-api-4000.entrypoints=port4000"
-      - "traefik.http.services.feature-1-api-4000.loadbalancer.server.port=4000"
+      - 'traefik.http.routers.feature-1-api-4000.rule=Host(`feature-1.local`)'
+      - 'traefik.http.routers.feature-1-api-4000.entrypoints=port4000'
+      - 'traefik.http.services.feature-1-api-4000.loadbalancer.server.port=4000'
 
   admin:
     ports: !override []
     networks:
       - traefik-network
     labels:
-      - "traefik.enable=true"
+      - 'traefik.enable=true'
       # Port 5000
-      - "traefik.http.routers.feature-1-admin-5000.rule=Host(`feature-1.local`)"
-      - "traefik.http.routers.feature-1-admin-5000.entrypoints=port5000"
-      - "traefik.http.services.feature-1-admin-5000.loadbalancer.server.port=5000"
+      - 'traefik.http.routers.feature-1-admin-5000.rule=Host(`feature-1.local`)'
+      - 'traefik.http.routers.feature-1-admin-5000.entrypoints=port5000'
+      - 'traefik.http.services.feature-1-admin-5000.loadbalancer.server.port=5000'
 
 networks:
   traefik-network:
@@ -456,6 +469,7 @@ networks:
 ```
 
 **Access:**
+
 ```
 http://feature-1.local:3000  → web service port 3000 (internal container port)
 http://feature-1.local:3001  → web service port 3001 (internal container port)
@@ -468,11 +482,13 @@ http://feature-1.local:5000  → admin service port 5000 (internal container por
 The `!override` YAML tag requires **docker-compose v2.24.0 or later**.
 
 To check your version:
+
 ```bash
 docker-compose --version
 ```
 
 If using an older version, upgrade:
+
 ```bash
 # Via Docker Desktop (recommended)
 # Update to latest version
@@ -487,13 +503,14 @@ pip install --upgrade docker-compose
 
 ### Traefik Container
 
-Runs in `~/.code/traefik/` using docker-compose. Automatically started on first `code up`, shutdown when last `code down` is run.
+Runs in `~/.code/traefik/` using docker-compose. Automatically started on first `port up`, shutdown when last `port down` is run.
 
 ### Dynamic Entrypoints
 
 Traefik's entrypoints are dynamically generated based on ports used across all projects. Each port gets its own entrypoint so Traefik can listen on all required ports simultaneously.
 
 **Traefik Config Example:**
+
 ```yaml
 # ~/.code/traefik/traefik.yml (managed by CLI)
 api:
@@ -507,23 +524,24 @@ providers:
 
 entryPoints:
   web:
-    address: ":80"
+    address: ':80'
   port3000:
-    address: ":3000"
+    address: ':3000'
   port3001:
-    address: ":3001"
+    address: ':3001'
   port4000:
-    address: ":4000"
+    address: ':4000'
   port5000:
-    address: ":5000"
+    address: ':5000'
   port8000:
-    address: ":8000"
+    address: ':8000'
   port8001:
-    address: ":8001"
+    address: ':8001'
 ```
 
 **Flow:**
-1. `code up` reads all ports from `.code/config.jsonc`
+
+1. `port up` reads all ports from `.code/config.jsonc`
 2. Checks `~/.code/traefik/traefik.yml` for existing entrypoints
 3. If missing ports → regenerates config, restarts Traefik
 4. If ports already exist → no action needed
@@ -540,11 +558,12 @@ Multiple worktrees can safely run simultaneously even if they expose the same po
    - Both route through Traefik's `:3000` entrypoint to different containers
 
 **Example: Two worktrees with same ports**
+
 ```bash
-$ code up feature-1
+$ port up feature-1
 ✓ Services: feature-1.local:3000, feature-1.local:4000
 
-$ code up feature-2  # Same ports!
+$ port up feature-2  # Same ports!
 ✓ Services: feature-2.local:3000, feature-2.local:4000
 
 $ curl http://feature-1.local:3000  # Routes to feature-1 container
@@ -562,14 +581,15 @@ Branch names are sanitized to be valid hostnames:
 ```typescript
 function sanitizeBranchName(branch: string): string {
   return branch
-    .replace(/[^a-zA-Z0-9-]/g, '-')  // Replace non-alphanumeric with dash
-    .replace(/-+/g, '-')              // Collapse multiple dashes
-    .replace(/^-|-$/g, '')            // Remove leading/trailing dashes
-    .toLowerCase();
+    .replace(/[^a-zA-Z0-9-]/g, '-') // Replace non-alphanumeric with dash
+    .replace(/-+/g, '-') // Collapse multiple dashes
+    .replace(/^-|-$/g, '') // Remove leading/trailing dashes
+    .toLowerCase()
 }
 ```
 
 **Examples:**
+
 - `feature/auth-api` → `feature-auth-api`
 - `fix/bug#123` → `fix-bug-123`
 - `release_v1.0.0` → `release-v1-0-0`
@@ -579,7 +599,7 @@ function sanitizeBranchName(branch: string): string {
 
 ## DNS Setup
 
-### macOS (Automated by `code init`)
+### macOS (Automated by `port init`)
 
 ```bash
 # 1. Install dnsmasq
@@ -596,9 +616,10 @@ sudo mkdir -p /etc/resolver
 echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/local
 ```
 
-### Linux (Automated by `code init`)
+### Linux (Automated by `port init`)
 
 **Option A: dnsmasq**
+
 ```bash
 sudo apt install dnsmasq
 echo "address=/local/127.0.0.1" | sudo tee /etc/dnsmasq.d/local.conf
@@ -606,6 +627,7 @@ sudo systemctl restart dnsmasq
 ```
 
 **Option B: systemd-resolved**
+
 ```bash
 # Add to /etc/systemd/resolved.conf.d/local.conf
 [Resolve]
@@ -619,7 +641,7 @@ Domains=local
 
 ```json
 {
-  "name": "@yourname/code-cli",
+  "name": "@yourname/port-cli",
   "version": "1.0.0",
   "type": "module",
   "bin": {
@@ -651,24 +673,24 @@ Domains=local
 // types.ts
 
 interface ServiceConfig {
-  name: string;        // Service name in docker-compose.yml
-  ports: number[];     // Ports to expose via Traefik
+  name: string // Service name in docker-compose.yml
+  ports: number[] // Ports to expose via Traefik
 }
 
 interface CodeConfig {
-  domain: string;           // default: "local"
-  compose?: string;         // default: "docker-compose.yml"
-  services: ServiceConfig[];
+  domain: string // default: "local"
+  compose?: string // default: "docker-compose.yml"
+  services: ServiceConfig[]
 }
 
 interface Project {
-  repo: string;        // Absolute path to repo root
-  branch: string;      // Git branch name
-  ports: number[];     // All ports used by this project
+  repo: string // Absolute path to repo root
+  branch: string // Git branch name
+  ports: number[] // All ports used by this project
 }
 
 interface Registry {
-  projects: Project[];
+  projects: Project[]
 }
 ```
 
@@ -685,8 +707,8 @@ interface Registry {
    - Error with: "Not in a git repository"
 
 3. **Worktree already exists:**
-   - During `code up`: Confirm before creating
-   - During `code down`: Error if not found
+   - During `port up`: Confirm before creating
+   - During `port down`: Error if not found
 
 4. **Docker/docker-compose not installed:**
    - Error with clear message
@@ -697,10 +719,10 @@ interface Registry {
    - Provide upgrade instructions
 
 6. **Service not in docker-compose.yml:**
-   - During `code up`: Error with list of available services
+   - During `port up`: Error with list of available services
 
 7. **Invalid branch name:**
-   - During `code up`: Sanitize automatically, warn user
+   - During `port up`: Sanitize automatically, warn user
 
 ---
 
@@ -716,43 +738,44 @@ interface Registry {
   "services": [
     {
       "name": "app",
-      "ports": [3000]
-    }
-  ]
+      "ports": [3000],
+    },
+  ],
 }
 ```
 
 Usage:
-```bash
-$ code init
-✓ .code directory created
-⚠ DNS not configured. Run 'code install' to set up *.local resolution
 
-$ code install
+```bash
+$ port init
+✓ .code directory created
+⚠ DNS not configured. Run 'port install' to set up *.local resolution
+
+$ port install
 ✓ DNS configured for *.local → 127.0.0.1
 
-$ code feature-1
+$ port feature-1
 ✓ Entered worktree: feature-1
 ✓ Services available at: http://feature-1.local:3000
-Run 'code up' to start services
+Run 'port up' to start services
 Type 'exit' to return to parent shell
 
 (now inside feature-1 subshell)
-$ code up
+$ port up
 ✓ Services started
 
-$ code list
+$ port list
 feature-1 (running)
   app: 3000 (running)
 
-$ code down
+$ port down
 ✓ Services stopped
 
 $ exit
 (back to parent shell)
 
-$ code remove feature-1
-No other code projects running. Stop Traefik? (y/n) y
+$ port remove feature-1
+No other port projects running. Stop Traefik? (y/n) y
 ✓ Traefik stopped
 ```
 
@@ -766,35 +789,36 @@ No other code projects running. Stop Traefik? (y/n) y
   "services": [
     {
       "name": "frontend",
-      "ports": [3000]
+      "ports": [3000],
     },
     {
       "name": "backend",
-      "ports": [4000, 4001]
+      "ports": [4000, 4001],
     },
     {
       "name": "admin",
-      "ports": [5000]
-    }
-  ]
+      "ports": [5000],
+    },
+  ],
 }
 ```
 
 Usage:
+
 ```bash
-$ code auth-feature
+$ port auth-feature
 ✓ Entered worktree: auth-feature
 ✓ Services available at:
   frontend: http://auth-feature.local:3000
   backend: http://auth-feature.local:4000, http://auth-feature.local:4001
   admin: http://auth-feature.local:5000
-Run 'code up' to start services
+Run 'port up' to start services
 
 (now inside auth-feature subshell)
-$ code up
+$ port up
 ✓ Services started
 
-$ code list
+$ port list
 auth-feature (running)
   frontend: 3000 (running)
   backend: 4000, 4001 (running)
@@ -808,7 +832,7 @@ main (running)
 $ exit
 (back to parent shell)
 
-$ code remove auth-feature
+$ port remove auth-feature
 ✓ Worktree removed
 Traefik still needed by other projects
 ```
@@ -828,14 +852,14 @@ Traefik still needed by other projects
 - [ ] Dynamic traefik.yml generation
 - [ ] Registry management
 - [ ] DNS setup (macOS + Linux) + DNS check
-- [ ] Worktree detection utility (for `code up`/`code down`)
-- [ ] `code init` command
-- [ ] `code install` command
-- [ ] `code <branch>` command (spawn subshell)
-- [ ] `code up` command
-- [ ] `code down` command
-- [ ] `code remove <branch>` command
-- [ ] `code list` command
+- [ ] Worktree detection utility (for `port up`/`port down`)
+- [ ] `port init` command
+- [ ] `port install` command
+- [ ] `port <branch>` command (spawn subshell)
+- [ ] `port up` command
+- [ ] `port down` command
+- [ ] `port remove <branch>` command
+- [ ] `port list` command
 - [ ] Error handling and validation
 - [ ] Tests
 - [ ] README with installation & usage
@@ -847,13 +871,13 @@ Traefik still needed by other projects
 
 1. Create CLI tool repository structure
 2. Implement core utilities (config, git, compose, traefik, dns, worktree)
-3. Implement `code init` command
-4. Implement `code install` command
-5. Implement `code <branch>` command (most complex - subshell spawning)
-6. Implement `code up` command
-7. Implement `code down` command
-8. Implement `code remove <branch>` command
-9. Implement `code list` command
+3. Implement `port init` command
+4. Implement `port install` command
+5. Implement `port <branch>` command (most complex - subshell spawning)
+6. Implement `port up` command
+7. Implement `port down` command
+8. Implement `port remove <branch>` command
+9. Implement `port list` command
 10. Add comprehensive error handling
 11. Test across macOS and Linux
 12. Package and publish to npm
