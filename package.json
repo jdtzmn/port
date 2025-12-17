@@ -9,8 +9,9 @@
     "port": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsx src/index.ts",
+    "build": "bun build src/index.ts --outfile dist/index.js --target bun",
+    "typecheck": "tsc --noEmit",
+    "dev": "bun run src/index.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
