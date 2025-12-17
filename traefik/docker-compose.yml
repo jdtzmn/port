@@ -2,8 +2,6 @@
 # This file is a reference template. The actual file is generated
 # dynamically at ~/.port/traefik/docker-compose.yml
 
-version: '3.8'
-
 services:
   traefik:
     image: traefik:v3.0

@@ -121,7 +121,6 @@ export function generateOverrideContent(config: PortConfig, worktreeName: string
   }
 
   const override = {
-    version: '3.8',
     services,
     networks: {
       [TRAEFIK_NETWORK]: {

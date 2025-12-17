@@ -153,7 +153,6 @@ export async function addPortsToConfig(newPorts: number[]): Promise<void> {
  */
 export function generateTraefikCompose(): string {
   const compose = {
-    version: '3.8',
     services: {
       traefik: {
         image: 'traefik:v3.0',
@@ -192,7 +191,6 @@ export async function updateTraefikCompose(ports: number[]): Promise<void> {
   }
 
   const compose = {
-    version: '3.8',
     services: {
       traefik: {
         image: 'traefik:v3.0',
