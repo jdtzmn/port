@@ -132,7 +132,7 @@ export async function list(): Promise<void> {
   // Check Traefik status
   const traefikRunning = await isTraefikRunning()
   if (traefikRunning) {
-    output.success(`Traefik: running (dashboard: ${output.url('http://localhost:8080')})`)
+    output.success(`Traefik: running (dashboard: ${output.url('http://localhost:1211')})`)
   } else {
     output.dim('Traefik: not running')
   }

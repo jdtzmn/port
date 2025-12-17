@@ -158,7 +158,7 @@ export function generateTraefikCompose(): string {
         image: 'traefik:v3.0',
         container_name: 'port-traefik',
         restart: 'unless-stopped',
-        ports: ['80:80', '8080:8080'],
+        ports: ['80:80', '1211:8080'],
         volumes: [
           '/var/run/docker.sock:/var/run/docker.sock:ro',
           './traefik.yml:/etc/traefik/traefik.yml:ro',
@@ -185,7 +185,7 @@ export async function updateTraefikCompose(ports: number[]): Promise<void> {
   await ensureTraefikDir()
 
   // Generate port mappings
-  const portMappings = ['80:80', '8080:8080']
+  const portMappings = ['80:80', '1211:8080']
   for (const port of ports) {
     portMappings.push(`${port}:${port}`)
   }

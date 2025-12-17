@@ -118,5 +118,5 @@ export async function up(): Promise<void> {
   output.serviceUrls(serviceUrls)
 
   output.newline()
-  output.info(`Traefik dashboard: ${output.url('http://localhost:8080')}`)
+  output.info(`Traefik dashboard: ${output.url('http://localhost:1211')}`)
 }
