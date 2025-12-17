@@ -846,27 +846,44 @@ Traefik still needed by other projects
 
 ## Implementation Checklist
 
-- [ ] CLI tool repository setup (package.json, tsconfig.json)
-- [ ] Commander.js CLI framework
-- [ ] Load `.port/config.jsonc` with validation
-- [ ] simple-git integration for worktree operations
-- [ ] Branch name sanitization
-- [ ] Override file generation with Traefik labels
-- [ ] docker-compose wrapper
-- [ ] Traefik container management (start/stop)
-- [ ] Dynamic traefik.yml generation
-- [ ] Registry management
-- [ ] DNS setup (macOS + Linux) + DNS check
-- [ ] Worktree detection utility (for `port up`/`port down`)
-- [ ] `port init` command
-- [ ] `port install` command
-- [ ] `port <branch>` command (spawn subshell)
-- [ ] `port up` command
-- [ ] `port down` command
-- [ ] `port remove <branch>` command
-- [ ] `port list` command
-- [ ] Error handling and validation
-- [ ] Tests
+### Phase 1: Core Types & Utilities (no dependencies)
+
+- [ ] `src/types.ts` - Type definitions
+- [ ] `src/lib/sanitize.ts` - Branch name sanitization
+- [ ] `src/lib/output.ts` - Chalk-based logging helpers
+
+### Phase 2: Configuration & Detection
+
+- [ ] `src/lib/config.ts` - Load/validate `.port/config.jsonc`
+- [ ] `src/lib/worktree.ts` - Worktree detection (are we in a worktree? main repo?)
+- [ ] `src/lib/git.ts` - Git/worktree operations via simple-git
+
+### Phase 3: Infrastructure
+
+- [ ] `src/lib/dns.ts` - DNS check (detection only, setup is in install command)
+- [ ] `src/lib/registry.ts` - Global registry management (`~/.port/registry.json`)
+- [ ] `src/lib/traefik.ts` - Traefik config generation & management
+- [ ] `src/lib/compose.ts` - docker-compose wrapper + override generation
+
+### Phase 4: Commands (in order of complexity)
+
+- [ ] `src/commands/init.ts` - Simplest command, setup `.port/` directory
+- [ ] `src/commands/list.ts` - Read-only, good for testing
+- [ ] `src/commands/install.ts` - DNS setup (dnsmasq)
+- [ ] `src/commands/enter.ts` - `port <branch>` (spawn subshell)
+- [ ] `src/commands/up.ts` - Start services
+- [ ] `src/commands/down.ts` - Stop services
+- [ ] `src/commands/remove.ts` - Remove worktree
+
+### Phase 5: Entry Point & Packaging
+
+- [ ] `src/index.ts` - Commander.js CLI setup, wire up all commands
+- [ ] `traefik/docker-compose.yml` - Bundled Traefik template
+
+### Phase 6: Testing & Documentation
+
+- [ ] Unit tests for `sanitize.ts` (branch name edge cases)
+- [ ] Unit tests for override YAML generation
 - [ ] README with installation & usage
 - [ ] GitHub Actions for builds/releases
 
@@ -874,15 +891,30 @@ Traefik still needed by other projects
 
 ## Next Steps
 
-1. Create CLI tool repository structure
-2. Implement core utilities (config, git, compose, traefik, dns, worktree)
-3. Implement `port init` command
-4. Implement `port install` command
-5. Implement `port <branch>` command (most complex - subshell spawning)
-6. Implement `port up` command
-7. Implement `port down` command
-8. Implement `port remove <branch>` command
-9. Implement `port list` command
-10. Add comprehensive error handling
-11. Test across macOS and Linux
-12. Package and publish to npm
+Follow the Implementation Checklist above in phase order. Each phase builds on the previous:
+
+1. **Phase 1** - Pure functions, no I/O, easy to test
+2. **Phase 2** - Config and detection, foundation for commands
+3. **Phase 3** - External service integration (Docker, Traefik, registry)
+4. **Phase 4** - Commands that wire everything together
+5. **Phase 5** - CLI entry point and packaging
+6. **Phase 6** - Tests (focused on pure functions) and documentation
+
+## Testing Strategy
+
+**Unit test (valuable):**
+
+- `sanitize.ts` - Branch name sanitization edge cases
+- Override YAML generation - Given config → expected YAML output
+
+**Skip unit tests for (I/O-heavy, better tested manually):**
+
+- Git operations
+- docker-compose wrapper
+- DNS setup
+- Registry I/O
+
+**Manual integration testing:**
+
+- Create test project repos and run `port` commands against them
+- Real bugs will be in git worktree behavior, Docker networking, Traefik routing
