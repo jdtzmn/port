@@ -23,18 +23,11 @@ export default tseslint.config(
           argsIgnorePattern: '^_',
         },
       ],
-      '@typescript-eslint/explicit-function-return-types': [
-        'warn',
-        {
-          allowExpressions: true,
-          allowTypedFunctionExpressions: true,
-        },
-      ],
       '@typescript-eslint/no-explicit-any': 'warn',
       'no-console': [
         'warn',
         {
-          allow: ['warn', 'error'],
+          allow: ['warn', 'error', 'log'],
         },
       ],
     },

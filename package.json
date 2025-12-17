@@ -27,15 +27,16 @@
     "inquirer": "^9.2.0"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "@types/node": "^20.10.0",
-    "@types/inquirer": "^9.0.7",
-    "@types/prettier": "^3.0.0",
-    "typescript": "^5.3.0",
-    "tsx": "^4.7.0",
-    "eslint": "^9.0.0",
     "@eslint/js": "^9.0.0",
-    "typescript-eslint": "^7.0.0",
-    "prettier": "^3.1.1"
+    "@types/bun": "latest",
+    "@types/inquirer": "^9.0.7",
+    "@types/node": "^20.10.0",
+    "@types/prettier": "^3.0.0",
+    "eslint": "^9.0.0",
+    "jiti": "^2.6.1",
+    "prettier": "^3.1.1",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "typescript-eslint": "^7.0.0"
   }
 }
