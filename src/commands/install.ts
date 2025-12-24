@@ -99,13 +99,32 @@ async function installMacOS(): Promise<boolean> {
       return false
     }
   }
+
+  // Check if resolver is already configured
+  let resolverConfigured = false
   try {
-    await execAsync('sudo mkdir -p /etc/resolver')
-    await execAsync('echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/port > /dev/null')
-    output.success('Resolver created at /etc/resolver/port')
-  } catch (error) {
-    output.error(`Failed to create resolver: ${error}`)
-    return false
+    // Check if /etc/resolver exists and contains the correct config
+    const { stdout } = await execAsync('cat /etc/resolver/port 2>/dev/null')
+    if (stdout.includes('nameserver 127.0.0.1')) {
+      resolverConfigured = true
+    }
+  } catch {
+    // File doesn't exist or can't be read
+  }
+
+  if (resolverConfigured) {
+    output.dim('Resolver already configured at /etc/resolver/port')
+  } else {
+    // Create resolver directory and file
+    output.info('Creating resolver for .port domain...')
+    try {
+      await execAsync('sudo mkdir -p /etc/resolver')
+      await execAsync('echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/port > /dev/null')
+      output.success('Resolver created at /etc/resolver/port')
+    } catch (error) {
+      output.error(`Failed to create resolver: ${error}`)
+      return false
+    }
   }
 
   return true
