@@ -18,17 +18,33 @@ export async function checkDns(domain: string = DEFAULT_DOMAIN): Promise<boolean
   const testHost = `port-dns-test-${Date.now()}.${domain}`
 
   try {
-    // Try to resolve the hostname
-    const { stdout } = await execAsync(`dig +short ${testHost} A`, {
-      timeout: 5000,
-    })
+    // Use platform-specific DNS resolution that respects system resolver
+    // Note: `dig` doesn't use macOS's /etc/resolver/ system, so we use dscacheutil on macOS
+    // and getent on Linux, which properly use the system resolver
+    const platform = process.platform
+    let resolved = ''
 
-    const resolved = stdout.trim()
+    if (platform === 'darwin') {
+      // macOS: use dscacheutil which respects /etc/resolver/
+      const { stdout } = await execAsync(`dscacheutil -q host -a name ${testHost}`, {
+        timeout: 5000,
+      })
+      // Parse output like "name: test.port\nip_address: 127.0.0.1"
+      const match = stdout.match(/ip_address:\s*(\S+)/)
+      resolved = match?.[1] ?? ''
+    } else {
+      // Linux: use getent which respects system resolver
+      const { stdout } = await execAsync(`getent hosts ${testHost}`, {
+        timeout: 5000,
+      })
+      // Parse output like "127.0.0.1    test.port"
+      resolved = stdout.trim().split(/\s+/)[0] ?? ''
+    }
 
     // Check if it resolves to 127.0.0.1
     return resolved === '127.0.0.1'
   } catch {
-    // dig failed or timed out
+    // Resolution failed or timed out
     return false
   }
 }
