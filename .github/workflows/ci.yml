@@ -28,5 +28,8 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Install DNS config
+        run: bun run dist/index.js install
+
       - name: Run tests
         run: bun run test
