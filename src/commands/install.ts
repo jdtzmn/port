@@ -76,19 +76,29 @@ async function installMacOS(): Promise<boolean> {
     }
   }
 
-  // Start/restart dnsmasq service
-  output.info('Starting dnsmasq service...')
+  // Check if dnsmasq is already running
+  let dnsmasqRunning = false
   try {
-    await execAsync('sudo brew services restart dnsmasq')
-    output.success('dnsmasq service started')
-  } catch (error) {
-    output.error(`Failed to start dnsmasq: ${error}`)
-    output.info('You may need to run: sudo brew services start dnsmasq')
-    return false
+    await execAsync('pgrep dnsmasq')
+    dnsmasqRunning = true
+  } catch {
+    // pgrep returns non-zero if no process found
   }
 
-  // Create resolver directory and file
-  output.info('Creating resolver for .port domain...')
+  if (dnsmasqRunning) {
+    output.dim('dnsmasq service already running')
+  } else {
+    // Start dnsmasq service
+    output.info('Starting dnsmasq service...')
+    try {
+      await execAsync('sudo brew services restart dnsmasq')
+      output.success('dnsmasq service started')
+    } catch (error) {
+      output.error(`Failed to start dnsmasq: ${error}`)
+      output.info('You may need to run: sudo brew services start dnsmasq')
+      return false
+    }
+  }
   try {
     await execAsync('sudo mkdir -p /etc/resolver')
     await execAsync('echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/port > /dev/null')
