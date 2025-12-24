@@ -159,7 +159,7 @@ async function installLinux(): Promise<boolean> {
 /**
  * Install DNS configuration for *.port domains
  */
-export async function install(): Promise<void> {
+export async function install(options?: { yes?: boolean }): Promise<void> {
   // First check if DNS is already configured
   output.info('Checking DNS configuration...')
   const alreadyConfigured = await checkDns()
@@ -179,20 +179,22 @@ export async function install(): Promise<void> {
     process.exit(1)
   }
 
-  // Confirm with user
-  output.newline()
-  const { confirm } = await inquirer.prompt<{ confirm: boolean }>([
-    {
-      type: 'confirm',
-      name: 'confirm',
-      message: 'Configure DNS to resolve *.port to 127.0.0.1?',
-      default: true,
-    },
-  ])
+  // Confirm with user (skip if -y flag is provided)
+  if (!options?.yes) {
+    output.newline()
+    const { confirm } = await inquirer.prompt<{ confirm: boolean }>([
+      {
+        type: 'confirm',
+        name: 'confirm',
+        message: 'Configure DNS to resolve *.port to 127.0.0.1?',
+        default: true,
+      },
+    ])
 
-  if (!confirm) {
-    output.dim('DNS setup cancelled')
-    return
+    if (!confirm) {
+      output.dim('DNS setup cancelled')
+      return
+    }
   }
 
   output.newline()
