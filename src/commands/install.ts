@@ -95,7 +95,8 @@ async function installMacOS(): Promise<boolean> {
       output.success('dnsmasq service started')
     } catch (error) {
       output.error(`Failed to start dnsmasq: ${error}`)
-      output.info('You may need to run: sudo brew services start dnsmasq')
+      output.info('You can try running this command manually:')
+      output.info('  sudo brew services start dnsmasq')
       return false
     }
   }
@@ -123,6 +124,9 @@ async function installMacOS(): Promise<boolean> {
       output.success('Resolver created at /etc/resolver/port')
     } catch (error) {
       output.error(`Failed to create resolver: ${error}`)
+      output.info('You can try running these commands manually:')
+      output.info('  sudo mkdir -p /etc/resolver')
+      output.info('  echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/port')
       return false
     }
   }
