@@ -25,8 +25,9 @@ program
 // port install
 program
   .command('install')
-  .description('Set up DNS to resolve *.port domains to 127.0.0.1')
+  .description('Set up DNS to resolve *.port domains')
   .option('-y, --yes', 'Skip confirmation prompt')
+  .option('--dns-ip <address>', 'IP address to resolve *.port domains to (default: 127.0.0.1)')
   .action(install)
 
 // port list

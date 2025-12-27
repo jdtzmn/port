@@ -61,6 +61,19 @@ port install
 
 Configures your system to resolve `*.local` domains to `127.0.0.1`.
 
+You can optionally specify a custom IP address:
+
+```bash
+# Resolve to a specific IP (useful for Docker networks, etc.)
+port install --dns-ip 172.25.0.2
+
+# Skip confirmation prompt
+port install --yes
+
+# Combine options
+port install --yes --dns-ip 192.168.1.100
+```
+
 ### 4. Enter a Worktree
 
 ```bash
@@ -103,15 +116,15 @@ Stops services and removes the worktree entirely.
 
 ## Commands
 
-| Command                | Description                                       |
-| ---------------------- | ------------------------------------------------- |
-| `port init`            | Initialize `.code/` directory structure           |
-| `port install`         | Set up DNS for `*.local` domains                  |
-| `port <branch>`        | Enter a worktree (creates if doesn't exist)       |
-| `port up`              | Start docker-compose services in current worktree |
-| `port down`            | Stop docker-compose services                      |
-| `port remove <branch>` | Remove a worktree entirely                        |
-| `port list`            | List all worktrees and their status               |
+| Command                      | Description                                       |
+| ---------------------------- | ------------------------------------------------- |
+| `port init`                  | Initialize `.code/` directory structure           |
+| `port install [--dns-ip IP]` | Set up DNS for `*.local` domains                  |
+| `port <branch>`              | Enter a worktree (creates if doesn't exist)       |
+| `port up`                    | Start docker-compose services in current worktree |
+| `port down`                  | Stop docker-compose services                      |
+| `port remove <branch>`       | Remove a worktree entirely                        |
+| `port list`                  | List all worktrees and their status               |
 
 ## How It Works
 

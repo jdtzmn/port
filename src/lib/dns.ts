@@ -6,14 +6,46 @@ const execAsync = promisify(exec)
 /** Default domain suffix */
 export const DEFAULT_DOMAIN = 'port'
 
+/** Default DNS IP address */
+export const DEFAULT_DNS_IP = '127.0.0.1'
+
+/**
+ * Validate if a string is a valid IPv4 address
+ *
+ * @param ip - The IP address to validate
+ * @returns true if the IP is a valid IPv4 address
+ */
+export function isValidIp(ip: string): boolean {
+  const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
+  const match = ip.match(ipv4Regex)
+
+  if (!match) {
+    return false
+  }
+
+  // Check each octet is between 0-255
+  for (let i = 1; i <= 4; i++) {
+    const octet = parseInt(match[i] ?? '0', 10)
+    if (octet < 0 || octet > 255) {
+      return false
+    }
+  }
+
+  return true
+}
+
 /**
  * Check if DNS is configured for *.port domains
- * Tests by resolving a random subdomain to see if it returns 127.0.0.1
+ * Tests by resolving a random subdomain to see if it returns the expected IP
  *
  * @param domain - The domain suffix to check (default: 'port')
+ * @param ip - The expected IP address (default: '127.0.0.1')
  * @returns true if DNS is configured correctly
  */
-export async function checkDns(domain: string = DEFAULT_DOMAIN): Promise<boolean> {
+export async function checkDns(
+  domain: string = DEFAULT_DOMAIN,
+  ip: string = DEFAULT_DNS_IP
+): Promise<boolean> {
   // Use a random subdomain to avoid caching issues
   const testHost = `port-dns-test-${Date.now()}.${domain}`
 
@@ -41,8 +73,8 @@ export async function checkDns(domain: string = DEFAULT_DOMAIN): Promise<boolean
       resolved = stdout.trim().split(/\s+/)[0] ?? ''
     }
 
-    // Check if it resolves to 127.0.0.1
-    return resolved === '127.0.0.1'
+    // Check if it resolves to the expected IP
+    return resolved === ip
   } catch {
     // Resolution failed or timed out
     return false
@@ -52,9 +84,10 @@ export async function checkDns(domain: string = DEFAULT_DOMAIN): Promise<boolean
 /**
  * Get the platform-specific instructions for DNS setup
  *
+ * @param ip - The IP address to configure DNS to resolve to (default: '127.0.0.1')
  * @returns Object with platform name and setup instructions
  */
-export function getDnsSetupInstructions(): {
+export function getDnsSetupInstructions(ip: string = DEFAULT_DNS_IP): {
   platform: 'macos' | 'linux' | 'unsupported'
   instructions: string[]
 } {
@@ -68,14 +101,14 @@ export function getDnsSetupInstructions(): {
         'brew install dnsmasq',
         '',
         '# Configure dnsmasq',
-        'echo "address=/port/127.0.0.1" >> /opt/homebrew/etc/dnsmasq.conf',
+        `echo "address=/port/${ip}" >> /opt/homebrew/etc/dnsmasq.conf`,
         '',
         '# Start dnsmasq service',
         'sudo brew services start dnsmasq',
         '',
         '# Create resolver',
         'sudo mkdir -p /etc/resolver',
-        'echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/port',
+        `echo "nameserver ${ip}" | sudo tee /etc/resolver/port`,
       ],
     }
   }
@@ -86,13 +119,13 @@ export function getDnsSetupInstructions(): {
       instructions: [
         '# Option A: Using dnsmasq',
         'sudo apt install dnsmasq',
-        'echo "address=/port/127.0.0.1" | sudo tee /etc/dnsmasq.d/port.conf',
+        `echo "address=/port/${ip}" | sudo tee /etc/dnsmasq.d/port.conf`,
         'sudo systemctl restart dnsmasq',
         '',
         '# Option B: Using systemd-resolved',
         '# Add to /etc/systemd/resolved.conf.d/port.conf:',
         '# [Resolve]',
-        '# DNS=127.0.0.1',
+        `# DNS=${ip}`,
         '# Domains=port',
       ],
     }
@@ -102,7 +135,7 @@ export function getDnsSetupInstructions(): {
     platform: 'unsupported',
     instructions: [
       'Your platform is not directly supported.',
-      'Configure your DNS to resolve *.port to 127.0.0.1',
+      `Configure your DNS to resolve *.port to ${ip}`,
     ],
   }
 }

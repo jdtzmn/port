@@ -199,15 +199,21 @@ Tracks all active port projects across different repos. Used to determine when T
 
 **Purpose:** One-time global DNS setup across the entire system.
 
+**Options:**
+
+- `-y, --yes`: Skip confirmation prompt
+- `--dns-ip <address>`: IP address to resolve \*.port domains to (default: 127.0.0.1)
+
 **Flow:**
 
-1. Detect OS (macOS/Linux)
-2. Prompt: "Configure DNS to resolve \*.port to 127.0.0.1? (y/n)"
-3. If yes:
+1. Validate `--dns-ip` if provided (must be valid IPv4 address)
+2. Detect OS (macOS/Linux)
+3. Prompt: "Configure DNS to resolve \*.port to {IP}? (y/n)" (skipped with -y)
+4. If yes:
    - **macOS:** Install dnsmasq via Homebrew, configure `/etc/resolver/port`
-   - **Linux:** Configure dnsmasq or systemd-resolved for `*.port` → `127.0.0.1`
-4. Test DNS resolution
-5. Output success message with confirmation
+   - **Linux:** Configure dnsmasq or systemd-resolved for `*.port` → {IP}
+5. Test DNS resolution
+6. Output success message with confirmation
 
 ---
 
@@ -603,14 +609,31 @@ function sanitizeBranchName(branch: string): string {
 
 ## DNS Setup
 
+### Quick Setup
+
+The `port install` command automates DNS setup. You can optionally specify a custom IP address:
+
+```bash
+# Default: resolve *.port to 127.0.0.1
+port install
+
+# Custom IP (e.g., for Docker networks)
+port install --dns-ip 172.25.0.2
+
+# Skip confirmation
+port install --yes --dns-ip 192.168.1.100
+```
+
 ### macOS (Automated by `port install`)
 
 ```bash
 # 1. Install dnsmasq
 brew install dnsmasq
 
-# 2. Configure dnsmasq
+# 2. Configure dnsmasq (default IP: 127.0.0.1)
 echo "address=/port/127.0.0.1" >> /opt/homebrew/etc/dnsmasq.conf
+# Or with custom IP:
+# echo "address=/port/172.25.0.2" >> /opt/homebrew/etc/dnsmasq.conf
 
 # 3. Start dnsmasq service
 sudo brew services start dnsmasq
@@ -618,6 +641,8 @@ sudo brew services start dnsmasq
 # 4. Create resolver
 sudo mkdir -p /etc/resolver
 echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/port
+# Or with custom IP:
+# echo "nameserver 172.25.0.2" | sudo tee /etc/resolver/port
 ```
 
 ### Linux (Automated by `port install`)
@@ -627,6 +652,8 @@ echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/port
 ```bash
 sudo apt install dnsmasq
 echo "address=/port/127.0.0.1" | sudo tee /etc/dnsmasq.d/port.conf
+# Or with custom IP:
+# echo "address=/port/172.25.0.2" | sudo tee /etc/dnsmasq.d/port.conf
 sudo systemctl restart dnsmasq
 ```
 
@@ -636,8 +663,18 @@ sudo systemctl restart dnsmasq
 # Add to /etc/systemd/resolved.conf.d/port.conf
 [Resolve]
 DNS=127.0.0.1
+# Or with custom IP:
+# DNS=172.25.0.2
 Domains=port
 ```
+
+### Custom DNS IP Use Cases
+
+The `--dns-ip` flag is useful for:
+
+- **Docker networks**: Resolve to a Docker bridge network IP (e.g., `172.25.0.2`)
+- **Container testing**: Test dnsmasq in isolated container environments
+- **Multi-machine setups**: Resolve to a DNS server on another machine
 
 ---
 
