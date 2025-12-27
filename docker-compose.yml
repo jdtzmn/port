@@ -1,0 +1,26 @@
+services:
+  samples:
+    build: .
+    container_name: port-dev
+    stdin_open: true
+    tty: true
+    volumes:
+      - .:/app
+      - samples_dir:/app/tests/samples
+    command: sleep infinity
+    networks:
+      - port-network
+    dns:
+      - 127.0.0.11
+
+volumes:
+  samples_dir:
+
+networks:
+  port-network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: 'false'
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16

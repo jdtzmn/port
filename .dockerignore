@@ -1,0 +1,34 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+
+# Git
+.git
+.gitignore
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation
+README.md
+PLAN.md
+LICENSE.md
+
+# Configuration files (keep tsconfig and package.json for build)
+eslint.config.ts
+prettier.config.js
+.prettierignore
+
+# CI/CD
+.github
+
+# Local development
+.env
+.env.local
