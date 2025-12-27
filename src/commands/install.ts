@@ -1,7 +1,15 @@
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import inquirer from 'inquirer'
-import { checkDns, getDnsSetupInstructions, isValidIp, DEFAULT_DNS_IP } from '../lib/dns.ts'
+import {
+  checkDns,
+  getDnsSetupInstructions,
+  isValidIp,
+  isSystemdResolvedRunning,
+  isPortInUse,
+  DEFAULT_DNS_IP,
+  DNSMASQ_ALT_PORT,
+} from '../lib/dns.ts'
 import * as output from '../lib/output.ts'
 
 const execAsync = promisify(exec)
@@ -137,19 +145,15 @@ async function installMacOS(dnsIp: string): Promise<boolean> {
 }
 
 /**
- * Install and configure DNS for *.port domains on Linux
+ * Print manual instructions as fallback when automatic setup fails
  *
  * @param dnsIp - The IP address to configure DNS to resolve to
  */
-async function installLinux(dnsIp: string): Promise<boolean> {
-  output.info('Linux DNS setup requires manual configuration.')
+function printLinuxManualInstructions(dnsIp: string): boolean {
+  output.warn('Automatic setup failed. Please configure manually:')
   output.newline()
 
   const { instructions } = getDnsSetupInstructions(dnsIp)
-
-  output.header('Follow these steps:')
-  output.newline()
-
   for (const line of instructions) {
     console.log(line)
   }
@@ -158,6 +162,136 @@ async function installLinux(dnsIp: string): Promise<boolean> {
   output.info('After completing the setup, run "port install" again to verify.')
 
   return false
+}
+
+/**
+ * Install Linux in dual-mode: dnsmasq on port 5354 + systemd-resolved forwarding
+ * Used when systemd-resolved is already running on port 53
+ *
+ * @param dnsIp - The IP address to configure DNS to resolve to
+ */
+async function installLinuxDualMode(dnsIp: string): Promise<boolean> {
+  // 1. Check/install dnsmasq
+  if (!(await commandExists('dnsmasq'))) {
+    output.info('Installing dnsmasq...')
+    try {
+      await execAsync('sudo apt-get update && sudo apt-get install -y dnsmasq')
+      output.success('dnsmasq installed')
+    } catch (error) {
+      output.error(`Failed to install dnsmasq: ${error}`)
+      return printLinuxManualInstructions(dnsIp)
+    }
+  } else {
+    output.dim('dnsmasq already installed')
+  }
+
+  // 2. Configure dnsmasq on port 5354
+  output.info(`Configuring dnsmasq on port ${DNSMASQ_ALT_PORT}...`)
+  try {
+    await execAsync('sudo mkdir -p /etc/dnsmasq.d/')
+    await execAsync(
+      `echo -e "port=${DNSMASQ_ALT_PORT}\\naddress=/port/${dnsIp}" | sudo tee /etc/dnsmasq.d/port.conf > /dev/null`
+    )
+    output.success('dnsmasq configured')
+  } catch (error) {
+    output.error(`Failed to configure dnsmasq: ${error}`)
+    return printLinuxManualInstructions(dnsIp)
+  }
+
+  // 3. Restart dnsmasq via systemctl (will use port 5354 from config)
+  output.info('Restarting dnsmasq...')
+  try {
+    await execAsync('sudo systemctl restart dnsmasq')
+    output.success(`dnsmasq restarted on port ${DNSMASQ_ALT_PORT}`)
+  } catch (error) {
+    output.error(`Failed to restart dnsmasq: ${error}`)
+    return printLinuxManualInstructions(dnsIp)
+  }
+
+  // 4. Configure systemd-resolved to forward *.port queries
+  output.info('Configuring systemd-resolved forwarding...')
+  try {
+    await execAsync('sudo mkdir -p /etc/systemd/resolved.conf.d/')
+    await execAsync(
+      `echo -e "[Resolve]\\nDNS=127.0.0.1:${DNSMASQ_ALT_PORT}\\nDomains=~port" | sudo tee /etc/systemd/resolved.conf.d/port.conf > /dev/null`
+    )
+    await execAsync('sudo systemctl restart systemd-resolved')
+    output.success('systemd-resolved configured')
+  } catch (error) {
+    output.error(`Failed to configure systemd-resolved: ${error}`)
+    return printLinuxManualInstructions(dnsIp)
+  }
+
+  return true
+}
+
+/**
+ * Install Linux in standalone mode: dnsmasq on port 53
+ * Used when systemd-resolved is NOT running
+ *
+ * @param dnsIp - The IP address to configure DNS to resolve to
+ */
+async function installLinuxStandalone(dnsIp: string): Promise<boolean> {
+  // 1. Check/install dnsmasq
+  if (!(await commandExists('dnsmasq'))) {
+    output.info('Installing dnsmasq...')
+    try {
+      await execAsync('sudo apt-get update && sudo apt-get install -y dnsmasq')
+      output.success('dnsmasq installed')
+    } catch (error) {
+      output.error(`Failed to install dnsmasq: ${error}`)
+      return printLinuxManualInstructions(dnsIp)
+    }
+  } else {
+    output.dim('dnsmasq already installed')
+  }
+
+  // 2. Configure dnsmasq on port 53 (standard)
+  output.info('Configuring dnsmasq...')
+  try {
+    await execAsync('sudo mkdir -p /etc/dnsmasq.d/')
+    await execAsync(`echo "address=/port/${dnsIp}" | sudo tee /etc/dnsmasq.d/port.conf > /dev/null`)
+    output.success('dnsmasq configured')
+  } catch (error) {
+    output.error(`Failed to configure dnsmasq: ${error}`)
+    return printLinuxManualInstructions(dnsIp)
+  }
+
+  // 3. Restart dnsmasq service
+  output.info('Restarting dnsmasq...')
+  try {
+    await execAsync('sudo systemctl restart dnsmasq')
+    output.success('dnsmasq restarted')
+  } catch (error) {
+    output.error(`Failed to restart dnsmasq: ${error}`)
+    return printLinuxManualInstructions(dnsIp)
+  }
+
+  return true
+}
+
+/**
+ * Install and configure DNS for *.port domains on Linux
+ * Detects systemd-resolved and chooses the appropriate mode
+ *
+ * @param dnsIp - The IP address to configure DNS to resolve to
+ */
+async function installLinux(dnsIp: string): Promise<boolean> {
+  const systemdResolvedActive = await isSystemdResolvedRunning()
+  const port53InUse = await isPortInUse(53)
+
+  if (systemdResolvedActive && port53InUse) {
+    output.info('Detected systemd-resolved running on port 53')
+    output.info(
+      `Using dual-mode: dnsmasq on port ${DNSMASQ_ALT_PORT} + systemd-resolved forwarding`
+    )
+    output.newline()
+    return await installLinuxDualMode(dnsIp)
+  } else {
+    output.info('Using standalone mode: dnsmasq on port 53')
+    output.newline()
+    return await installLinuxStandalone(dnsIp)
+  }
 }
 
 /**

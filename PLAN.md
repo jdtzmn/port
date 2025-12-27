@@ -647,26 +647,38 @@ echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/port
 
 ### Linux (Automated by `port install`)
 
-**Option A: dnsmasq**
+The `port install` command automatically detects whether `systemd-resolved` is running and chooses the appropriate setup mode.
+
+#### Standalone Mode (systemd-resolved NOT running)
+
+If `systemd-resolved` is not running on port 53, dnsmasq runs directly on port 53:
 
 ```bash
 sudo apt install dnsmasq
 echo "address=/port/127.0.0.1" | sudo tee /etc/dnsmasq.d/port.conf
-# Or with custom IP:
-# echo "address=/port/172.25.0.2" | sudo tee /etc/dnsmasq.d/port.conf
 sudo systemctl restart dnsmasq
 ```
 
-**Option B: systemd-resolved**
+#### Dual Mode (systemd-resolved IS running)
+
+On most modern Ubuntu/Debian systems, `systemd-resolved` runs on port 53 by default. In this case, `port install` uses a dual-mode setup:
+
+1. **dnsmasq runs on port 5354** (to avoid conflict with systemd-resolved)
+2. **systemd-resolved forwards `*.port` queries** to dnsmasq
 
 ```bash
-# Add to /etc/systemd/resolved.conf.d/port.conf
-[Resolve]
-DNS=127.0.0.1
-# Or with custom IP:
-# DNS=172.25.0.2
-Domains=port
+# 1. Install and configure dnsmasq on port 5354
+sudo apt install dnsmasq
+echo -e "port=5354\naddress=/port/127.0.0.1" | sudo tee /etc/dnsmasq.d/port.conf
+sudo systemctl restart dnsmasq
+
+# 2. Configure systemd-resolved to forward *.port queries
+sudo mkdir -p /etc/systemd/resolved.conf.d/
+echo -e "[Resolve]\nDNS=127.0.0.1:5354\nDomains=~port" | sudo tee /etc/systemd/resolved.conf.d/port.conf
+sudo systemctl restart systemd-resolved
 ```
+
+The `~port` syntax (with tilde) tells systemd-resolved to only use this DNS server for the `port` domain, not for other queries.
 
 ### Custom DNS IP Use Cases
 
@@ -675,6 +687,39 @@ The `--dns-ip` flag is useful for:
 - **Docker networks**: Resolve to a Docker bridge network IP (e.g., `172.25.0.2`)
 - **Container testing**: Test dnsmasq in isolated container environments
 - **Multi-machine setups**: Resolve to a DNS server on another machine
+
+### Troubleshooting Linux DNS
+
+If DNS resolution isn't working after `port install`:
+
+1. **Check if dnsmasq is running:**
+
+   ```bash
+   pgrep dnsmasq
+   ```
+
+2. **Check which port dnsmasq is listening on:**
+
+   ```bash
+   ss -tlnp | grep dnsmasq
+   ```
+
+3. **Test dnsmasq directly (standalone mode):**
+
+   ```bash
+   dig @127.0.0.1 test.port
+   ```
+
+4. **Test dnsmasq directly (dual mode):**
+
+   ```bash
+   dig @127.0.0.1 -p 5354 test.port
+   ```
+
+5. **Test via system resolver:**
+   ```bash
+   getent hosts test.port
+   ```
 
 ---
 

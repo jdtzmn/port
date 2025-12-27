@@ -31,22 +31,15 @@ jobs:
       - name: Create global `port` command
         run: |
           sudo ln -s "$(pwd)/dist/index.js" /usr/local/bin/port && chmod +x dist/index.js
-          port help
+          port --help
 
-      - name: Install dnsmasq
+      - name: Configure DNS
+        run: sudo env PATH=$PATH port install -y
+
+      - name: Verify DNS
         run: |
-          sudo apt-get update
-          sudo apt-get install -y dnsmasq
-
-      - name: Start dnsmasq
-        run: |
-          sudo mkdir -p /etc/dnsmasq.d/
-          echo "address=/port/127.0.0.1" | sudo tee /etc/dnsmasq.d/port.conf
-          sudo dnsmasq &
-          nslookup test.port
-
-      - name: Verify DNS config
-        run: port install -y
+          dig test.port
+          getent hosts test.port
 
       - name: Run tests
         run: bun run test

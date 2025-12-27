@@ -59,7 +59,7 @@ Create `.code/config.jsonc` in your project with service definitions:
 port install
 ```
 
-Configures your system to resolve `*.local` domains to `127.0.0.1`.
+Configures your system to resolve `*.port` domains to `127.0.0.1`.
 
 You can optionally specify a custom IP address:
 
@@ -73,6 +73,16 @@ port install --yes
 # Combine options
 port install --yes --dns-ip 192.168.1.100
 ```
+
+#### Linux DNS Setup
+
+On Linux systems with `systemd-resolved` running (most modern Ubuntu/Debian systems), the install command automatically:
+
+1. Detects that `systemd-resolved` is using port 53
+2. Runs `dnsmasq` on port 5354 to avoid conflicts
+3. Configures `systemd-resolved` to forward `*.port` queries to dnsmasq
+
+This "dual-mode" setup allows both services to coexist without conflicts.
 
 ### 4. Enter a Worktree
 

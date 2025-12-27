@@ -9,6 +9,38 @@ export const DEFAULT_DOMAIN = 'port'
 /** Default DNS IP address */
 export const DEFAULT_DNS_IP = '127.0.0.1'
 
+/** Port for dnsmasq when systemd-resolved is running on port 53 */
+export const DNSMASQ_ALT_PORT = 5354
+
+/**
+ * Check if systemd-resolved is running
+ *
+ * @returns true if systemd-resolved service is active
+ */
+export async function isSystemdResolvedRunning(): Promise<boolean> {
+  try {
+    await execAsync('systemctl is-active systemd-resolved')
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Check if a specific port is in use
+ *
+ * @param port - The port number to check
+ * @returns true if the port is in use
+ */
+export async function isPortInUse(port: number): Promise<boolean> {
+  try {
+    await execAsync(`ss -tlnp | grep :${port}`)
+    return true
+  } catch {
+    return false
+  }
+}
+
 /**
  * Validate if a string is a valid IPv4 address
  *
@@ -117,16 +149,23 @@ export function getDnsSetupInstructions(ip: string = DEFAULT_DNS_IP): {
     return {
       platform: 'linux',
       instructions: [
-        '# Option A: Using dnsmasq',
+        '# Option A: dnsmasq standalone (if systemd-resolved is NOT running)',
         'sudo apt install dnsmasq',
         `echo "address=/port/${ip}" | sudo tee /etc/dnsmasq.d/port.conf`,
         'sudo systemctl restart dnsmasq',
         '',
-        '# Option B: Using systemd-resolved',
-        '# Add to /etc/systemd/resolved.conf.d/port.conf:',
-        '# [Resolve]',
-        `# DNS=${ip}`,
-        '# Domains=port',
+        '# Option B: dnsmasq + systemd-resolved (if systemd-resolved IS running)',
+        '# Run dnsmasq on port 5354 to avoid conflict:',
+        'sudo apt install dnsmasq',
+        'sudo systemctl stop dnsmasq',
+        'sudo systemctl disable dnsmasq',
+        `echo -e "port=${DNSMASQ_ALT_PORT}\\naddress=/port/${ip}" | sudo tee /etc/dnsmasq.d/port.conf`,
+        'sudo dnsmasq',
+        '',
+        '# Configure systemd-resolved to forward *.port queries:',
+        'sudo mkdir -p /etc/systemd/resolved.conf.d/',
+        `echo -e "[Resolve]\\nDNS=127.0.0.1:${DNSMASQ_ALT_PORT}\\nDomains=~port" | sudo tee /etc/systemd/resolved.conf.d/port.conf`,
+        'sudo systemctl restart systemd-resolved',
       ],
     }
   }
