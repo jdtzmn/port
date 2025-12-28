@@ -190,7 +190,10 @@ async function installLinuxDualMode(dnsIp: string): Promise<boolean> {
   try {
     await execAsync('sudo mkdir -p /etc/dnsmasq.d/')
     await execAsync(
-      `echo -e "port=${DNSMASQ_ALT_PORT}\\naddress=/port/${dnsIp}" | sudo tee /etc/dnsmasq.d/port.conf > /dev/null`
+      `echo "port=${DNSMASQ_ALT_PORT}" | sudo tee /etc/dnsmasq.d/port.conf > /dev/null`
+    )
+    await execAsync(
+      `echo "address=/port/${dnsIp}" | sudo tee -a /etc/dnsmasq.d/port.conf > /dev/null`
     )
     output.success('dnsmasq configured')
   } catch (error) {
@@ -213,7 +216,13 @@ async function installLinuxDualMode(dnsIp: string): Promise<boolean> {
   try {
     await execAsync('sudo mkdir -p /etc/systemd/resolved.conf.d/')
     await execAsync(
-      `echo -e "[Resolve]\\nDNS=127.0.0.1:${DNSMASQ_ALT_PORT}\\nDomains=~port" | sudo tee /etc/systemd/resolved.conf.d/port.conf > /dev/null`
+      `echo "[Resolve]" | sudo tee /etc/systemd/resolved.conf.d/port.conf > /dev/null`
+    )
+    await execAsync(
+      `echo "DNS=127.0.0.1:${DNSMASQ_ALT_PORT}" | sudo tee -a /etc/systemd/resolved.conf.d/port.conf > /dev/null`
+    )
+    await execAsync(
+      `echo "Domains=~port" | sudo tee -a /etc/systemd/resolved.conf.d/port.conf > /dev/null`
     )
     await execAsync('sudo systemctl restart systemd-resolved')
     output.success('systemd-resolved configured')

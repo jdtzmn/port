@@ -669,12 +669,15 @@ On most modern Ubuntu/Debian systems, `systemd-resolved` runs on port 53 by defa
 ```bash
 # 1. Install and configure dnsmasq on port 5354
 sudo apt install dnsmasq
-echo -e "port=5354\naddress=/port/127.0.0.1" | sudo tee /etc/dnsmasq.d/port.conf
+echo "port=5354" | sudo tee /etc/dnsmasq.d/port.conf
+echo "address=/port/127.0.0.1" | sudo tee -a /etc/dnsmasq.d/port.conf
 sudo systemctl restart dnsmasq
 
 # 2. Configure systemd-resolved to forward *.port queries
 sudo mkdir -p /etc/systemd/resolved.conf.d/
-echo -e "[Resolve]\nDNS=127.0.0.1:5354\nDomains=~port" | sudo tee /etc/systemd/resolved.conf.d/port.conf
+echo "[Resolve]" | sudo tee /etc/systemd/resolved.conf.d/port.conf
+echo "DNS=127.0.0.1:5354" | sudo tee -a /etc/systemd/resolved.conf.d/port.conf
+echo "Domains=~port" | sudo tee -a /etc/systemd/resolved.conf.d/port.conf
 sudo systemctl restart systemd-resolved
 ```
 
