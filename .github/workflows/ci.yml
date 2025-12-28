@@ -38,6 +38,8 @@ jobs:
 
       - name: Verify DNS
         run: |
+          systemctl status dnsmasq.service
+          journalctl -xeu dnsmasq.service
           dig test.port
           getent hosts test.port
 
