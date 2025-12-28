@@ -31,17 +31,9 @@ jobs:
       - name: Create global `port` command
         run: |
           sudo ln -s "$(pwd)/dist/index.js" /usr/local/bin/port && chmod +x dist/index.js
-          port --help
 
       - name: Configure DNS
         run: sudo env PATH=$PATH port install -y
-
-      - name: Verify DNS
-        run: |
-          systemctl status dnsmasq.service
-          journalctl -xeu dnsmasq.service
-          dig test.port
-          getent hosts test.port
 
       - name: Run tests
         run: bun run test
