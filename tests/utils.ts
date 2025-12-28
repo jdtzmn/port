@@ -11,8 +11,10 @@ import { tmpdir } from 'os'
  */
 export const tempDirRegistry = new Set<string>()
 
-export function renderCLI(args: string[] = []) {
-  return render('bun', [resolve(__dirname, '../src/index.ts'), ...args])
+export function renderCLI(args: string[] = [], cwd?: string) {
+  return render('bun', [resolve(__dirname, '../src/index.ts'), ...args], {
+    cwd,
+  })
 }
 
 /**
