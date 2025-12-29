@@ -253,6 +253,30 @@ bun run format
 bun run lint
 ```
 
+### Testing in Ubuntu Container
+
+The project includes a Docker container running Ubuntu 24.04 with systemd for testing the CLI in a Linux environment. This is useful for testing DNS configuration and other Linux-specific features.
+
+```bash
+# Start the container and open a bash shell
+make ubuntu
+
+# Stop the container
+make down
+```
+
+Once inside the container, you can test the CLI:
+
+```bash
+# Set up DNS for *.port domains
+port install --yes
+
+# Test DNS resolution
+dig test.port
+```
+
+> **Note:** The container overrides `/etc/resolv.conf` to use systemd-resolved for DNS, which allows `*.port` domain resolution to work. However, this means the container does not have access to the outside network (e.g., `apt-get update` or `curl` to external URLs will fail).
+
 ## License
 
 MIT
