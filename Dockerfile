@@ -154,6 +154,10 @@ RUN systemctl enable cron.target
 # Enable rsyslog service
 RUN systemctl enable rsyslog
 
+# Install Docker (daemon, CLI, and Compose plugin)
+RUN curl -fsSL https://get.docker.com | sh
+RUN systemctl enable docker
+
 # Copy project files
 COPY . .
 
