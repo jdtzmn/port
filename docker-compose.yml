@@ -2,18 +2,27 @@ services:
   samples:
     build: .
     container_name: port-dev
-    stdin_open: true
     tty: true
+    privileged: true
+    # Required for systemd to work properly
+    tmpfs:
+      - /tmp:exec
+      - /run
+      - /run/lock
+    ports:
+      - '2222:22' # SSH port mapped to host:2222
     volumes:
       - .:/app
+      - node_modules:/app/node_modules
       - samples_dir:/app/tests/samples
-    command: sleep infinity
     networks:
       - port-network
+    restart: unless-stopped
     dns:
-      - 127.0.0.11
+      - 127.0.0.1
 
 volumes:
+  node_modules:
   samples_dir:
 
 networks:
