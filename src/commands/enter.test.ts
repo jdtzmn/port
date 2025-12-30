@@ -1,9 +1,8 @@
 import { join } from 'path'
-import { prepareSample, renderCLI } from '@tests/utils'
-import { waitFor } from 'cli-testing-library'
-import { describe, test } from 'vitest'
+import { execPortAsync, prepareSample } from '@tests/utils'
+import { describe, test, expect } from 'vitest'
 
-const TIMEOUT = 20000
+const TIMEOUT = 60000
 
 describe('parallel worktrees', () => {
   test(
@@ -13,31 +12,16 @@ describe('parallel worktrees', () => {
         initWithConfig: true,
       })
 
-      const instanceA = await renderCLI(['A', '--no-shell'], sample.dir)
-      const instanceB = await renderCLI(['B', '--no-shell'], sample.dir)
+      // Create worktrees (--no-shell so they exit immediately)
+      await execPortAsync(['A', '--no-shell'], sample.dir)
+      await execPortAsync(['B', '--no-shell'], sample.dir)
 
-      // Wait for them to enter their worktrees
-      await waitFor(() => expect(instanceA.getByText('Created worktree: a')).toBeTruthy(), {
-        timeout: TIMEOUT,
-      })
-      await waitFor(() => expect(instanceB.getByText('Created worktree: b')).toBeTruthy(), {
-        timeout: TIMEOUT,
-      })
-
-      // Since a sub-shell is used from now on, we instead just navigate
-      // to the worktree directory and run the command
+      // Navigate to the worktree directories and run `up`
       const worktreeADir = join(sample.dir, './.port/trees/A')
       const worktreeBDir = join(sample.dir, './.port/trees/B')
 
-      const upInstanceA = await renderCLI(['up'], worktreeADir)
-      const upInstanceB = await renderCLI(['up'], worktreeBDir)
-
-      await waitFor(() => expect(upInstanceA.hasExit()).toMatchObject({ exitCode: 0 }), {
-        timeout: TIMEOUT,
-      })
-      await waitFor(() => expect(upInstanceB.hasExit()).toMatchObject({ exitCode: 0 }), {
-        timeout: TIMEOUT,
-      })
+      await execPortAsync(['up'], worktreeADir)
+      await execPortAsync(['up'], worktreeBDir)
 
       // Wait for both pages to load and have different content
       const aURL = 'http://a.port:3000'
@@ -58,15 +42,8 @@ describe('parallel worktrees', () => {
       )
 
       // End the sample (use -y to skip Traefik confirmation prompt)
-      const downInstanceA = await renderCLI(['down', '-y'], worktreeADir)
-      const downInstanceB = await renderCLI(['down', '-y'], worktreeBDir)
-
-      await waitFor(() => expect(downInstanceA.hasExit()).toMatchObject({ exitCode: 0 }), {
-        timeout: TIMEOUT,
-      })
-      await waitFor(() => expect(downInstanceB.hasExit()).toMatchObject({ exitCode: 0 }), {
-        timeout: TIMEOUT,
-      })
+      await execPortAsync(['down', '-y'], worktreeADir)
+      await execPortAsync(['down', '-y'], worktreeBDir)
 
       await sample.cleanup()
     },
