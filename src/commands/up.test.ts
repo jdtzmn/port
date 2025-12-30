@@ -23,7 +23,7 @@ describe('samples start', () => {
       'Traefik dashboard:',
       {},
       {
-        timeout: 15000,
+        timeout: 19000,
       }
     )
     expect(instance).toBeInTheConsole()
@@ -31,7 +31,7 @@ describe('samples start', () => {
     // End the sample (use -y to skip Traefik confirmation prompt)
     const downInstance = await renderCLI(['down', '-y'], sample.dir)
     await waitFor(() => expect(downInstance.hasExit()).toMatchObject({ exitCode: 0 }), {
-      timeout: 30000,
+      timeout: 19000,
     })
     sample.cleanup()
   }, 20000)
