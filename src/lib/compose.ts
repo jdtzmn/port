@@ -348,6 +348,9 @@ export async function composePs(
 
 /**
  * Start Traefik container
+ *
+ * This function handles concurrent starts gracefully - if another process
+ * is already starting Traefik, we wait for it to complete rather than failing.
  */
 export async function startTraefik(): Promise<void> {
   const cmd = await getComposeCommand()
@@ -361,6 +364,24 @@ export async function startTraefik(): Promise<void> {
       timeout: 60000,
     })
   } catch (error) {
+    // Check if the error is due to a concurrent start (container name conflict)
+    const errorMessage = String(error)
+    if (errorMessage.includes('is already in use')) {
+      // Another process is starting Traefik - wait for it to be ready
+      const maxWaitTime = 30000 // 30 seconds
+      const pollInterval = 500 // 500ms
+      const startTime = Date.now()
+
+      while (Date.now() - startTime < maxWaitTime) {
+        if (await isTraefikRunning()) {
+          return // Traefik started successfully by another process
+        }
+        await new Promise(resolve => setTimeout(resolve, pollInterval))
+      }
+
+      throw new ComposeError('Traefik startup timed out waiting for concurrent start')
+    }
+
     throw new ComposeError(`Failed to start Traefik: ${error}`)
   }
 }
