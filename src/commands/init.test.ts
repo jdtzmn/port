@@ -12,7 +12,7 @@ describe('Git repo detection tests', () => {
 
     const instance = await findByError('Not in a git repository')
     expect(instance).toBeInTheConsole()
-    sample.cleanup()
+    await sample.cleanup()
   })
 
   test('should succeed when in a git repo', async () => {
@@ -24,7 +24,7 @@ describe('Git repo detection tests', () => {
 
     const instance = await findByText('Initialization complete')
     expect(instance).toBeInTheConsole()
-    sample.cleanup()
+    await sample.cleanup()
   })
 })
 

@@ -1,13 +1,13 @@
 import { render } from 'cli-testing-library'
 import { basename, resolve } from 'path'
-import { mkdtempSync, rmSync } from 'fs'
-import { cp } from 'fs/promises'
+import { mkdtempSync } from 'fs'
+import { cp, readdir, rm } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { PortConfig } from '../src/types'
 import { execAsync } from '../src/lib/exec'
 import { writeFile } from 'fs/promises'
-import { CONFIG_FILE, PORT_DIR } from '../src/lib/config'
+import { CONFIG_FILE, PORT_DIR, TREES_DIR } from '../src/lib/config'
 import { sanitizeFolderName } from '../src/lib/sanitize'
 
 /**
@@ -16,24 +16,22 @@ import { sanitizeFolderName } from '../src/lib/sanitize'
  */
 export const tempDirRegistry = new Set<string>()
 
-/**
- * Global registry of all running compose projects
- * These are automatically cleaned up after all tests complete
- */
-export const composeProjectRegistry = new Set<string>()
-
 function projectNameFromDir(dir: string) {
   return sanitizeFolderName(basename(dir))
 }
 
+function cliScript() {
+  return resolve(__dirname, '../src/index.ts')
+}
+
 export function renderCLI(args: string[] = [], cwd?: string) {
-  return render('bun', [resolve(__dirname, '../src/index.ts'), ...args], {
+  return render('bun', [cliScript(), ...args], {
     cwd,
   })
 }
 
 export async function execPortAsync(args: string[] = [], cwd?: string) {
-  return execAsync(`bun ${resolve(__dirname, '../src/index.ts')} ` + args.join(' '), {
+  return execAsync(`bun ${cliScript()} ` + args.join(' '), {
     cwd,
   })
 }
@@ -65,7 +63,6 @@ export async function prepareSample(sampleName: string, config?: SampleConfig) {
 
   // Register temp directory for automatic cleanup
   tempDirRegistry.add(tempDir)
-  composeProjectRegistry.add(projectNameFromDir(tempDir))
 
   // Copy sample to temp directory
   const samplePath = resolve(__dirname, 'samples', sampleName)
@@ -97,8 +94,9 @@ export async function prepareSample(sampleName: string, config?: SampleConfig) {
   return {
     dir: tempDir,
     urlWithPort,
-    cleanup: () => {
-      rmSync(tempDir, { recursive: true, force: true })
+    cleanup: async () => {
+      await bringDownComposeProject(tempDir)
+      await rm(tempDir, { recursive: true, force: true })
       tempDirRegistry.delete(tempDir)
     },
   }
@@ -108,25 +106,53 @@ export async function prepareSample(sampleName: string, config?: SampleConfig) {
  * Clean up all registered temp directories
  * Called automatically by vitest afterAll hook
  */
-export function cleanupAllTempDirs() {
-  for (const dir of tempDirRegistry) {
-    try {
-      rmSync(dir, { recursive: true, force: true })
-    } catch (error) {
-      console.error(`Failed to clean up temp directory ${dir}:`, error)
-    }
-  }
-  tempDirRegistry.clear()
-}
-
-export async function bringDownAllComposeProjects() {
+export async function cleanupAllTempDirs() {
   await Promise.all(
-    Array.from(composeProjectRegistry).map(async projectName => {
+    tempDirRegistry.values().map(async dir => {
       try {
-        await execAsync(`docker compose -p ${projectName} down`)
+        await rm(dir, { recursive: true, force: true })
       } catch (error) {
-        console.error(`Failed to bring down compose project ${projectName}:`, error)
+        console.error(`Failed to clean up temp directory ${dir}:`, error)
       }
     })
   )
+  tempDirRegistry.clear()
+}
+
+/**
+ * Bring down a compose project within a directory
+ */
+async function bringDownComposeDirectory(dir: string) {
+  try {
+    await execAsync(`docker compose --project-directory "${dir}" down`)
+  } catch {
+    // Ignore errors - compose might not have been started for this directory
+  }
+}
+
+/**
+ * Bring down a compose project within this directory and all the worktrees
+ */
+async function bringDownComposeProject(projectDir: string) {
+  // If worktrees in `.port/trees`, bring those down
+  try {
+    const worktrees = await readdir(join(projectDir, PORT_DIR, TREES_DIR))
+    await Promise.all(
+      worktrees.map(async worktree => {
+        await bringDownComposeDirectory(join(projectDir, PORT_DIR, TREES_DIR, worktree))
+      })
+    )
+  } catch {
+    // Ignore errors - worktrees might not exist
+  }
+
+  // Bring down the project itself
+  await bringDownComposeDirectory(projectDir)
+}
+
+/**
+ * Bring down all of the compose projects in temporary directories
+ */
+export async function bringDownAllComposeProjects() {
+  await Promise.all(Array.from(tempDirRegistry).map(dir => bringDownComposeProject(dir)))
 }

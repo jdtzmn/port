@@ -37,7 +37,7 @@ describe('samples start', () => {
       await waitFor(() => expect(downInstance.hasExit()).toMatchObject({ exitCode: 0 }), {
         timeout: SAMPLES_TIMEOUT,
       })
-      sample.cleanup()
+      await sample.cleanup()
     },
     SAMPLES_TIMEOUT + 1000
   )
