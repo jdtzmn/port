@@ -17,8 +17,9 @@ describe('parallel worktrees', () => {
       await execPortAsync(['B', '--no-shell'], sample.dir)
 
       // Navigate to the worktree directories and run `up`
-      const worktreeADir = join(sample.dir, './.port/trees/A')
-      const worktreeBDir = join(sample.dir, './.port/trees/B')
+      // Note: branch names are lowercased by sanitizeBranchName
+      const worktreeADir = join(sample.dir, './.port/trees/a')
+      const worktreeBDir = join(sample.dir, './.port/trees/b')
 
       await execPortAsync(['up'], worktreeADir)
       await execPortAsync(['up'], worktreeBDir)
