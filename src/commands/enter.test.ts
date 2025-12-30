@@ -17,10 +17,10 @@ describe('parallel worktrees', () => {
       const instanceB = await renderCLI(['B', '--no-shell'], sample.dir)
 
       // Wait for them to enter their worktrees
-      await waitFor(() => expect(instanceA.getByText('Entered worktree: a')).toBeTruthy(), {
+      await waitFor(() => expect(instanceA.getByText('Created worktree: a')).toBeTruthy(), {
         timeout: TIMEOUT,
       })
-      await waitFor(() => expect(instanceB.getByText('Entered worktree: b')).toBeTruthy(), {
+      await waitFor(() => expect(instanceB.getByText('Created worktree: b')).toBeTruthy(), {
         timeout: TIMEOUT,
       })
 
