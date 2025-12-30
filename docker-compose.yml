@@ -17,7 +17,7 @@ services:
       - port-network
     restart: unless-stopped
     dns:
-      - 127.0.0.1
+      - 8.8.8.8
 
 volumes:
   node_modules:
