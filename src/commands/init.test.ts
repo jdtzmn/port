@@ -7,7 +7,6 @@ import { execAsync } from '../lib/exec.ts'
 describe('Git repo detection tests', () => {
   test('should fail when not in a git repo', async () => {
     const sample = await prepareSample('db-and-server')
-    expect(existsSync(path.join(sample.dir, '.git'))).not.toBe(true)
 
     const { findByError } = await renderCLI(['init'], sample.dir)
 
@@ -17,11 +16,9 @@ describe('Git repo detection tests', () => {
   })
 
   test('should succeed when in a git repo', async () => {
-    const sample = await prepareSample('db-and-server')
-    await execAsync('git init', {
-      cwd: sample.dir,
+    const sample = await prepareSample('db-and-server', {
+      gitInit: true,
     })
-    expect(existsSync(path.join(sample.dir, '.git'))).toBe(true)
 
     const { findByText } = await renderCLI(['init'], sample.dir)
 
