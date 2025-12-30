@@ -1,8 +1,8 @@
 import { spawn } from 'child_process'
 import { findGitRoot, getWorktreePath, worktreeExists } from '../lib/worktree.ts'
-import { loadConfig, configExists, getTreesDir } from '../lib/config.ts'
+import { loadConfig, configExists, getTreesDir, getComposeFile } from '../lib/config.ts'
 import { createWorktree } from '../lib/git.ts'
-import { writeOverrideFile } from '../lib/compose.ts'
+import { writeOverrideFile, parseComposeFile } from '../lib/compose.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import { mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
@@ -60,13 +60,15 @@ export async function enter(branch: string): Promise<void> {
     }
   }
 
-  // Generate override file
+  // Parse docker-compose file and generate override file
+  const composeFile = getComposeFile(config)
   try {
-    await writeOverrideFile(worktreePath, config, sanitized)
+    const parsedCompose = await parseComposeFile(worktreePath, composeFile)
+    await writeOverrideFile(worktreePath, parsedCompose, sanitized, config.domain)
     output.success('Generated docker-compose.override.yml')
   } catch (error) {
-    output.error(`Failed to generate override file: ${error}`)
-    process.exit(1)
+    // It's okay if compose parsing fails here - the file might not exist yet in the worktree
+    output.dim('Could not generate docker-compose.override.yml (compose file may not exist yet)')
   }
 
   // Show service URLs

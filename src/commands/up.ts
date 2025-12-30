@@ -1,5 +1,5 @@
 import { detectWorktree } from '../lib/worktree.ts'
-import { loadConfig, configExists, getAllPorts, getComposeFile } from '../lib/config.ts'
+import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
 import { registerProject } from '../lib/registry.ts'
 import { ensureTraefikPorts, traefikFilesExist, initTraefikFiles } from '../lib/traefik.ts'
 import {
@@ -9,6 +9,9 @@ import {
   isTraefikRunning,
   restartTraefik,
   checkComposeVersion,
+  parseComposeFile,
+  getAllPorts,
+  getServicePorts,
 } from '../lib/compose.ts'
 import * as output from '../lib/output.ts'
 
@@ -45,8 +48,19 @@ export async function up(): Promise<void> {
 
   // Load config
   const config = await loadConfig(repoRoot)
-  const ports = getAllPorts(config)
   const composeFile = getComposeFile(config)
+
+  // Parse docker-compose file to get services and ports
+  output.info('Parsing docker-compose file...')
+  let parsedCompose
+  try {
+    parsedCompose = await parseComposeFile(worktreePath, composeFile)
+  } catch (error) {
+    output.error(`Failed to parse docker-compose file: ${error}`)
+    process.exit(1)
+  }
+
+  const ports = getAllPorts(parsedCompose)
 
   // Ensure Traefik files exist
   if (!traefikFilesExist()) {
@@ -86,7 +100,7 @@ export async function up(): Promise<void> {
 
   // Generate/update override file
   try {
-    await writeOverrideFile(worktreePath, config, name)
+    await writeOverrideFile(worktreePath, parsedCompose, name, config.domain)
     output.dim('Updated docker-compose.override.yml')
   } catch (error) {
     output.error(`Failed to generate override file: ${error}`)
@@ -96,7 +110,7 @@ export async function up(): Promise<void> {
   // Start docker-compose services
   output.info(`Starting services in ${output.branch(name)}...`)
   try {
-    await composeUp(worktreePath, composeFile)
+    await composeUp(worktreePath, composeFile, name)
     output.success('Services started')
   } catch (error) {
     output.error(`Failed to start services: ${error}`)
@@ -110,10 +124,14 @@ export async function up(): Promise<void> {
   output.newline()
   output.success(`Services running in ${output.branch(name)}`)
 
+  // Build service URLs from parsed compose file
   const serviceUrls: Array<{ name: string; urls: string[] }> = []
-  for (const service of config.services) {
-    const urls = service.ports.map(port => `http://${name}.${config.domain}:${port}`)
-    serviceUrls.push({ name: service.name, urls })
+  for (const [serviceName, service] of Object.entries(parsedCompose.services)) {
+    const servicePorts = getServicePorts(service)
+    if (servicePorts.length > 0) {
+      const urls = servicePorts.map(port => `http://${name}.${config.domain}:${port}`)
+      serviceUrls.push({ name: serviceName, urls })
+    }
   }
   output.serviceUrls(serviceUrls)
 

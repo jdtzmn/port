@@ -3,7 +3,7 @@ import { promisify } from 'util'
 import { writeFile } from 'fs/promises'
 import { join } from 'path'
 import { stringify as yamlStringify } from 'yaml'
-import type { PortConfig } from '../types.ts'
+import type { ParsedComposeFile, ParsedComposeService } from '../types.ts'
 import { TRAEFIK_NETWORK, TRAEFIK_DIR } from './traefik.ts'
 
 const execAsync = promisify(exec)
@@ -19,6 +19,69 @@ export class ComposeError extends Error {
     super(message)
     this.name = 'ComposeError'
   }
+}
+
+/**
+ * Parse a docker-compose file using docker compose config
+ *
+ * @param cwd - Working directory containing the compose file
+ * @param composeFile - Name of the compose file (default: docker-compose.yml)
+ * @returns Parsed compose file structure
+ */
+export async function parseComposeFile(
+  cwd: string,
+  composeFile: string = 'docker-compose.yml'
+): Promise<ParsedComposeFile> {
+  const cmd = await getComposeCommand()
+
+  try {
+    const { stdout } = await execAsync(`${cmd} -f ${composeFile} config --format json`, {
+      cwd,
+      timeout: 30000,
+    })
+
+    return JSON.parse(stdout) as ParsedComposeFile
+  } catch (error) {
+    throw new ComposeError(`Failed to parse compose file: ${error}`)
+  }
+}
+
+/**
+ * Get all published ports from a parsed compose service
+ *
+ * @param service - Parsed compose service
+ * @returns Array of published port numbers
+ */
+export function getServicePorts(service: ParsedComposeService): number[] {
+  if (!service.ports || service.ports.length === 0) {
+    return []
+  }
+
+  return service.ports
+    .map(p => {
+      // published can be string or number depending on docker compose version
+      const port = typeof p.published === 'string' ? parseInt(p.published, 10) : p.published
+      return port
+    })
+    .filter((port): port is number => typeof port === 'number' && !isNaN(port) && port > 0)
+}
+
+/**
+ * Get all unique published ports from a parsed compose file
+ *
+ * @param composeFile - Parsed compose file
+ * @returns Array of unique published port numbers, sorted
+ */
+export function getAllPorts(composeFile: ParsedComposeFile): number[] {
+  const ports = new Set<number>()
+
+  for (const service of Object.values(composeFile.services)) {
+    for (const port of getServicePorts(service)) {
+      ports.add(port)
+    }
+  }
+
+  return Array.from(ports).sort((a, b) => a - b)
 }
 
 /**
@@ -96,28 +159,41 @@ function generateTraefikLabels(
 /**
  * Generate the docker-compose.override.yml content
  *
- * @param config - Port configuration
+ * @param parsedCompose - Parsed compose file from docker compose config
  * @param worktreeName - Sanitized worktree/branch name
+ * @param domain - Domain suffix (default: 'port')
  * @returns YAML string for the override file
  */
-export function generateOverrideContent(config: PortConfig, worktreeName: string): string {
+export function generateOverrideContent(
+  parsedCompose: ParsedComposeFile,
+  worktreeName: string,
+  domain: string = 'port'
+): string {
   const services: Record<string, unknown> = {}
 
-  for (const service of config.services) {
-    const labels = ['traefik.enable=true']
+  for (const [serviceName, service] of Object.entries(parsedCompose.services)) {
+    const ports = getServicePorts(service)
 
-    // Add labels for each port
-    for (const port of service.ports) {
-      labels.push(...generateTraefikLabels(worktreeName, service.name, port, config.domain))
+    // Always add container_name to prevent conflicts
+    const serviceOverride: Record<string, unknown> = {
+      container_name: `${worktreeName}-${serviceName}`,
     }
 
-    services[service.name] = {
-      // Use !override to remove host port bindings
-      // This is a YAML tag that tells docker-compose to replace rather than merge
-      ports: [], // Will be prefixed with !override in output
-      networks: [TRAEFIK_NETWORK],
-      labels,
+    // Only add Traefik config for services with ports
+    if (ports.length > 0) {
+      const labels = ['traefik.enable=true']
+
+      // Add labels for each port
+      for (const port of ports) {
+        labels.push(...generateTraefikLabels(worktreeName, serviceName, port, domain))
+      }
+
+      serviceOverride.ports = [] // Will be prefixed with !override in output
+      serviceOverride.networks = [TRAEFIK_NETWORK]
+      serviceOverride.labels = labels
     }
+
+    services[serviceName] = serviceOverride
   }
 
   const override = {
@@ -144,15 +220,17 @@ export function generateOverrideContent(config: PortConfig, worktreeName: string
  * Write the docker-compose.override.yml file
  *
  * @param worktreePath - Path to the worktree directory
- * @param config - Port configuration
+ * @param parsedCompose - Parsed compose file from docker compose config
  * @param worktreeName - Sanitized worktree/branch name
+ * @param domain - Domain suffix (default: 'port')
  */
 export async function writeOverrideFile(
   worktreePath: string,
-  config: PortConfig,
-  worktreeName: string
+  parsedCompose: ParsedComposeFile,
+  worktreeName: string,
+  domain: string = 'port'
 ): Promise<void> {
-  const content = generateOverrideContent(config, worktreeName)
+  const content = generateOverrideContent(parsedCompose, worktreeName, domain)
   const overridePath = join(worktreePath, OVERRIDE_FILE)
   await writeFile(overridePath, content)
 }
@@ -174,21 +252,26 @@ async function getComposeCommand(): Promise<string> {
  *
  * @param cwd - Working directory
  * @param composeFile - Path to docker-compose file
+ * @param projectName - Project name for docker-compose (used for container naming)
  * @param detached - Run in detached mode (default: true)
  */
 export async function composeUp(
   cwd: string,
   composeFile: string,
+  projectName: string,
   detached: boolean = true
 ): Promise<void> {
   const cmd = await getComposeCommand()
   const detachedFlag = detached ? '-d' : ''
 
   try {
-    await execAsync(`${cmd} -f ${composeFile} -f ${OVERRIDE_FILE} up ${detachedFlag}`, {
-      cwd,
-      timeout: 120000, // 2 minute timeout
-    })
+    await execAsync(
+      `${cmd} -p ${projectName} -f ${composeFile} -f ${OVERRIDE_FILE} up ${detachedFlag}`,
+      {
+        cwd,
+        timeout: 120000, // 2 minute timeout
+      }
+    )
   } catch (error) {
     throw new ComposeError(`Failed to start services: ${error}`)
   }
@@ -199,12 +282,17 @@ export async function composeUp(
  *
  * @param cwd - Working directory
  * @param composeFile - Path to docker-compose file
+ * @param projectName - Project name for docker-compose
  */
-export async function composeDown(cwd: string, composeFile: string): Promise<void> {
+export async function composeDown(
+  cwd: string,
+  composeFile: string,
+  projectName: string
+): Promise<void> {
   const cmd = await getComposeCommand()
 
   try {
-    await execAsync(`${cmd} -f ${composeFile} -f ${OVERRIDE_FILE} down`, {
+    await execAsync(`${cmd} -p ${projectName} -f ${composeFile} -f ${OVERRIDE_FILE} down`, {
       cwd,
       timeout: 60000, // 1 minute timeout
     })
@@ -218,17 +306,19 @@ export async function composeDown(cwd: string, composeFile: string): Promise<voi
  *
  * @param cwd - Working directory
  * @param composeFile - Path to docker-compose file
+ * @param projectName - Project name for docker-compose
  * @returns Array of service statuses
  */
 export async function composePs(
   cwd: string,
-  composeFile: string
+  composeFile: string,
+  projectName: string
 ): Promise<Array<{ name: string; status: string; running: boolean }>> {
   const cmd = await getComposeCommand()
 
   try {
     const { stdout } = await execAsync(
-      `${cmd} -f ${composeFile} -f ${OVERRIDE_FILE} ps --format json`,
+      `${cmd} -p ${projectName} -f ${composeFile} -f ${OVERRIDE_FILE} ps --format json`,
       { cwd }
     )
 

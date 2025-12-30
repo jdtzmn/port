@@ -19,16 +19,7 @@ const CONFIG_TEMPLATE = `{
   "domain": "port",
 
   // Path to docker-compose file (default: docker-compose.yml)
-  "compose": "docker-compose.yml",
-
-  // List of services to expose via Traefik
-  // Each service name must exist in docker-compose.yml
-  "services": [
-    {
-      "name": "app",
-      "ports": [3000]
-    }
-  ]
+  "compose": "docker-compose.yml"
 }
 `
 
@@ -73,7 +64,6 @@ export async function init(): Promise<void> {
   if (!existsSync(configPath)) {
     await writeFile(configPath, CONFIG_TEMPLATE)
     output.success(`Created ${PORT_DIR}/${CONFIG_FILE}`)
-    output.info(`Edit ${PORT_DIR}/${CONFIG_FILE} to configure your services`)
   } else {
     output.dim(`${PORT_DIR}/${CONFIG_FILE} already exists`)
   }

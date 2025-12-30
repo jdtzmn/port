@@ -120,7 +120,7 @@ my-app/
 
 ### Project Config (`.port/config.jsonc`)
 
-Each project defines its own services and ports. This file is **checked into git**.
+Minimal configuration file. Services and ports are **auto-detected** from your `docker-compose.yml`. This file is **checked into git**.
 
 ```jsonc
 {
@@ -129,25 +129,19 @@ Each project defines its own services and ports. This file is **checked into git
 
   // Optional: path to docker-compose file (default: docker-compose.yml)
   "compose": "docker-compose.yml",
-
-  // List of services to expose via Traefik
-  // Each service name must exist in docker-compose.yml
-  "services": [
-    {
-      "name": "web", // Service name in docker-compose.yml
-      "ports": [3000, 3001], // Ports to expose via Traefik
-    },
-    {
-      "name": "api",
-      "ports": [4000, 4001],
-    },
-    {
-      "name": "admin",
-      "ports": [5000],
-    },
-  ],
 }
 ```
+
+### Auto-Detection from docker-compose.yml
+
+Port automatically parses your `docker-compose.yml` using `docker compose config --format json` and:
+
+1. **Discovers all services** and their published ports
+2. **Generates container names** prefixed with the worktree name to prevent conflicts
+3. **Adds Traefik labels** for services with ports to enable routing
+4. **Removes host port bindings** using `!override` to prevent port conflicts between worktrees
+
+This means you don't need to manually configure services - just run `port up` and everything is auto-configured.
 
 ### Project Registry (`~/.port/registry.json`)
 
@@ -414,63 +408,42 @@ feature-2 override:
 Result: No port conflicts! Both services run simultaneously.
 ```
 
-### Example: Multiple Services with Multiple Ports
+### Example: Auto-Generated Override File
 
-**Config:**
-
-```jsonc
-{
-  "services": [
-    { "name": "web", "ports": [3000, 3001] },
-    { "name": "api", "ports": [4000] },
-    { "name": "admin", "ports": [5000] },
-  ],
-}
-```
+Given a `docker-compose.yml` with web (ports 3000, 3001), api (port 4000), and database (no ports):
 
 **Generated Override File (`.port/trees/feature-1/docker-compose.override.yml`):**
 
 ```yaml
-version: '3.8'
-
 services:
   web:
-    # Remove host port bindings to prevent conflicts with other worktrees
+    container_name: feature-1-web
     ports: !override []
     networks:
       - traefik-network
     labels:
-      - 'traefik.enable=true'
-      # Port 3000
-      - 'traefik.http.routers.feature-1-web-3000.rule=Host(`feature-1.port`)'
-      - 'traefik.http.routers.feature-1-web-3000.entrypoints=port3000'
-      - 'traefik.http.services.feature-1-web-3000.loadbalancer.server.port=3000'
-      # Port 3001
-      - 'traefik.http.routers.feature-1-web-3001.rule=Host(`feature-1.port`)'
-      - 'traefik.http.routers.feature-1-web-3001.entrypoints=port3001'
-      - 'traefik.http.services.feature-1-web-3001.loadbalancer.server.port=3001'
+      - traefik.enable=true
+      - traefik.http.routers.feature-1-web-3000.rule=Host(`feature-1.port`)
+      - traefik.http.routers.feature-1-web-3000.entrypoints=port3000
+      - traefik.http.services.feature-1-web-3000.loadbalancer.server.port=3000
+      - traefik.http.routers.feature-1-web-3001.rule=Host(`feature-1.port`)
+      - traefik.http.routers.feature-1-web-3001.entrypoints=port3001
+      - traefik.http.services.feature-1-web-3001.loadbalancer.server.port=3001
 
   api:
+    container_name: feature-1-api
     ports: !override []
     networks:
       - traefik-network
     labels:
-      - 'traefik.enable=true'
-      # Port 4000
-      - 'traefik.http.routers.feature-1-api-4000.rule=Host(`feature-1.port`)'
-      - 'traefik.http.routers.feature-1-api-4000.entrypoints=port4000'
-      - 'traefik.http.services.feature-1-api-4000.loadbalancer.server.port=4000'
+      - traefik.enable=true
+      - traefik.http.routers.feature-1-api-4000.rule=Host(`feature-1.port`)
+      - traefik.http.routers.feature-1-api-4000.entrypoints=port4000
+      - traefik.http.services.feature-1-api-4000.loadbalancer.server.port=4000
 
-  admin:
-    ports: !override []
-    networks:
-      - traefik-network
-    labels:
-      - 'traefik.enable=true'
-      # Port 5000
-      - 'traefik.http.routers.feature-1-admin-5000.rule=Host(`feature-1.port`)'
-      - 'traefik.http.routers.feature-1-admin-5000.entrypoints=port5000'
-      - 'traefik.http.services.feature-1-admin-5000.loadbalancer.server.port=5000'
+  database:
+    # Services without ports only get container_name override
+    container_name: feature-1-database
 
 networks:
   traefik-network:
@@ -478,13 +451,19 @@ networks:
     name: traefik-network
 ```
 
+**Key Features:**
+
+- **container_name** is always set for ALL services (prevents Docker naming conflicts)
+- **ports: !override []** removes host bindings for services WITH ports
+- **Traefik labels** are only added for services WITH ports
+- Services WITHOUT ports (like databases) only get container_name override
+
 **Access:**
 
 ```
 http://feature-1.port:3000  → web service port 3000 (internal container port)
 http://feature-1.port:3001  → web service port 3001 (internal container port)
 http://feature-1.port:4000  → api service port 4000 (internal container port)
-http://feature-1.port:5000  → admin service port 5000 (internal container port)
 ```
 
 ### Important: Docker Compose Version Requirement
@@ -761,15 +740,29 @@ If DNS resolution isn't working after `port install`:
 ```typescript
 // types.ts
 
-interface ServiceConfig {
-  name: string // Service name in docker-compose.yml
-  ports: number[] // Ports to expose via Traefik
-}
-
 interface PortConfig {
   domain: string // default: "port"
   compose?: string // default: "docker-compose.yml"
-  services: ServiceConfig[]
+}
+
+interface ParsedPort {
+  published: string | number // Host port
+  target: number // Container port
+  protocol?: string
+}
+
+interface ParsedComposeService {
+  container_name?: string
+  image?: string
+  build?: object
+  ports?: ParsedPort[]
+  networks?: Record<string, object | null>
+  labels?: Record<string, string>
+}
+
+interface ParsedComposeFile {
+  name: string
+  services: Record<string, ParsedComposeService>
 }
 
 interface Project {
@@ -790,7 +783,7 @@ interface Registry {
 ### Required Checks
 
 1. **`.port/config.jsonc` missing:**
-   - Error with: "No .port/config.jsonc found. Create it first with required fields: domain, services"
+   - Error with: "No .port/config.jsonc found. Run 'port init' first."
 
 2. **Git repo check:**
    - Error with: "Not in a git repository"
@@ -808,8 +801,8 @@ interface Registry {
    - Provide upgrade instructions
    - Do NOT block execution (warning only)
 
-6. **Service not in docker-compose.yml:**
-   - During `port up`: Error with list of available services
+6. **docker-compose.yml parsing failed:**
+   - During `port up`: Error with message from `docker compose config`
 
 7. **Invalid branch name:**
    - During `port up`: Sanitize automatically, warn user
@@ -824,15 +817,10 @@ interface Registry {
 // .port/config.jsonc
 {
   "domain": "port",
-  "compose": "docker-compose.yml",
-  "services": [
-    {
-      "name": "app",
-      "ports": [3000],
-    },
-  ],
 }
 ```
+
+Services and ports are auto-detected from docker-compose.yml.
 
 Usage:
 
@@ -875,23 +863,10 @@ No other port projects running. Stop Traefik? (y/n) y
 // .port/config.jsonc
 {
   "domain": "port",
-  "compose": "docker-compose.yml",
-  "services": [
-    {
-      "name": "frontend",
-      "ports": [3000],
-    },
-    {
-      "name": "backend",
-      "ports": [4000, 4001],
-    },
-    {
-      "name": "admin",
-      "ports": [5000],
-    },
-  ],
 }
 ```
+
+With a docker-compose.yml containing frontend (port 3000), backend (ports 4000, 4001), and admin (port 5000) services, ports are auto-detected.
 
 Usage:
 

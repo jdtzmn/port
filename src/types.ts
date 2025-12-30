@@ -1,14 +1,4 @@
 /**
- * Service configuration for a single docker-compose service
- */
-export interface ServiceConfig {
-  /** Service name in docker-compose.yml */
-  name: string
-  /** Ports to expose via Traefik */
-  ports: number[]
-}
-
-/**
  * Project configuration stored in .port/config.jsonc
  */
 export interface PortConfig {
@@ -16,8 +6,46 @@ export interface PortConfig {
   domain: string
   /** Path to docker-compose file (default: "docker-compose.yml") */
   compose?: string
-  /** List of services to expose via Traefik */
-  services: ServiceConfig[]
+}
+
+/**
+ * Parsed port mapping from docker compose config
+ */
+export interface ParsedPort {
+  /** Published (host) port - can be string or number depending on docker compose version */
+  published: string | number
+  /** Target (container) port */
+  target: number
+  /** Protocol (tcp/udp) */
+  protocol?: string
+}
+
+/**
+ * Parsed service from docker compose config --format json
+ */
+export interface ParsedComposeService {
+  /** Container name (if explicitly set) */
+  container_name?: string
+  /** Image name */
+  image?: string
+  /** Build configuration */
+  build?: object
+  /** Port mappings */
+  ports?: ParsedPort[]
+  /** Networks */
+  networks?: Record<string, object | null>
+  /** Labels */
+  labels?: Record<string, string>
+}
+
+/**
+ * Parsed docker compose file from docker compose config --format json
+ */
+export interface ParsedComposeFile {
+  /** Project name */
+  name: string
+  /** Services */
+  services: Record<string, ParsedComposeService>
 }
 
 /**

@@ -1,9 +1,8 @@
 import { existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { findGitRoot } from '../lib/worktree.ts'
-import { getTreesDir, loadConfig, configExists } from '../lib/config.ts'
-import { composePs } from '../lib/compose.ts'
-import { isTraefikRunning } from '../lib/compose.ts'
+import { getTreesDir, loadConfig, configExists, getComposeFile } from '../lib/config.ts'
+import { composePs, isTraefikRunning, parseComposeFile, getServicePorts } from '../lib/compose.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
 
@@ -24,25 +23,34 @@ interface WorktreeStatus {
 async function getWorktreeStatus(
   worktreePath: string,
   composeFile: string,
-  configServices: Array<{ name: string; ports: number[] }>
+  projectName: string
 ): Promise<WorktreeStatus['services']> {
   const services: WorktreeStatus['services'] = []
 
-  // Try to get compose status
-  const psResult = await composePs(worktreePath, composeFile)
-  const runningServices = new Map(psResult.map(s => [s.name, s.running]))
+  try {
+    // Parse compose file to get service info
+    const parsedCompose = await parseComposeFile(worktreePath, composeFile)
 
-  for (const service of configServices) {
-    // Check if service is running (docker-compose service names may have prefixes)
-    const isRunning = Array.from(runningServices.entries()).some(
-      ([name, running]) => name.includes(service.name) && running
-    )
+    // Try to get compose status
+    const psResult = await composePs(worktreePath, composeFile, projectName)
+    const runningServices = new Map(psResult.map(s => [s.name, s.running]))
 
-    services.push({
-      name: service.name,
-      ports: service.ports,
-      running: isRunning,
-    })
+    for (const [serviceName, service] of Object.entries(parsedCompose.services)) {
+      const ports = getServicePorts(service)
+
+      // Check if service is running (docker-compose service names may have prefixes)
+      const isRunning = Array.from(runningServices.entries()).some(
+        ([name, running]) => name.includes(serviceName) && running
+      )
+
+      services.push({
+        name: serviceName,
+        ports,
+        running: isRunning,
+      })
+    }
+  } catch {
+    // Compose file might not exist in this worktree
   }
 
   return services
@@ -67,19 +75,16 @@ export async function list(): Promise<void> {
   }
 
   const config = await loadConfig(repoRoot)
+  const composeFile = getComposeFile(config)
   const treesDir = getTreesDir(repoRoot)
   const worktrees: WorktreeStatus[] = []
 
-  // Check main repo
-  const mainServices = await getWorktreeStatus(
-    repoRoot,
-    config.compose ?? 'docker-compose.yml',
-    config.services
-  )
-  const mainRunning = mainServices.some(s => s.running)
-
   // Get folder name for main repo
   const repoName = sanitizeBranchName(repoRoot.split('/').pop() ?? 'main')
+
+  // Check main repo
+  const mainServices = await getWorktreeStatus(repoRoot, composeFile, repoName)
+  const mainRunning = mainServices.some(s => s.running)
 
   worktrees.push({
     name: repoName,
@@ -96,11 +101,7 @@ export async function list(): Promise<void> {
       if (!entry.isDirectory()) continue
 
       const worktreePath = join(treesDir, entry.name)
-      const services = await getWorktreeStatus(
-        worktreePath,
-        config.compose ?? 'docker-compose.yml',
-        config.services
-      )
+      const services = await getWorktreeStatus(worktreePath, composeFile, entry.name)
       const running = services.some(s => s.running)
 
       worktrees.push({

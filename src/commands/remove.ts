@@ -45,7 +45,7 @@ export async function remove(branch: string): Promise<void> {
   // Stop docker-compose services first
   output.info(`Stopping services in ${output.branch(sanitized)}...`)
   try {
-    await composeDown(worktreePath, composeFile)
+    await composeDown(worktreePath, composeFile, sanitized)
     output.success('Services stopped')
   } catch (error) {
     output.warn(`Failed to stop services: ${error}`)

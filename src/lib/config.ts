@@ -2,7 +2,7 @@ import { readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { parse as parseJsonc, type ParseError } from 'jsonc-parser'
-import type { PortConfig, ServiceConfig } from '../types.ts'
+import type { PortConfig } from '../types.ts'
 
 /** Directory name for port configuration */
 export const PORT_DIR = '.port'
@@ -58,41 +58,6 @@ export function configExists(repoRoot: string): boolean {
 }
 
 /**
- * Validate a service configuration
- */
-function validateService(service: unknown, index: number): ServiceConfig {
-  if (typeof service !== 'object' || service === null) {
-    throw new ConfigError(`services[${index}] must be an object`)
-  }
-
-  const s = service as Record<string, unknown>
-
-  if (typeof s.name !== 'string' || s.name.trim() === '') {
-    throw new ConfigError(`services[${index}].name must be a non-empty string`)
-  }
-
-  if (!Array.isArray(s.ports)) {
-    throw new ConfigError(`services[${index}].ports must be an array`)
-  }
-
-  if (s.ports.length === 0) {
-    throw new ConfigError(`services[${index}].ports must have at least one port`)
-  }
-
-  for (let i = 0; i < s.ports.length; i++) {
-    const port = s.ports[i]
-    if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535) {
-      throw new ConfigError(`services[${index}].ports[${i}] must be a valid port number (1-65535)`)
-    }
-  }
-
-  return {
-    name: s.name.trim(),
-    ports: s.ports as number[],
-  }
-}
-
-/**
  * Validate and normalize a port configuration
  */
 function validateConfig(config: unknown): PortConfig {
@@ -120,21 +85,9 @@ function validateConfig(config: unknown): PortConfig {
     compose = c.compose.trim()
   }
 
-  // Validate services (required)
-  if (!Array.isArray(c.services)) {
-    throw new ConfigError('services must be an array')
-  }
-
-  if (c.services.length === 0) {
-    throw new ConfigError('services must have at least one service')
-  }
-
-  const services = c.services.map((s, i) => validateService(s, i))
-
   return {
     domain,
     compose,
-    services,
   }
 }
 
@@ -165,19 +118,6 @@ export async function loadConfig(repoRoot: string): Promise<PortConfig> {
   }
 
   return validateConfig(config)
-}
-
-/**
- * Get all unique ports from a config
- */
-export function getAllPorts(config: PortConfig): number[] {
-  const ports = new Set<number>()
-  for (const service of config.services) {
-    for (const port of service.ports) {
-      ports.add(port)
-    }
-  }
-  return Array.from(ports).sort((a, b) => a - b)
 }
 
 /**
