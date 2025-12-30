@@ -28,19 +28,33 @@ describe('parallel worktrees', () => {
       const aURL = 'http://a.port:3000'
       const bURL = 'http://b.port:3000'
 
-      await new Promise<void>(resolve =>
-        setInterval(async () => {
-          const resA = await fetch(aURL)
-          const resB = await fetch(bURL)
+      await new Promise<void>((resolve, reject) => {
+        const maxWaitTime = 30000
+        const startTime = Date.now()
 
-          if (resA.status === 200 && resB.status === 200) {
-            clearInterval()
+        const intervalId = setInterval(async () => {
+          // Check for timeout
+          if (Date.now() - startTime > maxWaitTime) {
+            clearInterval(intervalId)
+            reject(new Error('Timed out waiting for services to respond'))
+            return
+          }
 
-            expect(await resA.text()).not.toEqual(await resB.text())
-            resolve()
+          try {
+            const resA = await fetch(aURL)
+            const resB = await fetch(bURL)
+
+            if (resA.status === 200 && resB.status === 200) {
+              clearInterval(intervalId)
+
+              expect(await resA.text()).not.toEqual(await resB.text())
+              resolve()
+            }
+          } catch {
+            // Services not ready yet, continue polling
           }
         }, 1000)
-      )
+      })
 
       // End the sample (use -y to skip Traefik confirmation prompt)
       await execPortAsync(['down', '-y'], worktreeADir)
