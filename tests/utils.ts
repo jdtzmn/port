@@ -1,5 +1,5 @@
 import { render } from 'cli-testing-library'
-import { resolve } from 'path'
+import { basename, resolve } from 'path'
 import { mkdtempSync, rmSync } from 'fs'
 import { cp } from 'fs/promises'
 import { join } from 'path'
@@ -8,6 +8,7 @@ import type { PortConfig } from '../src/types'
 import { execAsync } from '../src/lib/exec'
 import { writeFile } from 'fs/promises'
 import { CONFIG_FILE, PORT_DIR } from '../src/lib/config'
+import { sanitizeFolderName } from '../src/lib/sanitize'
 
 /**
  * Global registry of temp directories created by prepareSample
@@ -71,9 +72,15 @@ export async function prepareSample(sampleName: string, config?: SampleConfig) {
     await writeFile(join(tempDir, PORT_DIR, CONFIG_FILE), fileContents)
   }
 
+  // `urlWithPort` helper function
+  const domain = (config?.initWithConfig !== true && config?.initWithConfig?.domain) || 'port'
+  const urlWithPort = (port: number) =>
+    `http://${sanitizeFolderName(basename(tempDir))}.${domain}:${port}`
+
   // Return dir and cleanup function
   return {
     dir: tempDir,
+    urlWithPort,
     cleanup: () => {
       rmSync(tempDir, { recursive: true, force: true })
       tempDirRegistry.delete(tempDir)

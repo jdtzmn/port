@@ -1,8 +1,6 @@
-import { basename } from 'node:path'
 import { waitFor } from 'cli-testing-library'
 import { describe, test, expect } from 'vitest'
 import { prepareSample, renderCLI } from '../../tests/utils'
-import { sanitizeFolderName } from '../lib/sanitize'
 
 const SAMPLES_TIMEOUT = 20_000
 
@@ -26,9 +24,7 @@ describe('samples start', () => {
       expect(instance).toBeInTheConsole()
 
       // Confirm that the domain is reachable
-      const sampleDir = sanitizeFolderName(basename(sample.dir))
-      const url = `http://${sampleDir}.port:3000`
-      const res = await fetch(url)
+      const res = await fetch(sample.urlWithPort(3000))
       setInterval(() => {
         // Keep checking until the status is 200
         if (res.status === 200) {
