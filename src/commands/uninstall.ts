@@ -1,10 +1,7 @@
-import { exec } from 'child_process'
-import { promisify } from 'util'
 import inquirer from 'inquirer'
 import { checkDns, isSystemdResolvedRunning, DEFAULT_DNS_IP } from '../lib/dns.ts'
 import * as output from '../lib/output.ts'
-
-const execAsync = promisify(exec)
+import { execAsync } from '../lib/exec.ts'
 
 /**
  * Check if a command exists

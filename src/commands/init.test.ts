@@ -1,11 +1,8 @@
 import path from 'path'
-import { exec } from 'child_process'
-import { promisify } from 'util'
 import { test, expect, describe, beforeEach, afterEach } from 'vitest'
 import { prepareSample, renderCLI } from '@tests/utils'
 import { existsSync } from 'fs'
-
-const execAsync = promisify(exec)
+import { execAsync } from '../lib/exec.ts'
 
 describe('Git repo detection tests', () => {
   test('should fail when not in a git repo', async () => {

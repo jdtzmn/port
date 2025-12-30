@@ -1,7 +1,4 @@
-import { exec } from 'child_process'
-import { promisify } from 'util'
-
-const execAsync = promisify(exec)
+import { execAsync } from './exec.ts'
 
 /** Default domain suffix */
 export const DEFAULT_DOMAIN = 'port'

@@ -1,10 +1,7 @@
 import { waitFor } from 'cli-testing-library'
-import { exec } from 'child_process'
-import { promisify } from 'util'
 import { describe, test, expect } from 'vitest'
 import { prepareSample, renderCLI } from '../../tests/utils'
-
-const execAsync = promisify(exec)
+import { execAsync } from '../lib/exec.ts'
 
 describe('samples start', () => {
   test('should start the db-and-server sample', async () => {

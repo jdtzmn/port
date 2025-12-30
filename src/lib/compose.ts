@@ -1,12 +1,9 @@
-import { exec } from 'child_process'
-import { promisify } from 'util'
 import { writeFile } from 'fs/promises'
 import { join } from 'path'
 import { stringify as yamlStringify } from 'yaml'
 import type { ParsedComposeFile, ParsedComposeService } from '../types.ts'
 import { TRAEFIK_NETWORK, TRAEFIK_DIR } from './traefik.ts'
-
-const execAsync = promisify(exec)
+import { execAsync } from './exec.ts'
 
 /** Override file name */
 export const OVERRIDE_FILE = 'docker-compose.override.yml'
