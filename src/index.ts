@@ -8,6 +8,7 @@ import { enter } from './commands/enter.ts'
 import { up } from './commands/up.ts'
 import { down } from './commands/down.ts'
 import { remove } from './commands/remove.ts'
+import { uninstall } from './commands/uninstall.ts'
 
 const program = new Command()
 
@@ -52,6 +53,13 @@ program
   .description('Remove a worktree and stop its services')
   .action(remove)
 
+// port uninstall
+program
+  .command('uninstall')
+  .description('Remove DNS configuration for *.port domains')
+  .option('-y, --yes', 'Skip confirmation prompt')
+  .action(uninstall)
+
 // port <branch> - default command to enter a worktree
 // This must be last to act as a catch-all for branch names
 program
@@ -59,7 +67,18 @@ program
   .action(async (branch: string | undefined) => {
     if (branch) {
       // Check if it looks like a command that wasn't matched
-      const commands = ['init', 'install', 'list', 'ls', 'up', 'down', 'remove', 'rm', 'help']
+      const commands = [
+        'init',
+        'install',
+        'uninstall',
+        'list',
+        'ls',
+        'up',
+        'down',
+        'remove',
+        'rm',
+        'help',
+      ]
       if (commands.includes(branch)) {
         program.help()
         return
