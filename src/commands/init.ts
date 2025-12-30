@@ -26,6 +26,9 @@ const CONFIG_TEMPLATE = `{
 /** .gitignore content for .port directory */
 const GITIGNORE_CONTENT = `# Ignore worktrees (they're local only)
 trees/
+
+# Generated override file for main repo
+override.yml
 `
 
 /**

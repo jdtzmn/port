@@ -93,11 +93,13 @@ my-app/
 ├── .port/
 │   ├── config.jsonc              # User creates, checked into git
 │   ├── .gitignore                # Contains: trees/
+│   ├── override.yml              # Generated override (ignored)
 │   └── trees/                    # NOT in git (ignored)
 │       ├── feature-1/            # Worktree (auto-created)
 │       │   ├── (all project files)
 │       │   ├── docker-compose.yml
-│       │   └── docker-compose.override.yml (generated)
+│       │   └── .port/
+│       │       └── override.yml  # Generated override
 │       └── feature-2/
 ├── docker-compose.yml
 └── src/
@@ -235,7 +237,7 @@ Tracks all active port projects across different repos. Used to determine when T
      - For each port: create Traefik router + service labels
      - Attach service to `traefik-network`
      - Remove host port bindings with `ports: !override []`
-   - Write `docker-compose.override.yml` to worktree
+   - Write `.port/override.yml` in worktree
 6. **Spawn new shell in worktree directory:**
    - `spawn($SHELL, [], { cwd: worktreePath, stdio: 'inherit' })`
 7. **Output message before exiting:**
@@ -279,7 +281,7 @@ Tracks all active port projects across different repos. Used to determine when T
    - If missing ports → update config, restart Traefik
 5. **Start docker-compose:**
    - Run from current worktree directory
-   - Command: `docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d`
+   - Command: `docker-compose -f docker-compose.yml -f .port/override.yml up -d`
    - Set `TRAEFIK_NETWORK_NAME` env var
 6. **Register project:**
    - Add to `~/.port/registry.json` if not already there
@@ -373,7 +375,7 @@ Tracks all active port projects across different repos. Used to determine when T
 
 ## Generated Override File
 
-The CLI generates a `docker-compose.override.yml` file in each worktree. This file:
+The CLI generates a `.port/override.yml` file in each worktree (and in the main repo's `.port/` directory). This file:
 
 - **Removes host port bindings** from services using `!override` to prevent port conflicts between worktrees
 - Adds Traefik labels to each service
@@ -412,7 +414,7 @@ Result: No port conflicts! Both services run simultaneously.
 
 Given a `docker-compose.yml` with web (ports 3000, 3001), api (port 4000), and database (no ports):
 
-**Generated Override File (`.port/trees/feature-1/docker-compose.override.yml`):**
+**Generated Override File (`.port/trees/feature-1/.port/override.yml`):**
 
 ```yaml
 services:

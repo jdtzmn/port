@@ -101,7 +101,7 @@ export async function up(): Promise<void> {
   // Generate/update override file
   try {
     await writeOverrideFile(worktreePath, parsedCompose, name, config.domain)
-    output.dim('Updated docker-compose.override.yml')
+    output.dim('Updated .port/override.yml')
   } catch (error) {
     output.error(`Failed to generate override file: ${error}`)
     process.exit(1)

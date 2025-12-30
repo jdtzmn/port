@@ -1,4 +1,4 @@
-import { writeFile } from 'fs/promises'
+import { mkdir, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { stringify as yamlStringify } from 'yaml'
 import type { ParsedComposeFile, ParsedComposeService } from '../types.ts'
@@ -6,7 +6,23 @@ import { TRAEFIK_NETWORK, TRAEFIK_DIR } from './traefik.ts'
 import { execAsync } from './exec.ts'
 
 /** Override file name */
-export const OVERRIDE_FILE = 'docker-compose.override.yml'
+export const OVERRIDE_FILE = 'override.yml'
+
+/** Port directory for override files */
+const PORT_DIR = '.port'
+
+/**
+ * Get the relative path to the override file from the worktree path
+ * Used for docker compose -f flag
+ *
+ * For main repo: .port/override.yml
+ * For worktrees: .port/override.yml (relative to worktree at .port/trees/<name>/)
+ *
+ * @returns Relative path to the override file
+ */
+export function getOverrideRelativePath(): string {
+  return join(PORT_DIR, OVERRIDE_FILE)
+}
 
 /**
  * Error thrown when docker-compose operations fail
@@ -214,9 +230,9 @@ export function generateOverrideContent(
 }
 
 /**
- * Write the docker-compose.override.yml file
+ * Write the override.yml file
  *
- * @param worktreePath - Path to the worktree directory
+ * @param worktreePath - Path to the worktree directory (or repo root for main repo)
  * @param parsedCompose - Parsed compose file from docker compose config
  * @param worktreeName - Sanitized worktree/branch name
  * @param domain - Domain suffix (default: 'port')
@@ -228,7 +244,9 @@ export async function writeOverrideFile(
   domain: string = 'port'
 ): Promise<void> {
   const content = generateOverrideContent(parsedCompose, worktreeName, domain)
-  const overridePath = join(worktreePath, OVERRIDE_FILE)
+  const overridePath = join(worktreePath, PORT_DIR, OVERRIDE_FILE)
+  // Ensure .port directory exists (for worktrees)
+  await mkdir(join(worktreePath, PORT_DIR), { recursive: true })
   await writeFile(overridePath, content)
 }
 
@@ -260,10 +278,11 @@ export async function composeUp(
 ): Promise<void> {
   const cmd = await getComposeCommand()
   const detachedFlag = detached ? '-d' : ''
+  const overridePath = getOverrideRelativePath()
 
   try {
     await execAsync(
-      `${cmd} -p ${projectName} -f ${composeFile} -f ${OVERRIDE_FILE} up ${detachedFlag}`,
+      `${cmd} -p ${projectName} -f ${composeFile} -f ${overridePath} up ${detachedFlag}`,
       {
         cwd,
         timeout: 120000, // 2 minute timeout
@@ -287,9 +306,10 @@ export async function composeDown(
   projectName: string
 ): Promise<void> {
   const cmd = await getComposeCommand()
+  const overridePath = getOverrideRelativePath()
 
   try {
-    await execAsync(`${cmd} -p ${projectName} -f ${composeFile} -f ${OVERRIDE_FILE} down`, {
+    await execAsync(`${cmd} -p ${projectName} -f ${composeFile} -f ${overridePath} down`, {
       cwd,
       timeout: 60000, // 1 minute timeout
     })
@@ -312,10 +332,11 @@ export async function composePs(
   projectName: string
 ): Promise<Array<{ name: string; status: string; running: boolean }>> {
   const cmd = await getComposeCommand()
+  const overridePath = getOverrideRelativePath()
 
   try {
     const { stdout } = await execAsync(
-      `${cmd} -p ${projectName} -f ${composeFile} -f ${OVERRIDE_FILE} ps --format json`,
+      `${cmd} -p ${projectName} -f ${composeFile} -f ${overridePath} ps --format json`,
       { cwd }
     )
 

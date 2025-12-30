@@ -70,10 +70,10 @@ export async function enter(branch: string, options?: EnterOptions): Promise<voi
   try {
     const parsedCompose = await parseComposeFile(worktreePath, composeFile)
     await writeOverrideFile(worktreePath, parsedCompose, sanitized, config.domain)
-    output.success('Generated docker-compose.override.yml')
+    output.success('Generated .port/override.yml')
   } catch (error) {
     // It's okay if compose parsing fails here - the file might not exist yet in the worktree
-    output.dim('Could not generate docker-compose.override.yml (compose file may not exist yet)')
+    output.dim('Could not generate .port/override.yml (compose file may not exist yet)')
   }
 
   // Skip subshell if --no-shell flag is passed
