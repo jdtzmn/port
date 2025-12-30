@@ -44,6 +44,7 @@ program
 program
   .command('down')
   .description('Stop docker-compose services in the current worktree')
+  .option('-y, --yes', 'Skip confirmation prompt for stopping Traefik')
   .action(down)
 
 // port remove <branch>

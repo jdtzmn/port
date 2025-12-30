@@ -7,8 +7,10 @@ import * as output from '../lib/output.ts'
 
 /**
  * Stop docker-compose services in the current worktree
+ *
+ * @param options - Down options (yes to skip confirmation)
  */
-export async function down(): Promise<void> {
+export async function down(options?: { yes?: boolean }): Promise<void> {
   // Detect worktree info
   let worktreeInfo
   try {
@@ -33,7 +35,7 @@ export async function down(): Promise<void> {
   // Stop docker-compose services
   output.info(`Stopping services in ${output.branch(name)}...`)
   try {
-    await composeDown(worktreePath, composeFile)
+    await composeDown(worktreePath, composeFile, name)
     output.success('Services stopped')
   } catch (error) {
     output.error(`Failed to stop services: ${error}`)
@@ -48,17 +50,22 @@ export async function down(): Promise<void> {
   const hasOtherProjects = await hasRegisteredProjects()
 
   if (traefikRunning && !hasOtherProjects) {
-    output.newline()
-    const { stopTraefikConfirm } = await inquirer.prompt<{ stopTraefikConfirm: boolean }>([
-      {
-        type: 'confirm',
-        name: 'stopTraefikConfirm',
-        message: 'No other port projects running. Stop Traefik?',
-        default: true,
-      },
-    ])
+    let shouldStopTraefik = options?.yes ?? false
 
-    if (stopTraefikConfirm) {
+    if (!shouldStopTraefik) {
+      output.newline()
+      const { stopTraefikConfirm } = await inquirer.prompt<{ stopTraefikConfirm: boolean }>([
+        {
+          type: 'confirm',
+          name: 'stopTraefikConfirm',
+          message: 'No other port projects running. Stop Traefik?',
+          default: true,
+        },
+      ])
+      shouldStopTraefik = stopTraefikConfirm
+    }
+
+    if (shouldStopTraefik) {
       output.info('Stopping Traefik...')
       try {
         await stopTraefik()
