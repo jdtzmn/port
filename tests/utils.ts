@@ -108,7 +108,7 @@ export async function prepareSample(sampleName: string, config?: SampleConfig) {
  */
 export async function cleanupAllTempDirs() {
   await Promise.all(
-    tempDirRegistry.values().map(async dir => {
+    Array.from(tempDirRegistry).map(async dir => {
       try {
         await rm(dir, { recursive: true, force: true })
       } catch (error) {
