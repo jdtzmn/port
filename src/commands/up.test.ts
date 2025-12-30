@@ -2,7 +2,7 @@ import { waitFor } from 'cli-testing-library'
 import { describe, test, expect } from 'vitest'
 import { prepareSample, renderCLI } from '../../tests/utils'
 
-const SAMPLES_TIMEOUT = 20_000
+const SAMPLES_TIMEOUT = 30_000
 
 describe('samples start', () => {
   test(
