@@ -9,8 +9,6 @@ services:
       - /tmp:exec
       - /run
       - /run/lock
-    ports:
-      - '2222:22' # SSH port mapped to host:2222
     volumes:
       - .:/app
       - node_modules:/app/node_modules
@@ -28,8 +26,6 @@ volumes:
 networks:
   port-network:
     driver: bridge
-    driver_opts:
-      com.docker.network.bridge.enable_ip_masquerade: 'false'
     ipam:
       config:
         - subnet: 172.25.0.0/16

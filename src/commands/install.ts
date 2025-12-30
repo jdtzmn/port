@@ -27,6 +27,18 @@ async function commandExists(cmd: string): Promise<boolean> {
 }
 
 /**
+ * Check if running inside a Docker container
+ */
+async function isRunningInDocker(): Promise<boolean> {
+  try {
+    await execAsync('test -f /.dockerenv')
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
  * Install and configure DNS for *.port domains on macOS
  *
  * @param dnsIp - The IP address to configure DNS to resolve to
@@ -185,6 +197,9 @@ async function installLinuxDualMode(dnsIp: string): Promise<boolean> {
     output.dim('dnsmasq already installed')
   }
 
+  // Check if running in Docker (affects DNS configuration)
+  const inDocker = await isRunningInDocker()
+
   // 2. Configure dnsmasq on port 5354
   output.info(`Configuring dnsmasq on port ${DNSMASQ_ALT_PORT}...`)
   try {
@@ -195,6 +210,13 @@ async function installLinuxDualMode(dnsIp: string): Promise<boolean> {
     await execAsync(
       `echo "address=/port/${dnsIp}" | sudo tee -a /etc/dnsmasq.d/port.conf > /dev/null`
     )
+
+    // If running in Docker, configure dnsmasq to forward non-.port queries to Docker's DNS
+    if (inDocker) {
+      await execAsync(`echo "server=127.0.0.11" | sudo tee -a /etc/dnsmasq.d/port.conf > /dev/null`)
+      output.dim('Added Docker DNS (127.0.0.11) as upstream server')
+    }
+
     output.success('dnsmasq configured')
   } catch (error) {
     output.error(`Failed to configure dnsmasq: ${error}`)
@@ -211,8 +233,8 @@ async function installLinuxDualMode(dnsIp: string): Promise<boolean> {
     return printLinuxManualInstructions(dnsIp)
   }
 
-  // 4. Configure systemd-resolved to forward *.port queries
-  output.info('Configuring systemd-resolved forwarding...')
+  // 4. Configure systemd-resolved to use dnsmasq
+  output.info('Configuring systemd-resolved...')
   try {
     await execAsync('sudo mkdir -p /etc/systemd/resolved.conf.d/')
     await execAsync(
@@ -221,9 +243,15 @@ async function installLinuxDualMode(dnsIp: string): Promise<boolean> {
     await execAsync(
       `echo "DNS=127.0.0.1:${DNSMASQ_ALT_PORT}" | sudo tee -a /etc/systemd/resolved.conf.d/port.conf > /dev/null`
     )
-    await execAsync(
-      `echo "Domains=~port" | sudo tee -a /etc/systemd/resolved.conf.d/port.conf > /dev/null`
-    )
+
+    // For non-Docker Linux, use routing domain so systemd-resolved
+    // only sends *.port queries to dnsmasq (keeps default DNS for other queries)
+    if (!inDocker) {
+      await execAsync(
+        `echo "Domains=~port" | sudo tee -a /etc/systemd/resolved.conf.d/port.conf > /dev/null`
+      )
+    }
+
     await execAsync('sudo systemctl restart systemd-resolved')
     output.success('systemd-resolved configured')
   } catch (error) {
