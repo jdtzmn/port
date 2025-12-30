@@ -72,14 +72,6 @@ export async function enter(branch: string): Promise<void> {
   // Show service URLs
   output.newline()
   output.success(`Entered worktree: ${output.branch(sanitized)}`)
-  output.success('Services available at:')
-
-  const serviceUrls: Array<{ name: string; urls: string[] }> = []
-  for (const service of config.services) {
-    const urls = service.ports.map(port => `http://${sanitized}.${config.domain}:${port}`)
-    serviceUrls.push({ name: service.name, urls })
-  }
-  output.serviceUrls(serviceUrls)
 
   output.newline()
   output.info(`Run ${output.command("'port up'")} to start services`)
