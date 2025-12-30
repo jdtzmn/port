@@ -8,12 +8,17 @@ import { mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import * as output from '../lib/output.ts'
 
+interface EnterOptions {
+  noShell?: boolean
+}
+
 /**
  * Enter a worktree (create if needed) and spawn a subshell
  *
  * @param branch - The branch name to enter
+ * @param options - Enter options
  */
-export async function enter(branch: string): Promise<void> {
+export async function enter(branch: string, options?: EnterOptions): Promise<void> {
   // Find git root
   const repoRoot = findGitRoot(process.cwd())
 
@@ -69,6 +74,11 @@ export async function enter(branch: string): Promise<void> {
   } catch (error) {
     // It's okay if compose parsing fails here - the file might not exist yet in the worktree
     output.dim('Could not generate docker-compose.override.yml (compose file may not exist yet)')
+  }
+
+  // Skip subshell if --no-shell flag is passed
+  if (options?.noShell) {
+    return
   }
 
   // Show service URLs

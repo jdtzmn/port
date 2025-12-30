@@ -13,8 +13,8 @@ describe('parallel worktrees', () => {
         initWithConfig: true,
       })
 
-      const instanceA = await renderCLI(['A'], sample.dir)
-      const instanceB = await renderCLI(['B'], sample.dir)
+      const instanceA = await renderCLI(['A', '--no-shell'], sample.dir)
+      const instanceB = await renderCLI(['B', '--no-shell'], sample.dir)
 
       // Wait for them to enter their worktrees
       await waitFor(() => expect(instanceA.getByText('Entered worktree: a')).toBeTruthy(), {

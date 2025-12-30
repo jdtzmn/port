@@ -65,7 +65,8 @@ program
 // This must be last to act as a catch-all for branch names
 program
   .argument('[branch]', 'Branch name to enter (creates worktree if needed)')
-  .action(async (branch: string | undefined) => {
+  .option('--no-shell', 'Skip spawning a subshell (useful for CI/scripting)')
+  .action(async (branch: string | undefined, options: { shell: boolean }) => {
     if (branch) {
       // Check if it looks like a command that wasn't matched
       const commands = [
@@ -84,7 +85,7 @@ program
         program.help()
         return
       }
-      await enter(branch)
+      await enter(branch, { noShell: !options.shell })
     } else {
       // No argument provided, show help
       program.help()
