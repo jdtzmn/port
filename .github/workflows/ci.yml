@@ -11,6 +11,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Configure git identity (required by tests)
+        run: |
+          git config --global user.email "ci@test.local"
+          git config --global user.name "CI Runner"
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
