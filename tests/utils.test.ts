@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'vitest'
 import { prepareSample } from './utils'
 import { existsSync, readFileSync } from 'fs'
+import { execAsync } from '../src/lib/exec'
 
 describe('Basic tests', () => {
   test('prepareSample can create a temp directory', async () => {
@@ -35,6 +36,13 @@ describe('Side effects', () => {
   test('creates a `.git` directory', async () => {
     const sample = await prepareSample('db-and-server', { gitInit: true })
     expect(existsSync(`${sample.dir}/.git`)).toBe(true)
+    sample.cleanup()
+  })
+
+  test('git log has initial commit', async () => {
+    const sample = await prepareSample('db-and-server', { gitInit: true })
+    const gitLog = await execAsync('git log --oneline', { cwd: sample.dir })
+    expect(gitLog.stdout).toContain('Initial commit')
     sample.cleanup()
   })
 

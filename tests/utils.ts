@@ -16,6 +16,16 @@ import { sanitizeFolderName } from '../src/lib/sanitize'
  */
 export const tempDirRegistry = new Set<string>()
 
+/**
+ * Global registry of all running compose projects
+ * These are automatically cleaned up after all tests complete
+ */
+export const composeProjectRegistry = new Set<string>()
+
+function projectNameFromDir(dir: string) {
+  return sanitizeFolderName(basename(dir))
+}
+
 export function renderCLI(args: string[] = [], cwd?: string) {
   return render('bun', [resolve(__dirname, '../src/index.ts'), ...args], {
     cwd,
@@ -55,6 +65,7 @@ export async function prepareSample(sampleName: string, config?: SampleConfig) {
 
   // Register temp directory for automatic cleanup
   tempDirRegistry.add(tempDir)
+  composeProjectRegistry.add(projectNameFromDir(tempDir))
 
   // Copy sample to temp directory
   const samplePath = resolve(__dirname, 'samples', sampleName)
@@ -62,7 +73,13 @@ export async function prepareSample(sampleName: string, config?: SampleConfig) {
 
   // Handle side effects
   if (config?.gitInit || config?.initWithConfig) {
+    // Initialize the git repository
     await execAsync('git init', { cwd: tempDir })
+
+    // Create initial commit
+    await execAsync('git add .', { cwd: tempDir })
+    await execAsync('git commit -m "Initial commit"', { cwd: tempDir })
+    await execAsync('git branch -M main', { cwd: tempDir })
   }
   if (config?.initWithConfig === true) {
     await execPortAsync(['init'], tempDir)
@@ -74,8 +91,7 @@ export async function prepareSample(sampleName: string, config?: SampleConfig) {
 
   // `urlWithPort` helper function
   const domain = (config?.initWithConfig !== true && config?.initWithConfig?.domain) || 'port'
-  const urlWithPort = (port: number) =>
-    `http://${sanitizeFolderName(basename(tempDir))}.${domain}:${port}`
+  const urlWithPort = (port: number) => `http://${projectNameFromDir(tempDir)}.${domain}:${port}`
 
   // Return dir and cleanup function
   return {
@@ -101,4 +117,16 @@ export function cleanupAllTempDirs() {
     }
   }
   tempDirRegistry.clear()
+}
+
+export async function bringDownAllComposeProjects() {
+  await Promise.all(
+    Array.from(composeProjectRegistry).map(async projectName => {
+      try {
+        await execAsync(`docker compose -p ${projectName} down`)
+      } catch (error) {
+        console.error(`Failed to bring down compose project ${projectName}:`, error)
+      }
+    })
+  )
 }
