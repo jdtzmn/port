@@ -16,7 +16,7 @@ services:
       timeout: 5s
       retries: 5
 
-  api:
+  app:
     build: .
     container_name: hono_api
     environment:
