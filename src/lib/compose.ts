@@ -165,6 +165,7 @@ function generateTraefikLabels(
   return [
     `traefik.http.routers.${routerName}.rule=Host(\`${hostname}\`)`,
     `traefik.http.routers.${routerName}.entrypoints=port${port}`,
+    `traefik.http.routers.${routerName}.service=${routerName}`,
     `traefik.http.services.${routerName}.loadbalancer.server.port=${port}`,
   ]
 }
