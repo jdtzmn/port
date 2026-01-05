@@ -9,7 +9,6 @@ services:
     restart: unless-stopped
     ports:
       - '80:80'
-      - '1211:8080'
       # Additional ports are added dynamically based on project configs
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
