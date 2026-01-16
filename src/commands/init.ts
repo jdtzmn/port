@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'fs/promises'
+import { mkdir, writeFile, chmod } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { findGitRoot } from '../lib/worktree.ts'
@@ -6,10 +6,13 @@ import {
   PORT_DIR,
   CONFIG_FILE,
   TREES_DIR,
+  HOOKS_DIR,
+  POST_CREATE_HOOK,
   getPortDir,
   getConfigPath,
   getTreesDir,
 } from '../lib/config.ts'
+import { getHooksDir, getHookPath } from '../lib/hooks.ts'
 import { checkDns } from '../lib/dns.ts'
 import * as output from '../lib/output.ts'
 
@@ -29,6 +32,30 @@ trees/
 
 # Generated override file for main repo
 override.yml
+
+# Hook logs
+logs/
+`
+
+/** Post-create hook template */
+const POST_CREATE_HOOK_TEMPLATE = `#!/bin/bash
+# Port post-create hook
+# Runs automatically when a new worktree is created via \`port [branch]\`
+#
+# Available environment variables:
+#   PORT_ROOT_PATH     - Absolute path to the main repository root
+#   PORT_WORKTREE_PATH - Absolute path to the newly created worktree
+#   PORT_BRANCH        - The branch name (sanitized)
+#
+# Exit with non-zero to abort worktree creation (worktree will be removed)
+#
+# Example: Symlink .env from root to worktree (stays in sync)
+#   ln -s "$PORT_ROOT_PATH/.env" "$PORT_WORKTREE_PATH/.env"
+
+# Uncomment and customize below:
+# echo "Setting up worktree for $PORT_BRANCH..."
+# ln -s "$PORT_ROOT_PATH/.env" "$PORT_WORKTREE_PATH/.env"
+# cd "$PORT_WORKTREE_PATH" && npm install
 `
 
 /**
@@ -61,6 +88,23 @@ export async function init(): Promise<void> {
   if (!existsSync(treesDir)) {
     await mkdir(treesDir, { recursive: true })
     output.success(`Created ${PORT_DIR}/${TREES_DIR}/ directory`)
+  }
+
+  // Create hooks directory and post-create hook template
+  const hooksDir = getHooksDir(repoRoot)
+  const postCreateHookPath = getHookPath(repoRoot, 'post-create')
+
+  if (!existsSync(hooksDir)) {
+    await mkdir(hooksDir, { recursive: true })
+    output.success(`Created ${PORT_DIR}/${HOOKS_DIR}/ directory`)
+  }
+
+  if (!existsSync(postCreateHookPath)) {
+    await writeFile(postCreateHookPath, POST_CREATE_HOOK_TEMPLATE)
+    await chmod(postCreateHookPath, 0o755) // Make executable
+    output.success(`Created ${PORT_DIR}/${HOOKS_DIR}/${POST_CREATE_HOOK}`)
+  } else {
+    output.dim(`${PORT_DIR}/${HOOKS_DIR}/${POST_CREATE_HOOK} already exists`)
   }
 
   // Create config file if it doesn't exist

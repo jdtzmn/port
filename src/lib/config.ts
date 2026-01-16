@@ -13,6 +13,18 @@ export const CONFIG_FILE = 'config.jsonc'
 /** Trees directory name (where worktrees live) */
 export const TREES_DIR = 'trees'
 
+/** Hooks directory name */
+export const HOOKS_DIR = 'hooks'
+
+/** Logs directory name */
+export const LOGS_DIR = 'logs'
+
+/** Latest log file name */
+export const LATEST_LOG = 'latest.log'
+
+/** Post-create hook file name */
+export const POST_CREATE_HOOK = 'post-create.sh'
+
 /** Default domain suffix */
 export const DEFAULT_DOMAIN = 'port'
 
