@@ -9,6 +9,7 @@ import { up } from './commands/up.ts'
 import { down } from './commands/down.ts'
 import { remove } from './commands/remove.ts'
 import { uninstall } from './commands/uninstall.ts'
+import { compose } from './commands/compose.ts'
 
 const program = new Command()
 
@@ -61,6 +62,16 @@ program
   .option('-y, --yes', 'Skip confirmation prompt')
   .action(uninstall)
 
+// port compose <args>
+program
+  .command('compose')
+  .alias('dc')
+  .description('Run docker compose with automatic -f flags for this worktree')
+  .allowUnknownOption()
+  .allowExcessArguments()
+  .argument('[args...]', 'Arguments to pass to docker compose')
+  .action(compose)
+
 // port <branch> - default command to enter a worktree
 // This must be last to act as a catch-all for branch names
 program
@@ -79,6 +90,8 @@ program
         'down',
         'remove',
         'rm',
+        'compose',
+        'dc',
         'help',
       ]
       if (commands.includes(branch)) {

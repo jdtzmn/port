@@ -254,7 +254,7 @@ export async function writeOverrideFile(
 /**
  * Get the docker compose command (handles both v1 and v2)
  */
-async function getComposeCommand(): Promise<string> {
+export async function getComposeCommand(): Promise<string> {
   try {
     await execAsync('docker compose version')
     return 'docker compose'
