@@ -1,9 +1,8 @@
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { detectWorktree } from '../lib/worktree.ts'
-import { loadConfig, configExists, getComposeFile, PORT_DIR } from '../lib/config.ts'
-import { getComposeCommand, getOverrideRelativePath } from '../lib/compose.ts'
-import { execWithStdio } from '../lib/exec.ts'
+import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
+import { runCompose, getOverrideRelativePath } from '../lib/compose.ts'
 import * as output from '../lib/output.ts'
 
 /**
@@ -57,21 +56,7 @@ export async function compose(args: string[]): Promise<void> {
     process.exit(1)
   }
 
-  // Get the docker compose command
-  const cmd = await getComposeCommand()
-
-  // Build the full command with -f flags
-  // Format: docker compose -p <project> -f <compose> -f <override> <user-args>
-  const fullArgs = ['-p', name, '-f', composeFile, '-f', overridePath, ...args]
-
-  const fullCommand = `${cmd} ${fullArgs.join(' ')}`
-
-  // Execute with stdio inherited for interactive commands
-  try {
-    const { exitCode } = await execWithStdio(fullCommand, { cwd: worktreePath })
-    process.exit(exitCode)
-  } catch (error) {
-    output.error(`Failed to execute docker compose: ${error}`)
-    process.exit(1)
-  }
+  // Run the compose command with automatic -p and -f flags
+  const { exitCode } = await runCompose(worktreePath, composeFile, name, args)
+  process.exit(exitCode)
 }

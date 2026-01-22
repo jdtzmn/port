@@ -2,7 +2,7 @@ import inquirer from 'inquirer'
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
 import { unregisterProject, hasRegisteredProjects } from '../lib/registry.ts'
-import { composeDown, stopTraefik, isTraefikRunning } from '../lib/compose.ts'
+import { runCompose, stopTraefik, isTraefikRunning } from '../lib/compose.ts'
 import * as output from '../lib/output.ts'
 
 /**
@@ -34,12 +34,12 @@ export async function down(options?: { yes?: boolean }): Promise<void> {
 
   // Stop docker-compose services
   output.info(`Stopping services in ${output.branch(name)}...`)
-  try {
-    await composeDown(worktreePath, composeFile, name)
-    output.success('Services stopped')
-  } catch (error) {
-    output.error(`Failed to stop services: ${error}`)
+  const { exitCode } = await runCompose(worktreePath, composeFile, name, ['down'])
+  if (exitCode !== 0) {
+    output.error('Failed to stop services')
     // Continue to unregister even if stop fails
+  } else {
+    output.success('Services stopped')
   }
 
   // Unregister project from global registry

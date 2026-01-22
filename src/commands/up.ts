@@ -3,7 +3,7 @@ import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
 import { registerProject } from '../lib/registry.ts'
 import { ensureTraefikPorts, traefikFilesExist, initTraefikFiles } from '../lib/traefik.ts'
 import {
-  composeUp,
+  runCompose,
   writeOverrideFile,
   startTraefik,
   isTraefikRunning,
@@ -109,13 +109,12 @@ export async function up(): Promise<void> {
 
   // Start docker-compose services
   output.info(`Starting services in ${output.branch(name)}...`)
-  try {
-    await composeUp(worktreePath, composeFile, name)
-    output.success('Services started')
-  } catch (error) {
-    output.error(`Failed to start services: ${error}`)
+  const { exitCode } = await runCompose(worktreePath, composeFile, name, ['up', '-d'])
+  if (exitCode !== 0) {
+    output.error('Failed to start services')
     process.exit(1)
   }
+  output.success('Services started')
 
   // Register project in global registry
   await registerProject(repoRoot, name, ports)

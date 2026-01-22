@@ -3,7 +3,7 @@ import { join } from 'path'
 import { stringify as yamlStringify } from 'yaml'
 import type { ParsedComposeFile, ParsedComposeService } from '../types.ts'
 import { TRAEFIK_NETWORK, TRAEFIK_DIR } from './traefik.ts'
-import { execAsync } from './exec.ts'
+import { execAsync, execWithStdio } from './exec.ts'
 
 /** Override file name */
 export const OVERRIDE_FILE = 'override.yml'
@@ -264,59 +264,33 @@ export async function getComposeCommand(): Promise<string> {
 }
 
 /**
- * Run docker-compose up in a directory
+ * Run a docker compose command with the appropriate -p and -f flags
+ *
+ * This is the core function for running docker compose commands. It:
+ * - Automatically includes the project name (-p flag)
+ * - Automatically includes the compose file and override file (-f flags)
+ * - Streams output to the terminal in real-time
  *
  * @param cwd - Working directory
  * @param composeFile - Path to docker-compose file
  * @param projectName - Project name for docker-compose (used for container naming)
- * @param detached - Run in detached mode (default: true)
+ * @param args - Arguments to pass to docker compose (e.g., ['up', '-d'], ['down'], ['logs', '-f'])
+ * @returns Object with exitCode
  */
-export async function composeUp(
+export async function runCompose(
   cwd: string,
   composeFile: string,
   projectName: string,
-  detached: boolean = true
-): Promise<void> {
-  const cmd = await getComposeCommand()
-  const detachedFlag = detached ? '-d' : ''
-  const overridePath = getOverrideRelativePath()
-
-  try {
-    await execAsync(
-      `${cmd} -p ${projectName} -f ${composeFile} -f ${overridePath} up ${detachedFlag}`,
-      {
-        cwd,
-        timeout: 120000, // 2 minute timeout
-      }
-    )
-  } catch (error) {
-    throw new ComposeError(`Failed to start services: ${error}`)
-  }
-}
-
-/**
- * Run docker-compose down in a directory
- *
- * @param cwd - Working directory
- * @param composeFile - Path to docker-compose file
- * @param projectName - Project name for docker-compose
- */
-export async function composeDown(
-  cwd: string,
-  composeFile: string,
-  projectName: string
-): Promise<void> {
+  args: string[]
+): Promise<{ exitCode: number }> {
   const cmd = await getComposeCommand()
   const overridePath = getOverrideRelativePath()
 
-  try {
-    await execAsync(`${cmd} -p ${projectName} -f ${composeFile} -f ${overridePath} down`, {
-      cwd,
-      timeout: 60000, // 1 minute timeout
-    })
-  } catch (error) {
-    throw new ComposeError(`Failed to stop services: ${error}`)
-  }
+  // Build the full command with -p and -f flags
+  const fullArgs = ['-p', projectName, '-f', composeFile, '-f', overridePath, ...args]
+  const fullCommand = `${cmd} ${fullArgs.join(' ')}`
+
+  return execWithStdio(fullCommand, { cwd })
 }
 
 /**
