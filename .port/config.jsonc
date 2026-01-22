@@ -1,0 +1,7 @@
+{
+  // Domain suffix - services available at <branch-name>.port
+  "domain": "port",
+
+  // Path to docker-compose file (default: docker-compose.yml)
+  "compose": "docker-compose.yml"
+}
