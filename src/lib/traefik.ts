@@ -14,6 +14,9 @@ export const TRAEFIK_CONFIG_FILE = join(TRAEFIK_DIR, 'traefik.yml')
 /** Traefik docker-compose file */
 export const TRAEFIK_COMPOSE_FILE = join(TRAEFIK_DIR, 'docker-compose.yml')
 
+/** Traefik dynamic config directory */
+export const TRAEFIK_DYNAMIC_DIR = join(TRAEFIK_DIR, 'dynamic')
+
 /** Traefik network name */
 export const TRAEFIK_NETWORK = 'traefik-network'
 
@@ -24,6 +27,16 @@ export async function ensureTraefikDir(): Promise<void> {
   await ensureGlobalDir()
   if (!existsSync(TRAEFIK_DIR)) {
     await mkdir(TRAEFIK_DIR, { recursive: true })
+  }
+}
+
+/**
+ * Ensure the traefik dynamic directory exists
+ */
+export async function ensureTraefikDynamicDir(): Promise<void> {
+  await ensureTraefikDir()
+  if (!existsSync(TRAEFIK_DYNAMIC_DIR)) {
+    await mkdir(TRAEFIK_DYNAMIC_DIR, { recursive: true })
   }
 }
 
@@ -52,6 +65,10 @@ export function generateTraefikConfig(ports: number[]): TraefikConfig {
       docker: {
         exposedByDefault: false,
         network: TRAEFIK_NETWORK,
+      },
+      file: {
+        directory: '/etc/traefik/dynamic',
+        watch: true,
       },
     },
     entryPoints,
@@ -141,6 +158,14 @@ export async function addPortsToConfig(newPorts: number[]): Promise<void> {
     for (const port of newPorts) {
       config.entryPoints[`port${port}`] = { address: `:${port}` }
     }
+
+    // Ensure file provider is configured (for host services)
+    if (!config.providers.file) {
+      config.providers.file = {
+        directory: '/etc/traefik/dynamic',
+        watch: true,
+      }
+    }
   }
 
   await saveTraefikConfig(config)
@@ -183,6 +208,7 @@ export function generateTraefikCompose(): string {
  */
 export async function updateTraefikCompose(ports: number[]): Promise<void> {
   await ensureTraefikDir()
+  await ensureTraefikDynamicDir()
 
   // Generate port mappings
   const portMappings = ['80:80']
@@ -197,9 +223,11 @@ export async function updateTraefikCompose(ports: number[]): Promise<void> {
         container_name: 'port-traefik',
         restart: 'unless-stopped',
         ports: portMappings,
+        extra_hosts: ['host.docker.internal:host-gateway'],
         volumes: [
           '/var/run/docker.sock:/var/run/docker.sock:ro',
           './traefik.yml:/etc/traefik/traefik.yml:ro',
+          './dynamic:/etc/traefik/dynamic:ro',
         ],
         networks: [TRAEFIK_NETWORK],
       },
@@ -242,6 +270,48 @@ export async function initTraefikFiles(ports: number[]): Promise<void> {
 }
 
 /**
+ * Check if Traefik config has file provider enabled
+ *
+ * @returns true if file provider is configured
+ */
+export async function hasFileProvider(): Promise<boolean> {
+  const config = await loadTraefikConfig()
+  return config?.providers?.file !== undefined
+}
+
+/**
+ * Ensure the file provider is configured in Traefik
+ * Needed for host services to work
+ *
+ * @returns true if config was updated
+ */
+export async function ensureFileProvider(): Promise<boolean> {
+  const config = await loadTraefikConfig()
+
+  if (!config) {
+    return false // No config to update
+  }
+
+  if (config.providers.file) {
+    return false // Already has file provider
+  }
+
+  // Add file provider
+  config.providers.file = {
+    directory: '/etc/traefik/dynamic',
+    watch: true,
+  }
+
+  await saveTraefikConfig(config)
+
+  // Also update compose to mount the dynamic directory
+  const configuredPorts = await getConfiguredPorts()
+  await updateTraefikCompose(configuredPorts)
+
+  return true
+}
+
+/**
  * Ensure Traefik is configured with all required ports
  * Updates config and compose if new ports are needed
  *
@@ -250,8 +320,9 @@ export async function initTraefikFiles(ports: number[]): Promise<void> {
  */
 export async function ensureTraefikPorts(requiredPorts: number[]): Promise<boolean> {
   const missingPorts = await getMissingPorts(requiredPorts)
+  const needsFileProvider = !(await hasFileProvider())
 
-  if (missingPorts.length === 0 && traefikFilesExist()) {
+  if (missingPorts.length === 0 && traefikFilesExist() && !needsFileProvider) {
     return false
   }
 

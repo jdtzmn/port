@@ -10,6 +10,7 @@ import { down } from './commands/down.ts'
 import { remove } from './commands/remove.ts'
 import { uninstall } from './commands/uninstall.ts'
 import { compose } from './commands/compose.ts'
+import { run } from './commands/run.ts'
 
 const program = new Command()
 
@@ -72,6 +73,18 @@ program
   .argument('[args...]', 'Arguments to pass to docker compose')
   .action(compose)
 
+// port run <port> -- <command...>
+program
+  .command('run <port>')
+  .description('Run a host process with Traefik routing')
+  .allowUnknownOption()
+  .allowExcessArguments()
+  .argument('[command...]', 'Command to run (receives PORT env var)')
+  .action(async (port: string, command: string[]) => {
+    const portNum = parseInt(port, 10)
+    await run(portNum, command)
+  })
+
 // port <branch> - default command to enter a worktree
 // This must be last to act as a catch-all for branch names
 program
@@ -92,6 +105,7 @@ program
         'rm',
         'compose',
         'dc',
+        'run',
         'help',
       ]
       if (commands.includes(branch)) {

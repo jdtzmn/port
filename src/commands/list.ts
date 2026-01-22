@@ -4,6 +4,8 @@ import { findGitRoot } from '../lib/worktree.ts'
 import { getTreesDir, loadConfig, configExists, getComposeFile } from '../lib/config.ts'
 import { composePs, isTraefikRunning, parseComposeFile, getServicePorts } from '../lib/compose.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
+import { getAllHostServices } from '../lib/registry.ts'
+import { isProcessRunning, cleanupStaleHostServices } from '../lib/hostService.ts'
 import * as output from '../lib/output.ts'
 
 interface WorktreeStatus {
@@ -125,6 +127,26 @@ export async function list(): Promise<void> {
       const serviceStatus = service.running ? 'running' : 'stopped'
       const ports = service.ports.join(', ')
       console.log(`  ${service.name}: ${ports} (${serviceStatus})`)
+    }
+
+    output.newline()
+  }
+
+  // Clean up stale host services and display running ones
+  await cleanupStaleHostServices()
+  const hostServices = await getAllHostServices()
+
+  if (hostServices.length > 0) {
+    output.header('Host Services:')
+    output.newline()
+
+    for (const svc of hostServices) {
+      const running = isProcessRunning(svc.pid)
+      const statusIcon = running ? output.branch('(running)') : '(dead)'
+      console.log(
+        `${output.branch(svc.branch)}:${svc.logicalPort} -> localhost:${svc.actualPort} ${statusIcon}`
+      )
+      console.log(`  pid: ${svc.pid}`)
     }
 
     output.newline()
