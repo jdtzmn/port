@@ -1,4 +1,4 @@
-import { describe, test, expect, vi } from 'vitest'
+import { describe, test, expect } from 'vitest'
 import { prepareSample, renderCLI, execPortAsync } from './utils'
 
 describe('port compose command', () => {
