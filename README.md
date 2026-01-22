@@ -11,6 +11,7 @@ Developers working with git worktrees can use `port up feature-1` to instantly s
 - **Git Worktree Management**: Create and manage git worktrees with a single command
 - **Automatic Traefik Configuration**: Dynamically configure Traefik reverse proxy for local domain access
 - **Port Conflict Resolution**: Run multiple worktrees simultaneously without port conflicts
+- **Host Process Support**: Run non-Docker processes (like `npm serve`) with Traefik routing
 - **DNS Setup**: Automated DNS configuration for `*.local` domains
 - **Service Discovery**: Easy access to services via hostnames instead of port numbers
 
@@ -108,15 +109,29 @@ port down
 
 Stops services and optionally shuts down Traefik if no other projects are running.
 
-### 7. List Active Worktrees
+### 7. Run Host Processes (Non-Docker)
+
+```bash
+port run 3000 -- npm run dev
+```
+
+Runs a host process (not in Docker) and routes traffic through Traefik. The command receives the `PORT` environment variable set to an ephemeral port, while users access it via `<branch>.port:3000`.
+
+This is useful for:
+
+- Development servers that don't run in Docker
+- Quick testing without containerization
+- Running multiple instances of the same service on different worktrees
+
+### 8. List Active Worktrees
 
 ```bash
 port list
 ```
 
-Shows all worktrees and their service status.
+Shows all worktrees, their service status, and any running host services.
 
-### 8. Remove a Worktree
+### 9. Remove a Worktree
 
 ```bash
 port remove feature-1
@@ -126,15 +141,16 @@ Stops services and removes the worktree entirely.
 
 ## Commands
 
-| Command                      | Description                                       |
-| ---------------------------- | ------------------------------------------------- |
-| `port init`                  | Initialize `.code/` directory structure           |
-| `port install [--dns-ip IP]` | Set up DNS for `*.local` domains                  |
-| `port <branch>`              | Enter a worktree (creates if doesn't exist)       |
-| `port up`                    | Start docker-compose services in current worktree |
-| `port down`                  | Stop docker-compose services                      |
-| `port remove <branch>`       | Remove a worktree entirely                        |
-| `port list`                  | List all worktrees and their status               |
+| Command                           | Description                                       |
+| --------------------------------- | ------------------------------------------------- |
+| `port init`                       | Initialize `.port/` directory structure           |
+| `port install [--dns-ip IP]`      | Set up DNS for `*.port` domains                   |
+| `port <branch>`                   | Enter a worktree (creates if doesn't exist)       |
+| `port up`                         | Start docker-compose services in current worktree |
+| `port down`                       | Stop docker-compose services and host processes   |
+| `port run <port> -- <command...>` | Run a host process with Traefik routing           |
+| `port remove <branch>`            | Remove a worktree entirely                        |
+| `port list`                       | List all worktrees and their status               |
 
 ## How It Works
 
@@ -180,15 +196,40 @@ Multiple worktrees can run simultaneously because:
 # feature-1 worktree
 port feature-1
 port up
-# Available at: feature-1.local:3000
+# Available at: feature-1.port:3000
 
 # In another terminal, feature-2 worktree (same ports!)
 port feature-2
 port up
-# Available at: feature-2.local:3000
+# Available at: feature-2.port:3000
 
 # No conflicts! Traefik routes both to the same internal port on different containers
 ```
+
+### Host Process Routing
+
+The `port run` command enables running non-Docker processes with Traefik routing:
+
+```bash
+# In .port/trees/feature-1 directory
+port run 3000 -- npm run dev
+# Service available at http://feature-1.port:3000
+
+# In another terminal, .port/trees/feature-2 directory
+port run 3000 -- npm run dev
+# Service available at http://feature-2.port:3000
+
+# No port conflicts! Both run simultaneously.
+```
+
+**How it works:**
+
+1. Allocates a unique ephemeral port (e.g., 49152)
+2. Sets `PORT=49152` environment variable for the command
+3. Registers with Traefik: `feature-1.port:3000` → `localhost:49152`
+4. Cleans up when the process exits (Ctrl+C, crash, etc.)
+
+Most frameworks (Express, Next.js, Vite, etc.) respect the `PORT` environment variable automatically.
 
 ## Project Structure
 
@@ -206,6 +247,7 @@ port/
 │   │   ├── enter.ts
 │   │   ├── up.ts
 │   │   ├── down.ts
+│   │   ├── run.ts               # Host process runner
 │   │   ├── remove.ts
 │   │   └── list.ts
 │   ├── lib/
@@ -214,6 +256,7 @@ port/
 │   │   ├── compose.ts
 │   │   ├── traefik.ts
 │   │   ├── registry.ts
+│   │   ├── hostService.ts       # Host service management
 │   │   ├── dns.ts
 │   │   ├── sanitize.ts
 │   │   └── worktree.ts
