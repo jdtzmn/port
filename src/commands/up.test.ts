@@ -42,3 +42,58 @@ describe('samples start', () => {
     SAMPLES_TIMEOUT + 1000
   )
 })
+
+describe('docker compose output streaming', () => {
+  test(
+    'port up streams docker compose output',
+    async () => {
+      const sample = await prepareSample('db-and-server', {
+        initWithConfig: true,
+      })
+
+      const { findByText } = await renderCLI(['up'], sample.dir)
+
+      // Docker compose outputs lines like "Container port-test-xxx-postgres Creating"
+      // when starting services. This confirms docker output is being streamed.
+      const containerOutput = await findByText('Container', {}, { timeout: SAMPLES_TIMEOUT })
+      expect(containerOutput).toBeInTheConsole()
+
+      // Wait for completion and cleanup
+      await findByText('Traefik dashboard:', {}, { timeout: SAMPLES_TIMEOUT })
+      const downInstance = await renderCLI(['down', '-y'], sample.dir)
+      await waitFor(() => expect(downInstance.hasExit()).toMatchObject({ exitCode: 0 }), {
+        timeout: SAMPLES_TIMEOUT,
+      })
+      await sample.cleanup()
+    },
+    SAMPLES_TIMEOUT + 1000
+  )
+
+  test(
+    'port down streams docker compose output',
+    async () => {
+      const sample = await prepareSample('db-and-server', {
+        initWithConfig: true,
+      })
+
+      // First start the services
+      const upInstance = await renderCLI(['up'], sample.dir)
+      await upInstance.findByText('Traefik dashboard:', {}, { timeout: SAMPLES_TIMEOUT })
+
+      // Now test that down streams docker compose output
+      const { findByText } = await renderCLI(['down', '-y'], sample.dir)
+
+      // Docker compose outputs lines like "Container port-test-xxx-app Stopping"
+      // when stopping services. This confirms docker output is being streamed.
+      const containerOutput = await findByText('Container', {}, { timeout: SAMPLES_TIMEOUT })
+      expect(containerOutput).toBeInTheConsole()
+
+      // Also verify we see "Stopping" which is docker compose specific output
+      const stoppingOutput = await findByText('Stopping', {}, { timeout: SAMPLES_TIMEOUT })
+      expect(stoppingOutput).toBeInTheConsole()
+
+      await sample.cleanup()
+    },
+    SAMPLES_TIMEOUT * 2 // Need extra time since we run both up and down
+  )
+})
