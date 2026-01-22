@@ -61,10 +61,29 @@ export interface Project {
 }
 
 /**
+ * A host service running on the machine (not in Docker)
+ */
+export interface HostService {
+  /** Absolute path to repo root */
+  repo: string
+  /** Sanitized branch/worktree name */
+  branch: string
+  /** Port users access (e.g., 3000) */
+  logicalPort: number
+  /** Actual port the process listens on */
+  actualPort: number
+  /** Process ID of the running command */
+  pid: number
+  /** Path to the Traefik dynamic config file */
+  configFile: string
+}
+
+/**
  * Global registry stored in ~/.port/registry.json
  */
 export interface Registry {
   projects: Project[]
+  hostServices?: HostService[]
 }
 
 /**
@@ -100,6 +119,10 @@ export interface TraefikConfig {
     docker: {
       exposedByDefault: boolean
       network: string
+    }
+    file?: {
+      directory: string
+      watch: boolean
     }
   }
   entryPoints: Record<string, TraefikEntrypoint>

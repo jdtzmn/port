@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import type { Registry, Project } from '../types.ts'
+import type { Registry, Project, HostService } from '../types.ts'
 
 /** Global port directory in user's home */
 export const GLOBAL_PORT_DIR = join(homedir(), '.port')
@@ -29,7 +29,7 @@ export async function loadRegistry(): Promise<Registry> {
   await ensureGlobalDir()
 
   if (!existsSync(REGISTRY_FILE)) {
-    return { projects: [] }
+    return { projects: [], hostServices: [] }
   }
 
   try {
@@ -38,13 +38,18 @@ export async function loadRegistry(): Promise<Registry> {
 
     // Validate structure
     if (!Array.isArray(registry.projects)) {
-      return { projects: [] }
+      return { projects: [], hostServices: [] }
+    }
+
+    // Ensure hostServices array exists
+    if (!Array.isArray(registry.hostServices)) {
+      registry.hostServices = []
     }
 
     return registry
   } catch {
     // If file is corrupted, return empty registry
-    return { projects: [] }
+    return { projects: [], hostServices: [] }
   }
 }
 
@@ -170,4 +175,108 @@ export async function hasRegisteredProjects(): Promise<boolean> {
 export async function getProjectCount(): Promise<number> {
   const registry = await loadRegistry()
   return registry.projects.length
+}
+
+// ============================================
+// Host Service Registry Functions
+// ============================================
+
+/**
+ * Register a host service in the global registry
+ *
+ * @param service - The host service to register
+ */
+export async function registerHostService(service: HostService): Promise<void> {
+  const registry = await loadRegistry()
+
+  if (!registry.hostServices) {
+    registry.hostServices = []
+  }
+
+  // Check if already registered
+  const existingIndex = registry.hostServices.findIndex(
+    s =>
+      s.repo === service.repo &&
+      s.branch === service.branch &&
+      s.logicalPort === service.logicalPort
+  )
+
+  if (existingIndex >= 0) {
+    // Update existing
+    registry.hostServices[existingIndex] = service
+  } else {
+    // Add new
+    registry.hostServices.push(service)
+  }
+
+  await saveRegistry(registry)
+}
+
+/**
+ * Unregister a host service from the global registry
+ *
+ * @param repo - Absolute path to the repo root
+ * @param branch - Sanitized branch/worktree name
+ * @param logicalPort - The logical port
+ */
+export async function unregisterHostService(
+  repo: string,
+  branch: string,
+  logicalPort: number
+): Promise<void> {
+  const registry = await loadRegistry()
+
+  if (!registry.hostServices) {
+    return
+  }
+
+  registry.hostServices = registry.hostServices.filter(
+    s => !(s.repo === repo && s.branch === branch && s.logicalPort === logicalPort)
+  )
+
+  await saveRegistry(registry)
+}
+
+/**
+ * Get a host service from the registry
+ *
+ * @param repo - Absolute path to the repo root
+ * @param branch - Sanitized branch/worktree name
+ * @param logicalPort - The logical port
+ * @returns The host service or undefined if not found
+ */
+export async function getHostService(
+  repo: string,
+  branch: string,
+  logicalPort: number
+): Promise<HostService | undefined> {
+  const registry = await loadRegistry()
+  return registry.hostServices?.find(
+    s => s.repo === repo && s.branch === branch && s.logicalPort === logicalPort
+  )
+}
+
+/**
+ * Get all host services for a worktree
+ *
+ * @param repo - Absolute path to the repo root
+ * @param branch - Sanitized branch/worktree name
+ * @returns Array of host services
+ */
+export async function getHostServicesForWorktree(
+  repo: string,
+  branch: string
+): Promise<HostService[]> {
+  const registry = await loadRegistry()
+  return registry.hostServices?.filter(s => s.repo === repo && s.branch === branch) ?? []
+}
+
+/**
+ * Get all host services
+ *
+ * @returns Array of all host services
+ */
+export async function getAllHostServices(): Promise<HostService[]> {
+  const registry = await loadRegistry()
+  return registry.hostServices ?? []
 }
