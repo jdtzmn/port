@@ -2,7 +2,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
-import { runCompose, getOverrideRelativePath } from '../lib/compose.ts'
+import { runCompose, getOverrideRelativePath, getProjectName } from '../lib/compose.ts'
 import * as output from '../lib/output.ts'
 
 /**
@@ -57,6 +57,7 @@ export async function compose(args: string[]): Promise<void> {
   }
 
   // Run the compose command with automatic -p and -f flags
-  const { exitCode } = await runCompose(worktreePath, composeFile, name, args)
+  const projectName = getProjectName(repoRoot, name)
+  const { exitCode } = await runCompose(worktreePath, composeFile, projectName, args)
   process.exit(exitCode)
 }

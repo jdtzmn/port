@@ -1,15 +1,33 @@
 import { mkdir, writeFile } from 'fs/promises'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { stringify as yamlStringify } from 'yaml'
 import type { ParsedComposeFile, ParsedComposeService } from '../types.ts'
 import { TRAEFIK_NETWORK, TRAEFIK_DIR } from './traefik.ts'
 import { execAsync, execWithStdio } from './exec.ts'
+import { sanitizeFolderName } from './sanitize.ts'
 
 /** Override file name */
 export const OVERRIDE_FILE = 'override.yml'
 
 /** Port directory for override files */
 const PORT_DIR = '.port'
+
+/**
+ * Generate a unique docker-compose project name from repo root and worktree name.
+ * This ensures containers from different repos with same-named worktrees don't conflict.
+ *
+ * @param repoRoot - Absolute path to the repo root
+ * @param worktreeName - The worktree/branch name
+ * @returns A unique project name like "my-repo-feature-branch"
+ */
+export function getProjectName(repoRoot: string, worktreeName: string): string {
+  const repoName = sanitizeFolderName(basename(repoRoot))
+  // If worktree name is already the repo name (main repo case), just use it
+  if (repoName === worktreeName) {
+    return worktreeName
+  }
+  return `${repoName}-${worktreeName}`
+}
 
 /**
  * Get the relative path to the override file from the worktree path
@@ -188,10 +206,10 @@ export function generateOverrideContent(
   for (const [serviceName, service] of Object.entries(parsedCompose.services)) {
     const ports = getServicePorts(service)
 
-    // Always add container_name to prevent conflicts
-    const serviceOverride: Record<string, unknown> = {
-      container_name: `${worktreeName}-${serviceName}`,
-    }
+    // Note: We don't set container_name here. Docker-compose automatically
+    // namespaces containers using the project name from the -p flag, which
+    // ensures uniqueness across worktrees and different repositories.
+    const serviceOverride: Record<string, unknown> = {}
 
     // Only add Traefik config for services with ports
     if (ports.length > 0) {

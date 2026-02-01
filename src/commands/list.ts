@@ -2,7 +2,13 @@ import { existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { findGitRoot } from '../lib/worktree.ts'
 import { getTreesDir, loadConfig, configExists, getComposeFile } from '../lib/config.ts'
-import { composePs, isTraefikRunning, parseComposeFile, getServicePorts } from '../lib/compose.ts'
+import {
+  composePs,
+  isTraefikRunning,
+  parseComposeFile,
+  getServicePorts,
+  getProjectName,
+} from '../lib/compose.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import { getAllHostServices } from '../lib/registry.ts'
 import { isProcessRunning, cleanupStaleHostServices } from '../lib/hostService.ts'
@@ -84,8 +90,9 @@ export async function list(): Promise<void> {
   // Get folder name for main repo
   const repoName = sanitizeBranchName(repoRoot.split('/').pop() ?? 'main')
 
-  // Check main repo
-  const mainServices = await getWorktreeStatus(repoRoot, composeFile, repoName)
+  // Check main repo - use the same project name logic
+  const mainProjectName = getProjectName(repoRoot, repoName)
+  const mainServices = await getWorktreeStatus(repoRoot, composeFile, mainProjectName)
   const mainRunning = mainServices.some(s => s.running)
 
   worktrees.push({
@@ -103,7 +110,8 @@ export async function list(): Promise<void> {
       if (!entry.isDirectory()) continue
 
       const worktreePath = join(treesDir, entry.name)
-      const services = await getWorktreeStatus(worktreePath, composeFile, entry.name)
+      const worktreeProjectName = getProjectName(repoRoot, entry.name)
+      const services = await getWorktreeStatus(worktreePath, composeFile, worktreeProjectName)
       const running = services.some(s => s.running)
 
       worktrees.push({

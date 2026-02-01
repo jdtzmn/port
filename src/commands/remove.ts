@@ -3,7 +3,7 @@ import { findGitRoot, worktreeExists, getWorktreePath } from '../lib/worktree.ts
 import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
 import { removeWorktree } from '../lib/git.ts'
 import { unregisterProject, hasRegisteredProjects } from '../lib/registry.ts'
-import { runCompose, stopTraefik, isTraefikRunning } from '../lib/compose.ts'
+import { runCompose, stopTraefik, isTraefikRunning, getProjectName } from '../lib/compose.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
 
@@ -43,8 +43,9 @@ export async function remove(branch: string): Promise<void> {
   const composeFile = getComposeFile(config)
 
   // Stop docker-compose services first
+  const projectName = getProjectName(repoRoot, sanitized)
   output.info(`Stopping services in ${output.branch(sanitized)}...`)
-  const { exitCode } = await runCompose(worktreePath, composeFile, sanitized, ['down'])
+  const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['down'])
   if (exitCode !== 0) {
     output.warn('Failed to stop services')
     // Continue with removal even if stop fails

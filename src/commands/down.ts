@@ -6,7 +6,7 @@ import {
   hasRegisteredProjects,
   getHostServicesForWorktree,
 } from '../lib/registry.ts'
-import { runCompose, stopTraefik, isTraefikRunning } from '../lib/compose.ts'
+import { runCompose, stopTraefik, isTraefikRunning, getProjectName } from '../lib/compose.ts'
 import { stopHostService } from '../lib/hostService.ts'
 import * as output from '../lib/output.ts'
 
@@ -38,8 +38,9 @@ export async function down(options?: { yes?: boolean }): Promise<void> {
   const composeFile = getComposeFile(config)
 
   // Stop docker-compose services
+  const projectName = getProjectName(repoRoot, name)
   output.info(`Stopping services in ${output.branch(name)}...`)
-  const { exitCode } = await runCompose(worktreePath, composeFile, name, ['down'])
+  const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['down'])
   if (exitCode !== 0) {
     output.error('Failed to stop services')
     // Continue to unregister even if stop fails

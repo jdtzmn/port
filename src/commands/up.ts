@@ -12,6 +12,7 @@ import {
   parseComposeFile,
   getAllPorts,
   getServicePorts,
+  getProjectName,
 } from '../lib/compose.ts'
 import * as output from '../lib/output.ts'
 
@@ -108,8 +109,9 @@ export async function up(): Promise<void> {
   }
 
   // Start docker-compose services
+  const projectName = getProjectName(repoRoot, name)
   output.info(`Starting services in ${output.branch(name)}...`)
-  const { exitCode } = await runCompose(worktreePath, composeFile, name, ['up', '-d'])
+  const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['up', '-d'])
   if (exitCode !== 0) {
     output.error('Failed to start services')
     process.exit(1)
