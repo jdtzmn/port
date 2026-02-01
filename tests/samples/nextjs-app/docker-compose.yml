@@ -1,6 +1,5 @@
 services:
   app:
     build: .
-    container_name: nextjs_app
     ports:
       - '3000:3000'
