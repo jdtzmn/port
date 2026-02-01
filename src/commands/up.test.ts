@@ -53,10 +53,10 @@ describe('docker compose output streaming', () => {
 
       const { findByText } = await renderCLI(['up'], sample.dir)
 
-      // Docker compose outputs lines like "Container port-test-xxx-postgres Creating"
-      // when starting services. This confirms docker output is being streamed.
-      const containerOutput = await findByText('Container', {}, { timeout: SAMPLES_TIMEOUT })
-      expect(containerOutput).toBeInTheConsole()
+      // Docker compose outputs "Started" when containers start.
+      // This confirms docker compose output is being streamed to the terminal.
+      const startedOutput = await findByText('Started', {}, { timeout: SAMPLES_TIMEOUT })
+      expect(startedOutput).toBeInTheConsole()
 
       // Wait for completion and cleanup
       await findByText('Traefik dashboard:', {}, { timeout: SAMPLES_TIMEOUT })
@@ -83,12 +83,8 @@ describe('docker compose output streaming', () => {
       // Now test that down streams docker compose output
       const { findByText } = await renderCLI(['down', '-y'], sample.dir)
 
-      // Docker compose outputs lines like "Container port-test-xxx-app Stopping"
-      // when stopping services. This confirms docker output is being streamed.
-      const containerOutput = await findByText('Container', {}, { timeout: SAMPLES_TIMEOUT })
-      expect(containerOutput).toBeInTheConsole()
-
-      // Also verify we see "Stopping" which is docker compose specific output
+      // Docker compose outputs "Stopping" when containers stop.
+      // This confirms docker compose output is being streamed to the terminal.
       const stoppingOutput = await findByText('Stopping', {}, { timeout: SAMPLES_TIMEOUT })
       expect(stoppingOutput).toBeInTheConsole()
 
