@@ -2,12 +2,14 @@ import { test, expect, describe, beforeEach, afterEach } from 'vitest'
 import { join } from 'path'
 import { existsSync } from 'fs'
 import { rm, readFile } from 'fs/promises'
+import { spawn, type ChildProcess } from 'child_process'
 import { parse as yamlParse } from 'yaml'
 import {
   findAvailablePort,
   writeHostServiceConfig,
   removeHostServiceConfig,
   isProcessRunning,
+  stopHostService,
 } from './hostService.ts'
 import { TRAEFIK_DYNAMIC_DIR, ensureTraefikDynamicDir } from './traefik.ts'
 
@@ -115,5 +117,84 @@ describe('removeHostServiceConfig', () => {
     const nonExistentFile = join(TRAEFIK_DYNAMIC_DIR, 'non-existent.yml')
 
     await expect(removeHostServiceConfig(nonExistentFile)).resolves.not.toThrow()
+  })
+})
+
+describe('stopHostService', () => {
+  async function waitForSpawnedProcess(child: ChildProcess, timeoutMs = 2000): Promise<void> {
+    const startedAt = Date.now()
+
+    while (Date.now() - startedAt < timeoutMs) {
+      if (child.pid && isProcessRunning(child.pid)) {
+        return
+      }
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+
+    throw new Error('Timed out waiting for child process to start')
+  }
+
+  test('stops responsive process with SIGTERM', async () => {
+    const child = spawn('bun', ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })
+
+    await waitForSpawnedProcess(child)
+
+    const result = await stopHostService({
+      repo: '/test/repo',
+      branch: 'test-branch',
+      logicalPort: 3000,
+      actualPort: 51000,
+      pid: child.pid!,
+      configFile: join(TRAEFIK_DYNAMIC_DIR, 'does-not-exist.yml'),
+    })
+
+    expect(result).toBe('sigterm')
+    expect(isProcessRunning(child.pid!)).toBe(false)
+  })
+
+  test('force kills process that ignores SIGTERM', async () => {
+    const originalKill = process.kill
+    const sentSignals: Array<NodeJS.Signals | 0> = []
+    let running = true
+
+    process.kill = ((pid: number, signal?: NodeJS.Signals | number) => {
+      if (pid !== 424242) {
+        return originalKill(pid, signal as NodeJS.Signals)
+      }
+
+      if (signal === 0 || signal === undefined) {
+        if (running) {
+          return true
+        }
+        throw new Error('Process not running')
+      }
+
+      sentSignals.push(signal as NodeJS.Signals)
+      if (signal === 'SIGKILL') {
+        running = false
+      }
+
+      return true
+    }) as typeof process.kill
+
+    try {
+      const result = await stopHostService(
+        {
+          repo: '/test/repo',
+          branch: 'test-branch',
+          logicalPort: 3001,
+          actualPort: 51001,
+          pid: 424242,
+          configFile: join(TRAEFIK_DYNAMIC_DIR, 'does-not-exist.yml'),
+        },
+        { gracePeriodMs: 10 }
+      )
+
+      expect(result).toBe('sigkill')
+      expect(sentSignals).toContain('SIGTERM')
+      expect(sentSignals).toContain('SIGKILL')
+    } finally {
+      process.kill = originalKill
+    }
   })
 })

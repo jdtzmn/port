@@ -21,3 +21,10 @@ test('Remove command help includes --force option', async () => {
   const instance = await findByText('-f, --force')
   expect(instance).toBeInTheConsole()
 })
+
+test('Help includes the kill command', async () => {
+  const { findByText } = await renderCLI(['--help'])
+
+  const instance = await findByText('kill [port]')
+  expect(instance).toBeInTheConsole()
+})

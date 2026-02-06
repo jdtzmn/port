@@ -11,6 +11,32 @@ import {
 } from './registry.ts'
 import type { HostService } from '../types.ts'
 
+const SIGTERM_GRACE_PERIOD_MS = 2000
+const PROCESS_POLL_INTERVAL_MS = 50
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const startedAt = Date.now()
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (!isProcessRunning(pid)) {
+      return true
+    }
+    await sleep(PROCESS_POLL_INTERVAL_MS)
+  }
+
+  return !isProcessRunning(pid)
+}
+
+export type StopSignal = 'already_stopped' | 'sigterm' | 'sigkill'
+
+interface StopHostServiceOptions {
+  gracePeriodMs?: number
+}
+
 /**
  * Find an available port in the ephemeral range (49152-65535)
  * Uses Node's net module to find a free port
@@ -154,17 +180,42 @@ export async function cleanupStaleHostServices(): Promise<void> {
  *
  * @param service - The host service to stop
  */
-export async function stopHostService(service: HostService): Promise<void> {
-  // Try to kill the process
+export async function stopHostService(
+  service: HostService,
+  options: StopHostServiceOptions = {}
+): Promise<StopSignal> {
+  const gracePeriodMs = options.gracePeriodMs ?? SIGTERM_GRACE_PERIOD_MS
+  let stopSignal: StopSignal = 'already_stopped'
+
   if (isProcessRunning(service.pid)) {
     try {
       process.kill(service.pid, 'SIGTERM')
+      stopSignal = 'sigterm'
     } catch {
-      // Process might have already died
+      // Process might have already exited.
+    }
+
+    if (isProcessRunning(service.pid)) {
+      const exitedAfterSigterm = await waitForProcessExit(service.pid, gracePeriodMs)
+
+      if (!exitedAfterSigterm) {
+        try {
+          process.kill(service.pid, 'SIGKILL')
+          stopSignal = 'sigkill'
+        } catch {
+          // Process might have already exited.
+        }
+      }
+    }
+
+    if (isProcessRunning(service.pid)) {
+      throw new Error(`Process ${service.pid} did not stop`)
     }
   }
 
   // Clean up config and registry
   await removeHostServiceConfig(service.configFile)
   await unregisterHostService(service.repo, service.branch, service.logicalPort)
+
+  return stopSignal
 }

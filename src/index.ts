@@ -12,6 +12,7 @@ import { uninstall } from './commands/uninstall.ts'
 import { compose } from './commands/compose.ts'
 import { run } from './commands/run.ts'
 import { handleCliError } from './lib/cli.ts'
+import { kill } from './commands/kill.ts'
 
 const program = new Command()
 
@@ -87,6 +88,9 @@ program
     await run(portNum, command)
   })
 
+// port kill [port]
+program.command('kill [port]').description('Stop host processes started via port run').action(kill)
+
 // port <branch> - default command to enter a worktree
 // This must be last to act as a catch-all for branch names
 program
@@ -108,6 +112,7 @@ program
         'compose',
         'dc',
         'run',
+        'kill',
         'help',
       ]
       if (commands.includes(branch)) {
