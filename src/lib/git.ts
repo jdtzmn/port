@@ -275,3 +275,40 @@ export async function pruneWorktrees(repoRoot: string): Promise<void> {
     throw new GitError(`Failed to prune worktrees: ${error}`)
   }
 }
+
+/**
+ * Soft-delete a local branch by renaming it to archive/<name>-<timestamp>.
+ *
+ * @param repoRoot - The repository root path
+ * @param branch - Branch name to archive
+ * @returns Archived branch name, or null when source branch does not exist
+ */
+export async function archiveBranch(repoRoot: string, branch: string): Promise<string | null> {
+  const git = getGit(repoRoot)
+
+  if (!(await branchExists(repoRoot, branch))) {
+    return null
+  }
+
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}Z$/, 'Z')
+  const sanitized = sanitizeBranchName(branch)
+  const baseArchivedName = `archive/${sanitized}-${timestamp}`
+
+  let archivedName = baseArchivedName
+  let suffix = 1
+
+  while (await branchExists(repoRoot, archivedName)) {
+    archivedName = `${baseArchivedName}-${suffix}`
+    suffix += 1
+  }
+
+  try {
+    await git.raw(['branch', '-m', branch, archivedName])
+    return archivedName
+  } catch (error) {
+    throw new GitError(`Failed to archive branch '${branch}': ${error}`)
+  }
+}

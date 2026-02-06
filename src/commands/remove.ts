@@ -3,6 +3,7 @@ import inquirer from 'inquirer'
 import { detectWorktree, worktreeExists, getWorktreePath } from '../lib/worktree.ts'
 import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
 import {
+  archiveBranch,
   findWorktreeByBranch,
   pruneWorktrees,
   removeWorktree,
@@ -16,6 +17,7 @@ import { failWithError } from '../lib/cli.ts'
 
 interface RemoveOptions {
   force?: boolean
+  keepBranch?: boolean
 }
 
 /**
@@ -42,6 +44,7 @@ export async function remove(branch: string, options: RemoveOptions = {}): Promi
 
   let worktreePath = expectedWorktreePath
   let nonStandardWorktree = false
+  let sourceBranch = branch
 
   if (!worktreeExists(repoRoot, branch)) {
     const registeredWorktree = await findWorktreeByBranch(repoRoot, branch)
@@ -52,6 +55,7 @@ export async function remove(branch: string, options: RemoveOptions = {}): Promi
 
     worktreePath = registeredWorktree.path
     nonStandardWorktree = true
+    sourceBranch = registeredWorktree.branch
 
     if (!options.force) {
       output.warn(`Worktree ${output.branch(sanitized)} is registered at a non-standard path:`)
@@ -118,6 +122,18 @@ export async function remove(branch: string, options: RemoveOptions = {}): Promi
 
   // Unregister project from global registry
   await unregisterProject(repoRoot, sanitized)
+
+  // Soft-delete local branch unless explicitly preserved
+  if (!options.keepBranch) {
+    try {
+      const archivedBranch = await archiveBranch(repoRoot, sourceBranch)
+      if (archivedBranch) {
+        output.info(`Archived local branch as ${output.branch(archivedBranch)}`)
+      }
+    } catch (error) {
+      output.warn(`Failed to archive local branch '${sourceBranch}': ${error}`)
+    }
+  }
 
   // Check if Traefik should be stopped
   const traefikRunning = await isTraefikRunning()

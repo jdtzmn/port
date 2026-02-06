@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   loadConfig: vi.fn(),
   getComposeFile: vi.fn(),
   findWorktreeByBranch: vi.fn(),
+  archiveBranch: vi.fn(),
   removeWorktree: vi.fn(),
   removeWorktreeAtPath: vi.fn(),
   pruneWorktrees: vi.fn(),
@@ -49,6 +50,7 @@ vi.mock('../lib/config.ts', () => ({
 
 vi.mock('../lib/git.ts', () => ({
   findWorktreeByBranch: mocks.findWorktreeByBranch,
+  archiveBranch: mocks.archiveBranch,
   removeWorktree: mocks.removeWorktree,
   removeWorktreeAtPath: mocks.removeWorktreeAtPath,
   pruneWorktrees: mocks.pruneWorktrees,
@@ -100,6 +102,7 @@ describe('remove command', () => {
     mocks.getComposeFile.mockReturnValue('docker-compose.yml')
 
     mocks.findWorktreeByBranch.mockResolvedValue(null)
+    mocks.archiveBranch.mockResolvedValue('archive/demo-2-20260206T120000Z')
     mocks.removeWorktree.mockResolvedValue(undefined)
     mocks.removeWorktreeAtPath.mockResolvedValue(undefined)
     mocks.pruneWorktrees.mockResolvedValue(undefined)
@@ -120,6 +123,7 @@ describe('remove command', () => {
     await remove('demo-2')
 
     expect(mocks.removeWorktree).toHaveBeenCalledWith('/repo', 'demo-2', true)
+    expect(mocks.archiveBranch).toHaveBeenCalledWith('/repo', 'demo-2')
     expect(mocks.removeWorktreeAtPath).not.toHaveBeenCalled()
     expect(mocks.prompt).not.toHaveBeenCalled()
   })
@@ -151,6 +155,7 @@ describe('remove command', () => {
       }
     )
     expect(mocks.removeWorktreeAtPath).toHaveBeenCalledWith('/repo', nestedPath, true)
+    expect(mocks.archiveBranch).toHaveBeenCalledWith('/repo', 'demo-2')
     expect(mocks.removeWorktree).not.toHaveBeenCalled()
   })
 
@@ -167,6 +172,13 @@ describe('remove command', () => {
 
     expect(mocks.prompt).not.toHaveBeenCalled()
     expect(mocks.removeWorktreeAtPath).toHaveBeenCalledWith('/repo', nestedPath, true)
+  })
+
+  test('keeps branch when --keep-branch is set', async () => {
+    await remove('demo-2', { keepBranch: true })
+
+    expect(mocks.archiveBranch).not.toHaveBeenCalled()
+    expect(mocks.removeWorktree).toHaveBeenCalledWith('/repo', 'demo-2', true)
   })
 
   test('prunes stale worktree metadata when path is missing', async () => {

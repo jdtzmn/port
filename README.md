@@ -154,9 +154,12 @@ port status
 port remove feature-1
 # Skip confirmation for non-standard/stale worktree entries
 port rm -f feature-1
+# Keep the local branch name unchanged
+port rm --keep-branch feature-1
 ```
 
-Stops services and removes the worktree entirely.
+Stops services, removes the worktree, and soft-deletes the local branch by archiving it under `archive/<name>-<timestamp>`.
+Use `--keep-branch` to preserve the local branch name.
 
 ## Commands
 
@@ -168,7 +171,7 @@ Stops services and removes the worktree entirely.
 | `port up`                         | Start docker-compose services in current worktree |
 | `port down`                       | Stop docker-compose services and host processes   |
 | `port run <port> -- <command...>` | Run a host process with Traefik routing           |
-| `port remove <branch> [--force]`  | Remove a worktree entirely                        |
+| `port remove <branch> [--force]`  | Remove worktree and archive local branch          |
 | `port compose <args...>`          | Run docker compose with auto `-f` flags           |
 | `port list`                       | List worktree and host-service summary            |
 | `port status`                     | Show per-service status by worktree               |
