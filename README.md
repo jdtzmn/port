@@ -71,7 +71,7 @@ Create `.port/config.jsonc` in your project:
 port install
 ```
 
-Configures your system to resolve `*.port` domains to `127.0.0.1`.
+Configures your system to resolve your configured wildcard domain (default `*.port`) to `127.0.0.1`.
 
 You can optionally specify a custom IP address:
 
@@ -84,6 +84,9 @@ port install --yes
 
 # Combine options
 port install --yes --dns-ip 192.168.1.100
+
+# Explicit custom domain
+port install --domain custom
 ```
 
 #### Linux DNS Setup
@@ -92,7 +95,7 @@ On Linux systems with `systemd-resolved` running (most modern Ubuntu/Debian syst
 
 1. Detects that `systemd-resolved` is using port 53
 2. Runs `dnsmasq` on port 5354 to avoid conflicts
-3. Configures `systemd-resolved` to forward `*.port` queries to dnsmasq
+3. Configures `systemd-resolved` to forward your wildcard domain queries to dnsmasq
 
 This "dual-mode" setup allows both services to coexist without conflicts.
 
@@ -171,20 +174,20 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 
 ## Commands
 
-| Command                                          | Description                                       |
-| ------------------------------------------------ | ------------------------------------------------- |
-| `port init`                                      | Initialize `.port/` directory structure           |
-| `port install [--dns-ip IP]`                     | Set up DNS for `*.port` domains                   |
-| `port <branch>`                                  | Enter a worktree (creates if doesn't exist)       |
-| `port up`                                        | Start docker-compose services in current worktree |
-| `port down`                                      | Stop docker-compose services and host processes   |
-| `port run <port> -- <command...>`                | Run a host process with Traefik routing           |
-| `port remove <branch> [--force] [--keep-branch]` | Remove worktree and archive local branch          |
-| `port compose <args...>`                         | Run docker compose with auto `-f` flags           |
-| `port list`                                      | List worktree and host-service summary            |
-| `port status`                                    | Show per-service status by worktree               |
-| `port cleanup`                                   | Delete archived local branches with confirmation  |
-| `port uninstall [--yes]`                         | Remove DNS configuration for `*.port`             |
+| Command                                          | Description                                          |
+| ------------------------------------------------ | ---------------------------------------------------- |
+| `port init`                                      | Initialize `.port/` directory structure              |
+| `port install [--dns-ip IP] [--domain DOMAIN]`   | Set up DNS for wildcard domain (default from config) |
+| `port <branch>`                                  | Enter a worktree (creates if doesn't exist)          |
+| `port up`                                        | Start docker-compose services in current worktree    |
+| `port down`                                      | Stop docker-compose services and host processes      |
+| `port run <port> -- <command...>`                | Run a host process with Traefik routing              |
+| `port remove <branch> [--force] [--keep-branch]` | Remove worktree and archive local branch             |
+| `port compose <args...>`                         | Run docker compose with auto `-f` flags              |
+| `port list`                                      | List worktree and host-service summary               |
+| `port status`                                    | Show per-service status by worktree                  |
+| `port cleanup`                                   | Delete archived local branches with confirmation     |
+| `port uninstall [--yes] [--domain DOMAIN]`       | Remove DNS configuration for wildcard domain         |
 
 ## How It Works
 

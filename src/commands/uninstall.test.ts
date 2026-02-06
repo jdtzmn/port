@@ -4,6 +4,9 @@ const mocks = vi.hoisted(() => ({
   prompt: vi.fn(),
   checkDns: vi.fn(),
   isSystemdResolvedRunning: vi.fn(),
+  detectWorktree: vi.fn(),
+  configExists: vi.fn(),
+  loadConfig: vi.fn(),
   execAsync: vi.fn(),
   success: vi.fn(),
   warn: vi.fn(),
@@ -24,6 +27,16 @@ vi.mock('../lib/dns.ts', () => ({
   checkDns: mocks.checkDns,
   isSystemdResolvedRunning: mocks.isSystemdResolvedRunning,
   DEFAULT_DNS_IP: '127.0.0.1',
+  DEFAULT_DOMAIN: 'port',
+}))
+
+vi.mock('../lib/worktree.ts', () => ({
+  detectWorktree: mocks.detectWorktree,
+}))
+
+vi.mock('../lib/config.ts', () => ({
+  configExists: mocks.configExists,
+  loadConfig: mocks.loadConfig,
 }))
 
 vi.mock('../lib/exec.ts', () => ({
@@ -48,7 +61,7 @@ function setPlatform(platform: NodeJS.Platform): void {
   Object.defineProperty(process, 'platform', { value: platform, configurable: true })
 }
 
-async function runUninstall(options?: { yes?: boolean }): Promise<void> {
+async function runUninstall(options?: { yes?: boolean; domain?: string }): Promise<void> {
   const pending = uninstall(options)
   await vi.runAllTimersAsync()
   await pending
@@ -60,6 +73,11 @@ describe('uninstall command', () => {
     vi.clearAllMocks()
 
     setPlatform('darwin')
+    mocks.detectWorktree.mockImplementation(() => {
+      throw new Error('not in git')
+    })
+    mocks.configExists.mockReturnValue(false)
+    mocks.loadConfig.mockResolvedValue({ domain: 'port' })
     mocks.checkDns.mockResolvedValue(true)
     mocks.isSystemdResolvedRunning.mockResolvedValue(false)
     mocks.execAsync.mockResolvedValue({ stdout: '' })
@@ -157,10 +175,39 @@ describe('uninstall command', () => {
 
     await runUninstall({ yes: true })
 
-    expect(mocks.execAsync).toHaveBeenCalledWith("sudo sed -i '' '/address=\\/port\\//d' /usr/local/etc/dnsmasq.conf")
+    expect(mocks.execAsync).toHaveBeenCalledWith(
+      "sudo sed -i '' '/address=\\/port\\//d' /usr/local/etc/dnsmasq.conf"
+    )
     expect(mocks.execAsync).toHaveBeenCalledWith('sudo rm /etc/resolver/port')
     expect(mocks.execAsync).toHaveBeenCalledWith('sudo brew services restart dnsmasq')
     expect(mocks.execAsync).not.toHaveBeenCalledWith('sudo systemctl restart systemd-resolved')
+  })
+
+  test('uses custom domain when explicitly provided', async () => {
+    setPlatform('darwin')
+    mocks.checkDns.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    mocks.execAsync.mockImplementation(async (cmd: string) => {
+      if (cmd === 'brew --prefix') {
+        return { stdout: '/usr/local\n' }
+      }
+      if (cmd.includes('grep "address=/custom/"')) {
+        return { stdout: 'address=/custom/127.0.0.1\n' }
+      }
+      if (cmd === 'pgrep dnsmasq') {
+        throw new Error('not running')
+      }
+
+      return { stdout: '' }
+    })
+
+    await runUninstall({ yes: true, domain: 'custom' })
+
+    expect(mocks.checkDns).toHaveBeenNthCalledWith(1, 'custom', '127.0.0.1')
+    expect(mocks.execAsync).toHaveBeenCalledWith(
+      "sudo sed -i '' '/address=\\/custom\\//d' /usr/local/etc/dnsmasq.conf"
+    )
+    expect(mocks.execAsync).toHaveBeenCalledWith('sudo rm /etc/resolver/custom')
+    expect(mocks.checkDns).toHaveBeenNthCalledWith(2, 'custom', '127.0.0.1')
   })
 
   test('uses Linux dual-mode uninstall path when systemd-resolved config is present', async () => {
@@ -180,7 +227,9 @@ describe('uninstall command', () => {
 
     await runUninstall({ yes: true })
 
-    expect(mocks.info).toHaveBeenCalledWith('Detected dual-mode configuration (dnsmasq + systemd-resolved)')
+    expect(mocks.info).toHaveBeenCalledWith(
+      'Detected dual-mode configuration (dnsmasq + systemd-resolved)'
+    )
     expect(mocks.execAsync).toHaveBeenCalledWith('sudo rm /etc/dnsmasq.d/port.conf')
     expect(mocks.execAsync).toHaveBeenCalledWith('sudo systemctl restart dnsmasq')
     expect(mocks.execAsync).toHaveBeenCalledWith('sudo rm /etc/systemd/resolved.conf.d/port.conf')
@@ -210,7 +259,9 @@ describe('uninstall command', () => {
     expect(mocks.info).toHaveBeenCalledWith('Detected standalone mode configuration (dnsmasq only)')
     expect(mocks.execAsync).toHaveBeenCalledWith('sudo rm /etc/dnsmasq.d/port.conf')
     expect(mocks.execAsync).toHaveBeenCalledWith('sudo systemctl restart dnsmasq')
-    expect(mocks.execAsync).not.toHaveBeenCalledWith('sudo rm /etc/systemd/resolved.conf.d/port.conf')
+    expect(mocks.execAsync).not.toHaveBeenCalledWith(
+      'sudo rm /etc/systemd/resolved.conf.d/port.conf'
+    )
     expect(mocks.execAsync).not.toHaveBeenCalledWith('sudo systemctl restart systemd-resolved')
   })
 })

@@ -130,6 +130,24 @@ describe('generateOverrideContent', () => {
     expect(getContainerName(feature2)).toBe('repo-feature-2-web')
     expect(getContainerName(feature1)).not.toBe(getContainerName(feature2))
   })
+
+  test('switching domains rewrites host rule from .port to custom domain', () => {
+    const parsedCompose: ParsedComposeFile = {
+      name: 'demo',
+      services: {
+        web: {
+          ports: [{ published: 3000, target: 3000 }],
+        },
+      },
+    }
+
+    const defaultDomainOverride = generateOverrideContent(parsedCompose, 'feature-1', 'port')
+    const customDomainOverride = generateOverrideContent(parsedCompose, 'feature-1', 'custom')
+
+    expect(defaultDomainOverride).toContain('Host(`feature-1.port`)')
+    expect(customDomainOverride).toContain('Host(`feature-1.custom`)')
+    expect(customDomainOverride).not.toContain('Host(`feature-1.port`)')
+  })
 })
 
 describe('getComposeFileStack', () => {

@@ -32,9 +32,13 @@ program
 // port install
 program
   .command('install')
-  .description('Set up DNS to resolve *.port domains')
+  .description('Set up DNS to resolve wildcard domain used by this repo')
   .option('-y, --yes', 'Skip confirmation prompt')
-  .option('--dns-ip <address>', 'IP address to resolve *.port domains to (default: 127.0.0.1)')
+  .option(
+    '--dns-ip <address>',
+    'IP address wildcard domains should resolve to (default: 127.0.0.1)'
+  )
+  .option('--domain <domain>', 'Domain suffix to configure (default: config domain or port)')
   .action(install)
 
 // port list
@@ -74,8 +78,9 @@ program
 // port uninstall
 program
   .command('uninstall')
-  .description('Remove DNS configuration for *.port domains')
+  .description('Remove DNS configuration for wildcard domain used by this repo')
   .option('-y, --yes', 'Skip confirmation prompt')
+  .option('--domain <domain>', 'Domain suffix to remove (default: config domain or port)')
   .action(uninstall)
 
 // port compose <args>

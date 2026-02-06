@@ -116,7 +116,10 @@ export async function checkDns(
  * @param ip - The IP address to configure DNS to resolve to (default: '127.0.0.1')
  * @returns Object with platform name and setup instructions
  */
-export function getDnsSetupInstructions(ip: string = DEFAULT_DNS_IP): {
+export function getDnsSetupInstructions(
+  ip: string = DEFAULT_DNS_IP,
+  domain: string = DEFAULT_DOMAIN
+): {
   platform: 'macos' | 'linux' | 'unsupported'
   instructions: string[]
 } {
@@ -130,14 +133,14 @@ export function getDnsSetupInstructions(ip: string = DEFAULT_DNS_IP): {
         'brew install dnsmasq',
         '',
         '# Configure dnsmasq',
-        `echo "address=/port/${ip}" >> /opt/homebrew/etc/dnsmasq.conf`,
+        `echo "address=/${domain}/${ip}" >> /opt/homebrew/etc/dnsmasq.conf`,
         '',
         '# Start dnsmasq service',
         'sudo brew services start dnsmasq',
         '',
         '# Create resolver',
         'sudo mkdir -p /etc/resolver',
-        `echo "nameserver ${ip}" | sudo tee /etc/resolver/port`,
+        `echo "nameserver ${ip}" | sudo tee /etc/resolver/${domain}`,
       ],
     }
   }
@@ -148,7 +151,7 @@ export function getDnsSetupInstructions(ip: string = DEFAULT_DNS_IP): {
       instructions: [
         '# Option A: dnsmasq standalone (if systemd-resolved is NOT running)',
         'sudo apt install dnsmasq',
-        `echo "address=/port/${ip}" | sudo tee /etc/dnsmasq.d/port.conf`,
+        `echo "address=/${domain}/${ip}" | sudo tee /etc/dnsmasq.d/${domain}.conf`,
         'sudo systemctl restart dnsmasq',
         '',
         '# Option B: dnsmasq + systemd-resolved (if systemd-resolved IS running)',
@@ -156,12 +159,12 @@ export function getDnsSetupInstructions(ip: string = DEFAULT_DNS_IP): {
         'sudo apt install dnsmasq',
         'sudo systemctl stop dnsmasq',
         'sudo systemctl disable dnsmasq',
-        `echo -e "port=${DNSMASQ_ALT_PORT}\\naddress=/port/${ip}" | sudo tee /etc/dnsmasq.d/port.conf`,
+        `echo -e "port=${DNSMASQ_ALT_PORT}\\naddress=/${domain}/${ip}" | sudo tee /etc/dnsmasq.d/${domain}.conf`,
         'sudo dnsmasq',
         '',
-        '# Configure systemd-resolved to forward *.port queries:',
+        `# Configure systemd-resolved to forward *.${domain} queries:`,
         'sudo mkdir -p /etc/systemd/resolved.conf.d/',
-        `echo -e "[Resolve]\\nDNS=127.0.0.1:${DNSMASQ_ALT_PORT}\\nDomains=~port" | sudo tee /etc/systemd/resolved.conf.d/port.conf`,
+        `echo -e "[Resolve]\\nDNS=127.0.0.1:${DNSMASQ_ALT_PORT}\\nDomains=~${domain}" | sudo tee /etc/systemd/resolved.conf.d/${domain}.conf`,
         'sudo systemctl restart systemd-resolved',
       ],
     }
@@ -171,7 +174,7 @@ export function getDnsSetupInstructions(ip: string = DEFAULT_DNS_IP): {
     platform: 'unsupported',
     instructions: [
       'Your platform is not directly supported.',
-      `Configure your DNS to resolve *.port to ${ip}`,
+      `Configure your DNS to resolve *.${domain} to ${ip}`,
     ],
   }
 }
