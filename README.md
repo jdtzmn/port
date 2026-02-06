@@ -140,7 +140,13 @@ This is useful for:
 port list
 ```
 
-Shows all worktrees, their service status, and any running host services.
+Shows a concise worktree-level running/stopped summary and any running host services.
+
+For per-service details by worktree:
+
+```bash
+port status
+```
 
 ### 9. Remove a Worktree
 
@@ -164,7 +170,8 @@ Stops services and removes the worktree entirely.
 | `port run <port> -- <command...>` | Run a host process with Traefik routing           |
 | `port remove <branch> [--force]`  | Remove a worktree entirely                        |
 | `port compose <args...>`          | Run docker compose with auto `-f` flags           |
-| `port list`                       | List all worktrees and their status               |
+| `port list`                       | List worktree and host-service summary            |
+| `port status`                     | Show per-service status by worktree               |
 | `port uninstall [--yes]`          | Remove DNS configuration for `*.port`             |
 
 ## How It Works
@@ -264,7 +271,8 @@ port/
 │   │   ├── down.ts
 │   │   ├── run.ts               # Host process runner
 │   │   ├── remove.ts
-│   │   └── list.ts
+│   │   ├── list.ts
+│   │   └── status.ts
 │   ├── lib/
 │   │   ├── config.ts
 │   │   ├── git.ts

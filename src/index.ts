@@ -13,6 +13,7 @@ import { compose } from './commands/compose.ts'
 import { run } from './commands/run.ts'
 import { handleCliError } from './lib/cli.ts'
 import { kill } from './commands/kill.ts'
+import { status } from './commands/status.ts'
 
 const program = new Command()
 
@@ -36,7 +37,14 @@ program
   .action(install)
 
 // port list
-program.command('list').alias('ls').description('List all worktrees and their status').action(list)
+program
+  .command('list')
+  .alias('ls')
+  .description('List worktrees and host service summary')
+  .action(list)
+
+// port status
+program.command('status').description('Show per-service status for all worktrees').action(status)
 
 // port up
 program
@@ -113,6 +121,7 @@ program
         'dc',
         'run',
         'kill',
+        'status',
         'help',
       ]
       if (commands.includes(branch)) {

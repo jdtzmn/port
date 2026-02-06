@@ -56,9 +56,9 @@ vi.mock('../lib/output.ts', () => ({
   url: mocks.url,
 }))
 
-import { list } from './list.ts'
+import { status } from './status.ts'
 
-describe('list command', () => {
+describe('status command', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
@@ -74,53 +74,27 @@ describe('list command', () => {
     mocks.url.mockImplementation((value: string) => value)
   })
 
-  test('prints concise worktree summary without per-service lines', async () => {
+  test('prints per-service details grouped by worktree', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
     mocks.collectWorktreeStatuses.mockResolvedValue([
       {
         name: 'main',
         path: '/repo',
         running: true,
-        services: [{ name: 'web', ports: [3000], running: true }],
+        services: [
+          { name: 'api', ports: [3000], running: true },
+          { name: 'db', ports: [], running: false },
+        ],
       },
     ])
 
-    await list()
-
-    const outputLines = logSpy.mock.calls.map(call => call[0])
-    expect(outputLines).toContain('main (running)')
-    expect(outputLines.some(line => String(line).includes('web: 3000'))).toBe(false)
-    expect(mocks.header).toHaveBeenCalledWith('Active worktrees:')
-    logSpy.mockRestore()
-  })
-
-  test('includes host services in summary output', async () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
-    mocks.collectWorktreeStatuses.mockResolvedValue([
-      {
-        name: 'main',
-        path: '/repo',
-        running: false,
-        services: [],
-      },
-    ])
-    mocks.getAllHostServices.mockResolvedValue([
-      {
-        repo: '/repo',
-        branch: 'feature-a',
-        logicalPort: 3000,
-        actualPort: 49152,
-        pid: 999,
-        configFile: '/tmp/feature-a-3000.yml',
-      },
-    ])
-
-    await list()
+    await status()
 
     const outputLines = logSpy.mock.calls.map(call => String(call[0]))
-    expect(outputLines).toContain('feature-a:3000 -> localhost:49152 (running)')
-    expect(outputLines).toContain('  pid: 999')
-    expect(mocks.cleanupStaleHostServices).toHaveBeenCalledTimes(1)
+    expect(outputLines).toContain('main (running)')
+    expect(outputLines).toContain('  api: 3000 (running)')
+    expect(outputLines).toContain('  db: no published ports (stopped)')
+    expect(mocks.header).toHaveBeenCalledWith('Worktree service status:')
     logSpy.mockRestore()
   })
 })
