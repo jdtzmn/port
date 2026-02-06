@@ -32,6 +32,7 @@ trees/
 
 # Generated override file for main repo
 override.yml
+override.user.yml
 
 # Hook logs
 logs/
@@ -58,6 +59,46 @@ const POST_CREATE_HOOK_TEMPLATE = `#!/bin/bash
 # cd "$PORT_WORKTREE_PATH" && npm install
 `
 
+/** User compose override template */
+const OVERRIDE_COMPOSE_TEMPLATE = `# Optional user compose overrides for Port.
+#
+# This file is read by Port and rendered at runtime into:
+#   .port/override.user.yml
+#
+# Supported variables:
+#   PORT_ROOT_PATH
+#   PORT_WORKTREE_PATH
+#   PORT_BRANCH
+#   PORT_DOMAIN
+#   PORT_PROJECT_NAME
+#   PORT_COMPOSE_FILE
+#
+# Compose precedence (last file wins):
+#   1) your base compose file
+#   2) .port/override.yml (Port-generated)
+#   3) .port/override.user.yml (rendered from this file)
+#
+# Add overrides below as needed. By default this file has no active changes.
+
+# Example (disabled): add a branch label to web
+# services:
+#   web:
+#     labels:
+#       - app.branch=$PORT_BRANCH
+#
+# Example (disabled): branch-specific hostname rule
+# services:
+#   web:
+#     labels:
+#       - traefik.http.routers.$PORT_BRANCH-web.rule=Host(\`$PORT_BRANCH.$PORT_DOMAIN\`)
+#
+# Example (disabled): inject branch into container environment
+# services:
+#   web:
+#     environment:
+#       PORT_BRANCH_NAME: $PORT_BRANCH
+`
+
 /**
  * Initialize .port directory in the current project
  */
@@ -74,6 +115,7 @@ export async function init(): Promise<void> {
   const configPath = getConfigPath(repoRoot)
   const treesDir = getTreesDir(repoRoot)
   const gitignorePath = join(portDir, '.gitignore')
+  const overrideComposePath = join(portDir, 'override-compose.yml')
 
   // Check if already initialized
   if (existsSync(portDir)) {
@@ -105,6 +147,14 @@ export async function init(): Promise<void> {
     output.success(`Created ${PORT_DIR}/${HOOKS_DIR}/${POST_CREATE_HOOK}`)
   } else {
     output.dim(`${PORT_DIR}/${HOOKS_DIR}/${POST_CREATE_HOOK} already exists`)
+  }
+
+  // Create user override compose template
+  if (!existsSync(overrideComposePath)) {
+    await writeFile(overrideComposePath, OVERRIDE_COMPOSE_TEMPLATE)
+    output.success(`Created ${PORT_DIR}/override-compose.yml`)
+  } else {
+    output.dim(`${PORT_DIR}/override-compose.yml already exists`)
   }
 
   // Create config file if it doesn't exist

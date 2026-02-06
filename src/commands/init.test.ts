@@ -50,4 +50,13 @@ describe('Directory creation tests', () => {
     await findByText('Initialization complete')
     expect(existsSync(path.join(sampleDir, '.port'))).toBeTruthy()
   })
+
+  test('should create the user override compose scaffold', async () => {
+    expect(existsSync(path.join(sampleDir, '.port', 'override-compose.yml'))).toBeFalsy()
+
+    const { findByText } = await renderCLI(['init'], sampleDir)
+    await findByText('Initialization complete')
+
+    expect(existsSync(path.join(sampleDir, '.port', 'override-compose.yml'))).toBeTruthy()
+  })
 })

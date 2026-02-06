@@ -335,16 +335,19 @@ dig test.port
 
 ## Compose Overrides Reference
 
-Port isolates worktrees in two layers:
+Port isolates worktrees in layered compose files:
 
-1. Compose invocation flags (`-p`, `-f`)
-2. A generated override file (`.port/override.yml`)
+1. Your base compose file (`docker-compose.yml` by default)
+2. A generated Port override (`.port/override.yml`)
+3. An optional rendered user override (`.port/override.user.yml`)
 
-Port always runs compose with your base file first and `.port/override.yml` second:
+Port runs compose with user overrides last so local customization wins:
 
 ```bash
-docker compose -p <project-name> -f docker-compose.yml -f .port/override.yml up -d
+docker compose -p <project-name> -f docker-compose.yml -f .port/override.yml -f .port/override.user.yml up -d
 ```
+
+`.port/override.user.yml` is generated at runtime from `.port/override-compose.yml` if that file exists.
 
 Here are all Port-managed overrides/compose controls and why they exist:
 
@@ -352,6 +355,7 @@ Here are all Port-managed overrides/compose controls and why they exist:
 | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `-p <project-name>` (compose flag)                                        | Namespaces compose resources per repo/worktree so similarly named stacks do not collide.                             |
 | `-f .port/override.yml` (compose flag)                                    | Applies Port's deterministic runtime adjustments without mutating your source compose file.                          |
+| `-f .port/override.user.yml` (compose flag, optional)                     | Applies user-provided overrides rendered from `.port/override-compose.yml`, after Port defaults, so user rules win.  |
 | `services.<name>.ports: !override []` (for services with published ports) | Removes host port binds so two worktrees can both run services that declare the same host ports.                     |
 | `services.<name>.labels: [...]`                                           | Adds Traefik router/service metadata so requests route by hostname (`<branch>.port`) instead of host port ownership. |
 | `services.<name>.networks: [traefik-network]`                             | Ensures Traefik can reach exposed services on the shared network.                                                    |
@@ -362,6 +366,8 @@ Notes:
 
 - For services without published ports, Port does not inject Traefik labels/ports/network wiring.
 - Port intentionally does not override `image`, `build`, `environment`, `volumes`, `depends_on`, or `command`.
+- `.port/override-compose.yml` is optional and user-editable; if missing, Port skips the user layer.
+- Supported user override variables: `PORT_ROOT_PATH`, `PORT_WORKTREE_PATH`, `PORT_BRANCH`, `PORT_DOMAIN`, `PORT_PROJECT_NAME`, `PORT_COMPOSE_FILE`.
 
 Example generated shape:
 

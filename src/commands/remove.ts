@@ -84,7 +84,11 @@ export async function remove(branch: string, options: RemoveOptions = {}): Promi
   const projectName = getProjectName(repoRoot, sanitized)
   if (worktreePathExists) {
     output.info(`Stopping services in ${output.branch(sanitized)}...`)
-    const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['down'])
+    const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['down'], {
+      repoRoot,
+      branch: sanitized,
+      domain: config.domain,
+    })
     if (exitCode !== 0) {
       output.warn('Failed to stop services')
       // Continue with removal even if stop fails

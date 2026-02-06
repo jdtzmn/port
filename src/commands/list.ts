@@ -29,6 +29,9 @@ interface WorktreeStatus {
  * Get status of a worktree's services
  */
 async function getWorktreeStatus(
+  repoRoot: string,
+  branch: string,
+  domain: string,
   worktreePath: string,
   composeFile: string,
   projectName: string
@@ -40,7 +43,11 @@ async function getWorktreeStatus(
     const parsedCompose = await parseComposeFile(worktreePath, composeFile)
 
     // Try to get compose status
-    const psResult = await composePs(worktreePath, composeFile, projectName)
+    const psResult = await composePs(worktreePath, composeFile, projectName, {
+      repoRoot,
+      branch,
+      domain,
+    })
     const runningServices = new Map(psResult.map(s => [s.name, s.running]))
 
     for (const [serviceName, service] of Object.entries(parsedCompose.services)) {
@@ -92,7 +99,14 @@ export async function list(): Promise<void> {
 
   // Check main repo - use the same project name logic
   const mainProjectName = getProjectName(repoRoot, repoName)
-  const mainServices = await getWorktreeStatus(repoRoot, composeFile, mainProjectName)
+  const mainServices = await getWorktreeStatus(
+    repoRoot,
+    repoName,
+    config.domain,
+    repoRoot,
+    composeFile,
+    mainProjectName
+  )
   const mainRunning = mainServices.some(s => s.running)
 
   worktrees.push({
@@ -111,7 +125,14 @@ export async function list(): Promise<void> {
 
       const worktreePath = join(treesDir, entry.name)
       const worktreeProjectName = getProjectName(repoRoot, entry.name)
-      const services = await getWorktreeStatus(worktreePath, composeFile, worktreeProjectName)
+      const services = await getWorktreeStatus(
+        repoRoot,
+        entry.name,
+        config.domain,
+        worktreePath,
+        composeFile,
+        worktreeProjectName
+      )
       const running = services.some(s => s.running)
 
       worktrees.push({

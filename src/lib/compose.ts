@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from 'fs/promises'
+import { existsSync } from 'fs'
+import { mkdir, readFile, writeFile } from 'fs/promises'
 import { basename, join } from 'path'
 import { stringify as yamlStringify } from 'yaml'
 import type { ParsedComposeFile, ParsedComposeService } from '../types.ts'
@@ -9,8 +10,29 @@ import { sanitizeFolderName } from './sanitize.ts'
 /** Override file name */
 export const OVERRIDE_FILE = 'override.yml'
 
+/** User-editable compose override file name */
+export const USER_OVERRIDE_COMPOSE_FILE = 'override-compose.yml'
+
+/** Rendered compose override file name (generated) */
+export const USER_OVERRIDE_RENDERED_FILE = 'override.user.yml'
+
 /** Port directory for override files */
 const PORT_DIR = '.port'
+
+interface UserOverrideRenderContext {
+  repoRoot: string
+  worktreePath: string
+  branch: string
+  domain: string
+  composeFile: string
+  projectName: string
+}
+
+interface ComposeRuntimeContext {
+  repoRoot: string
+  branch: string
+  domain: string
+}
 
 /**
  * Generate a unique docker-compose project name from repo root and worktree name.
@@ -40,6 +62,85 @@ export function getProjectName(repoRoot: string, worktreeName: string): string {
  */
 export function getOverrideRelativePath(): string {
   return join(PORT_DIR, OVERRIDE_FILE)
+}
+
+/**
+ * Get the relative path to the user-editable override compose file
+ */
+export function getUserOverrideComposeRelativePath(): string {
+  return join(PORT_DIR, USER_OVERRIDE_COMPOSE_FILE)
+}
+
+/**
+ * Get the relative path to the rendered user override compose file
+ */
+export function getUserOverrideRenderedRelativePath(): string {
+  return join(PORT_DIR, USER_OVERRIDE_RENDERED_FILE)
+}
+
+/**
+ * Build compose file stack in precedence order (last file wins)
+ */
+export function getComposeFileStack(
+  composeFile: string,
+  userOverrideFile?: string | null
+): string[] {
+  const files = [composeFile, getOverrideRelativePath()]
+
+  if (userOverrideFile) {
+    files.push(userOverrideFile)
+  }
+
+  return files
+}
+
+/**
+ * Render PORT_* variables in a compose template-like file.
+ *
+ * Supports both $PORT_VAR and ${PORT_VAR} forms.
+ */
+export function renderPortVariables(template: string, variables: Record<string, string>): string {
+  return template.replace(/\$\{(PORT_[A-Z0-9_]+)\}|\$(PORT_[A-Z0-9_]+)/g, (match, braced, bare) => {
+    const key = (braced ?? bare) as string
+    return variables[key] ?? match
+  })
+}
+
+function buildUserOverrideVariables(context: UserOverrideRenderContext): Record<string, string> {
+  return {
+    PORT_ROOT_PATH: context.repoRoot,
+    PORT_WORKTREE_PATH: context.worktreePath,
+    PORT_BRANCH: context.branch,
+    PORT_DOMAIN: context.domain,
+    PORT_PROJECT_NAME: context.projectName,
+    PORT_COMPOSE_FILE: context.composeFile,
+  }
+}
+
+/**
+ * Render .port/override-compose.yml into .port/override.user.yml when present.
+ *
+ * @returns Relative path to rendered file, or null when source file is missing.
+ */
+export async function renderUserOverrideFile(
+  context: UserOverrideRenderContext
+): Promise<string | null> {
+  const sourceRelativePath = getUserOverrideComposeRelativePath()
+  const sourcePath = join(context.worktreePath, sourceRelativePath)
+
+  if (!existsSync(sourcePath)) {
+    return null
+  }
+
+  const renderedRelativePath = getUserOverrideRenderedRelativePath()
+  const renderedPath = join(context.worktreePath, renderedRelativePath)
+  const source = await readFile(sourcePath, 'utf-8')
+  const rendered = renderPortVariables(source, buildUserOverrideVariables(context))
+
+  await mkdir(join(context.worktreePath, PORT_DIR), { recursive: true })
+  await writeFile(renderedPath, rendered)
+
+  return renderedRelativePath
 }
 
 /**
@@ -384,13 +485,30 @@ export async function runCompose(
   cwd: string,
   composeFile: string,
   projectName: string,
-  args: string[]
+  args: string[],
+  runtimeContext?: ComposeRuntimeContext
 ): Promise<{ exitCode: number }> {
   const cmd = await getComposeCommand()
-  const overridePath = getOverrideRelativePath()
+  const renderedUserOverride = runtimeContext
+    ? await renderUserOverrideFile({
+        repoRoot: runtimeContext.repoRoot,
+        worktreePath: cwd,
+        branch: runtimeContext.branch,
+        domain: runtimeContext.domain,
+        composeFile,
+        projectName,
+      })
+    : null
+  const composeFiles = getComposeFileStack(composeFile, renderedUserOverride)
 
   // Build the full command with -p and -f flags
-  const fullArgs = ['-p', projectName, '-f', composeFile, '-f', overridePath, ...args]
+  const fullArgs = ['-p', projectName]
+
+  for (const file of composeFiles) {
+    fullArgs.push('-f', file)
+  }
+
+  fullArgs.push(...args)
   const fullCommand = `${cmd} ${fullArgs.join(' ')}`
 
   return execWithStdio(fullCommand, { cwd })
@@ -407,14 +525,26 @@ export async function runCompose(
 export async function composePs(
   cwd: string,
   composeFile: string,
-  projectName: string
+  projectName: string,
+  runtimeContext?: ComposeRuntimeContext
 ): Promise<Array<{ name: string; status: string; running: boolean }>> {
   const cmd = await getComposeCommand()
-  const overridePath = getOverrideRelativePath()
+  const renderedUserOverride = runtimeContext
+    ? await renderUserOverrideFile({
+        repoRoot: runtimeContext.repoRoot,
+        worktreePath: cwd,
+        branch: runtimeContext.branch,
+        domain: runtimeContext.domain,
+        composeFile,
+        projectName,
+      })
+    : null
+  const composeFiles = getComposeFileStack(composeFile, renderedUserOverride)
+  const composeFileFlags = composeFiles.map(file => `-f ${file}`).join(' ')
 
   try {
     const { stdout } = await execAsync(
-      `${cmd} -p ${projectName} -f ${composeFile} -f ${overridePath} ps --format json`,
+      `${cmd} -p ${projectName} ${composeFileFlags} ps --format json`,
       { cwd }
     )
 

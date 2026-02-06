@@ -86,7 +86,11 @@ export async function down(options?: { yes?: boolean }): Promise<void> {
   // Stop docker-compose services
   const projectName = getProjectName(repoRoot, name)
   output.info(`Stopping services in ${output.branch(name)}...`)
-  const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['down'])
+  const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['down'], {
+    repoRoot,
+    branch: name,
+    domain: config.domain,
+  })
   if (exitCode !== 0) {
     output.error('Failed to stop services')
     // Continue to unregister even if stop fails

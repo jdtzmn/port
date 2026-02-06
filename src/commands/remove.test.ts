@@ -138,9 +138,17 @@ describe('remove command', () => {
     expect(mocks.prompt).toHaveBeenCalledWith([
       expect.objectContaining({ message: 'Remove this worktree anyway?' }),
     ])
-    expect(mocks.runCompose).toHaveBeenCalledWith(nestedPath, 'docker-compose.yml', 'repo-demo-2', [
-      'down',
-    ])
+    expect(mocks.runCompose).toHaveBeenCalledWith(
+      nestedPath,
+      'docker-compose.yml',
+      'repo-demo-2',
+      ['down'],
+      {
+        repoRoot: '/repo',
+        branch: 'demo-2',
+        domain: 'port',
+      }
+    )
     expect(mocks.removeWorktreeAtPath).toHaveBeenCalledWith('/repo', nestedPath, true)
     expect(mocks.removeWorktree).not.toHaveBeenCalled()
   })

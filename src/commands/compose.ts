@@ -58,6 +58,10 @@ export async function compose(args: string[]): Promise<void> {
 
   // Run the compose command with automatic -p and -f flags
   const projectName = getProjectName(repoRoot, name)
-  const { exitCode } = await runCompose(worktreePath, composeFile, projectName, args)
+  const { exitCode } = await runCompose(worktreePath, composeFile, projectName, args, {
+    repoRoot,
+    branch: name,
+    domain: config.domain,
+  })
   process.exit(exitCode)
 }
