@@ -2,7 +2,7 @@ import { spawn } from 'child_process'
 import { findGitRoot, getWorktreePath, worktreeExists } from '../lib/worktree.ts'
 import { loadConfig, configExists, getTreesDir, getComposeFile } from '../lib/config.ts'
 import { createWorktree, removeWorktree } from '../lib/git.ts'
-import { writeOverrideFile, parseComposeFile } from '../lib/compose.ts'
+import { writeOverrideFile, parseComposeFile, getProjectName } from '../lib/compose.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import { hookExists, runPostCreateHook } from '../lib/hooks.ts'
 import { mkdir } from 'fs/promises'
@@ -103,7 +103,8 @@ export async function enter(branch: string, options?: EnterOptions): Promise<voi
   const composeFile = getComposeFile(config)
   try {
     const parsedCompose = await parseComposeFile(worktreePath, composeFile)
-    await writeOverrideFile(worktreePath, parsedCompose, sanitized, config.domain)
+    const projectName = getProjectName(repoRoot, sanitized)
+    await writeOverrideFile(worktreePath, parsedCompose, sanitized, config.domain, projectName)
     output.success('Generated .port/override.yml')
   } catch (error) {
     // It's okay if compose parsing fails here - the file might not exist yet in the worktree

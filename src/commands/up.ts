@@ -99,9 +99,11 @@ export async function up(): Promise<void> {
     }
   }
 
+  const projectName = getProjectName(repoRoot, name)
+
   // Generate/update override file
   try {
-    await writeOverrideFile(worktreePath, parsedCompose, name, config.domain)
+    await writeOverrideFile(worktreePath, parsedCompose, name, config.domain, projectName)
     output.dim('Updated .port/override.yml')
   } catch (error) {
     output.error(`Failed to generate override file: ${error}`)
@@ -109,7 +111,6 @@ export async function up(): Promise<void> {
   }
 
   // Start docker-compose services
-  const projectName = getProjectName(repoRoot, name)
   output.info(`Starting services in ${output.branch(name)}...`)
   const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['up', '-d'])
   if (exitCode !== 0) {

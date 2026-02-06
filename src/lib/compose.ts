@@ -60,6 +60,47 @@ interface ServicePortMapping {
   target: number
 }
 
+const MAX_CONTAINER_NAME_LENGTH = 128
+
+function stableHash(input: string): string {
+  let hash = 5381
+
+  for (let i = 0; i < input.length; i++) {
+    hash = (hash * 33) ^ input.charCodeAt(i)
+  }
+
+  return (hash >>> 0).toString(36)
+}
+
+/**
+ * Normalize a container name to docker's supported character set.
+ *
+ * Docker names must match [a-z0-9][a-z0-9_.-]*.
+ */
+function normalizeContainerName(identity: string, serviceName: string): string {
+  const raw = `${identity}-${serviceName}`
+  let normalized = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[^a-z0-9]+/, '')
+    .replace(/[^a-z0-9]+$/, '')
+
+  if (!normalized) {
+    normalized = 'port'
+  }
+
+  if (normalized.length <= MAX_CONTAINER_NAME_LENGTH) {
+    return normalized
+  }
+
+  const suffix = stableHash(raw)
+  const maxPrefixLength = MAX_CONTAINER_NAME_LENGTH - suffix.length - 1
+  const prefix = normalized.slice(0, Math.max(1, maxPrefixLength)).replace(/[^a-z0-9]+$/, '')
+
+  return `${prefix}-${suffix}`
+}
+
 /**
  * Parse a compose port value that may be a string or number
  */
@@ -238,17 +279,19 @@ function generateTraefikLabels(
 export function generateOverrideContent(
   parsedCompose: ParsedComposeFile,
   worktreeName: string,
-  domain: string = 'port'
+  domain: string = 'port',
+  projectName: string = worktreeName
 ): string {
   const services: Record<string, unknown> = {}
 
   for (const [serviceName, service] of Object.entries(parsedCompose.services)) {
     const ports = getServicePortMappings(service)
 
-    // Note: We don't set container_name here. Docker-compose automatically
-    // namespaces containers using the project name from the -p flag, which
-    // ensures uniqueness across worktrees and different repositories.
     const serviceOverride: Record<string, unknown> = {}
+
+    if (service.container_name) {
+      serviceOverride.container_name = normalizeContainerName(projectName, serviceName)
+    }
 
     // Only add Traefik config for services with ports
     if (ports.length > 0) {
@@ -301,9 +344,10 @@ export async function writeOverrideFile(
   worktreePath: string,
   parsedCompose: ParsedComposeFile,
   worktreeName: string,
-  domain: string = 'port'
+  domain: string = 'port',
+  projectName: string = worktreeName
 ): Promise<void> {
-  const content = generateOverrideContent(parsedCompose, worktreeName, domain)
+  const content = generateOverrideContent(parsedCompose, worktreeName, domain, projectName)
   const overridePath = join(worktreePath, PORT_DIR, OVERRIDE_FILE)
   // Ensure .port directory exists (for worktrees)
   await mkdir(join(worktreePath, PORT_DIR), { recursive: true })
