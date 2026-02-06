@@ -1,6 +1,7 @@
 import { test, expect, describe, beforeEach, afterEach } from 'vitest'
 import { existsSync } from 'fs'
 import { readFile } from 'fs/promises'
+import { dirname } from 'path'
 import {
   loadRegistry,
   saveRegistry,
@@ -28,6 +29,12 @@ function createMockHostService(overrides: Partial<HostService> = {}): HostServic
 
 describe('Host Service Registry Functions', () => {
   let originalRegistry: Registry | null = null
+
+  test('uses isolated global registry path in tests', () => {
+    const isolatedDir = process.env.PORT_GLOBAL_DIR
+    expect(isolatedDir).toBeTruthy()
+    expect(dirname(REGISTRY_FILE)).toBe(isolatedDir)
+  })
 
   beforeEach(async () => {
     // Backup existing registry if it exists

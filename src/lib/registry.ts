@@ -4,8 +4,11 @@ import { join } from 'path'
 import { homedir } from 'os'
 import type { Registry, Project, HostService } from '../types.ts'
 
+/** Optional env var to override global state directory (used by tests) */
+const GLOBAL_PORT_DIR_ENV = 'PORT_GLOBAL_DIR'
+
 /** Global port directory in user's home */
-export const GLOBAL_PORT_DIR = join(homedir(), '.port')
+export const GLOBAL_PORT_DIR = process.env[GLOBAL_PORT_DIR_ENV]?.trim() || join(homedir(), '.port')
 
 /** Registry file path */
 export const REGISTRY_FILE = join(GLOBAL_PORT_DIR, 'registry.json')
