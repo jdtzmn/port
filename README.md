@@ -1,10 +1,10 @@
 # Port CLI Tool
 
-A Node.js CLI tool that manages git worktrees and automatically configures Traefik reverse proxy to expose services via local domains (e.g., `feature-1.local:3000`).
+A CLI tool that manages git worktrees and automatically configures Traefik reverse proxy to expose services via local domains (e.g., `feature-1.port:3000`).
 
 ## Use Case
 
-Developers working with git worktrees can use `port up feature-1` to instantly start a worktree with all services accessible at `feature-1.local:PORT`.
+Developers working with git worktrees can run `port feature-1` to create/enter a worktree, then `port up` to start services accessible at `feature-1.port:PORT`.
 
 ## Features
 
@@ -12,12 +12,13 @@ Developers working with git worktrees can use `port up feature-1` to instantly s
 - **Automatic Traefik Configuration**: Dynamically configure Traefik reverse proxy for local domain access
 - **Port Conflict Resolution**: Run multiple worktrees simultaneously without port conflicts
 - **Host Process Support**: Run non-Docker processes (like `npm serve`) with Traefik routing
-- **DNS Setup**: Automated DNS configuration for `*.local` domains
+- **DNS Setup**: Automated DNS configuration for `*.port` domains
 - **Service Discovery**: Easy access to services via hostnames instead of port numbers
 
 ## Installation
 
 ```bash
+# Bun is required at runtime (the CLI uses a Bun shebang)
 npm install -g @jdtzmn/port
 # or with bun
 bun install -g @jdtzmn/port
@@ -31,26 +32,19 @@ bun install -g @jdtzmn/port
 port init
 ```
 
-This sets up the `.code/` directory structure and checks DNS configuration.
+This sets up the `.port/` directory structure and checks DNS configuration.
 
-### 2. Configure Services
+### 2. Configure Project
 
-Create `.code/config.jsonc` in your project with service definitions:
+Create `.port/config.jsonc` in your project:
 
 ```jsonc
 {
-  "domain": "local",
+  // Optional, defaults to "port"
+  "domain": "port",
+
+  // Optional, defaults to "docker-compose.yml"
   "compose": "docker-compose.yml",
-  "services": [
-    {
-      "name": "web",
-      "ports": [3000, 3001],
-    },
-    {
-      "name": "api",
-      "ports": [4000],
-    },
-  ],
 }
 ```
 
@@ -99,7 +93,7 @@ This creates a new worktree and spawns a subshell inside it.
 port up
 ```
 
-Starts docker-compose services and makes them available at `feature-1.local:PORT`.
+Starts docker-compose services and makes them available at `feature-1.port:PORT`.
 
 ### 6. Stop Services
 
@@ -150,7 +144,9 @@ Stops services and removes the worktree entirely.
 | `port down`                       | Stop docker-compose services and host processes   |
 | `port run <port> -- <command...>` | Run a host process with Traefik routing           |
 | `port remove <branch>`            | Remove a worktree entirely                        |
+| `port compose <args...>`          | Run docker compose with auto `-f` flags           |
 | `port list`                       | List all worktrees and their status               |
+| `port uninstall [--yes]`          | Remove DNS configuration for `*.port`             |
 
 ## How It Works
 
@@ -165,7 +161,7 @@ Stops services and removes the worktree entirely.
          ▼
 ┌─────────────────────────────────┐
 │ Your Project: ~/projects/my-app │
-│ ├── .code/                      │
+│ ├── .port/                      │
 │ │   ├── config.jsonc            │
 │ │   └── trees/                  │
 │ │       ├── feature-1/          │
@@ -176,7 +172,7 @@ Stops services and removes the worktree entirely.
          ▼
 ┌─────────────────────────────────┐
 │ Traefik (global)                │
-│ ~/.code/traefik/                │
+│ ~/.port/traefik/                │
 │ - Routes by hostname            │
 │ - Manages all services          │
 └─────────────────────────────────┘
@@ -238,7 +234,7 @@ port/
 ├── package.json
 ├── tsconfig.json
 ├── eslint.config.ts
-├── prettier.config.ts
+├── prettier.config.js
 ├── src/
 │   ├── index.ts                 # Entry point
 │   ├── commands/
@@ -268,7 +264,7 @@ port/
 
 ## Requirements
 
-- Node.js 18+
+- Bun 1.0+
 - Git 2.7+
 - Docker & Docker Compose v2.24.0+
 - macOS or Linux
