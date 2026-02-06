@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   branch: vi.fn(),
   success: vi.fn(),
   dim: vi.fn(),
+  info: vi.fn(),
   error: vi.fn(),
   url: vi.fn(),
 }))
@@ -52,6 +53,7 @@ vi.mock('../lib/output.ts', () => ({
   branch: mocks.branch,
   success: mocks.success,
   dim: mocks.dim,
+  info: mocks.info,
   error: mocks.error,
   url: mocks.url,
 }))
@@ -122,5 +124,31 @@ describe('list command', () => {
     expect(outputLines).toContain('  pid: 999')
     expect(mocks.cleanupStaleHostServices).toHaveBeenCalledTimes(1)
     logSpy.mockRestore()
+  })
+
+  test('outside a git repository shows global service status without hard error', async () => {
+    mocks.detectWorktree.mockImplementation(() => {
+      throw new Error('Not in a git repository')
+    })
+
+    await expect(list()).resolves.toBeUndefined()
+
+    expect(mocks.info).toHaveBeenCalledWith('Not in a git repository. Showing global service status only.')
+    expect(mocks.collectWorktreeStatuses).not.toHaveBeenCalled()
+    expect(mocks.cleanupStaleHostServices).toHaveBeenCalledTimes(1)
+    expect(mocks.error).not.toHaveBeenCalled()
+  })
+
+  test('in non-port repo shows global service status without hard error', async () => {
+    mocks.configExists.mockReturnValue(false)
+
+    await expect(list()).resolves.toBeUndefined()
+
+    expect(mocks.info).toHaveBeenCalledWith(
+      'Current repository is not initialized with port. Showing global service status only.'
+    )
+    expect(mocks.collectWorktreeStatuses).not.toHaveBeenCalled()
+    expect(mocks.cleanupStaleHostServices).toHaveBeenCalledTimes(1)
+    expect(mocks.error).not.toHaveBeenCalled()
   })
 })

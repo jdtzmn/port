@@ -5,27 +5,26 @@ import { getAllHostServices } from '../lib/registry.ts'
 import { isProcessRunning, cleanupStaleHostServices } from '../lib/hostService.ts'
 import { collectWorktreeStatuses } from '../lib/worktreeStatus.ts'
 import * as output from '../lib/output.ts'
-import { failWithError } from '../lib/cli.ts'
 
 /**
  * List concise worktree-level status and host services
  */
 export async function list(): Promise<void> {
-  let repoRoot: string
+  let worktrees: Array<{ name: string; running: boolean }> = []
+
   try {
-    repoRoot = detectWorktree().repoRoot
+    const repoRoot = detectWorktree().repoRoot
+
+    if (configExists(repoRoot)) {
+      const config = await loadConfig(repoRoot)
+      const composeFile = getComposeFile(config)
+      worktrees = await collectWorktreeStatuses(repoRoot, composeFile, config.domain)
+    } else {
+      output.info('Current repository is not initialized with port. Showing global service status only.')
+    }
   } catch {
-    failWithError('Not in a git repository')
+    output.info('Not in a git repository. Showing global service status only.')
   }
-
-  // Check if port is initialized
-  if (!configExists(repoRoot)) {
-    failWithError('Port not initialized. Run "port init" first.')
-  }
-
-  const config = await loadConfig(repoRoot)
-  const composeFile = getComposeFile(config)
-  const worktrees = await collectWorktreeStatuses(repoRoot, composeFile, config.domain)
 
   // Output
   output.header('Active worktrees:')
