@@ -4,6 +4,14 @@ import { join } from 'path'
 import { parse as parseJsonc, type ParseError } from 'jsonc-parser'
 import type { PortConfig } from '../types.ts'
 
+const JSONC_PARSE_OPTIONS = {
+  allowTrailingComma: true,
+}
+
+function parseConfigJsonc(content: string, errors: ParseError[]): unknown {
+  return parseJsonc(content, errors, JSONC_PARSE_OPTIONS)
+}
+
 /** Directory name for port configuration */
 export const PORT_DIR = '.port'
 
@@ -123,7 +131,7 @@ export async function loadConfig(repoRoot: string): Promise<PortConfig> {
 
   // Parse JSONC (allows comments)
   const errors: ParseError[] = []
-  const config = parseJsonc(content, errors)
+  const config = parseConfigJsonc(content, errors)
 
   if (errors.length > 0) {
     throw new ConfigError(`Invalid JSON in ${CONFIG_FILE}: ${JSON.stringify(errors[0])}`)
