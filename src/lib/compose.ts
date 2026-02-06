@@ -53,6 +53,54 @@ export class ComposeError extends Error {
 }
 
 /**
+ * Parsed published -> target port mapping for a compose service
+ */
+interface ServicePortMapping {
+  published: number
+  target: number
+}
+
+/**
+ * Parse a compose port value that may be a string or number
+ */
+function parsePort(value: string | number | undefined): number | null {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value > 0 ? value : null
+  }
+
+  if (typeof value === 'string') {
+    const parsed = parseInt(value, 10)
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+  }
+
+  return null
+}
+
+/**
+ * Get all published -> target port mappings from a parsed compose service
+ */
+function getServicePortMappings(service: ParsedComposeService): ServicePortMapping[] {
+  if (!service.ports || service.ports.length === 0) {
+    return []
+  }
+
+  const mappings: ServicePortMapping[] = []
+
+  for (const port of service.ports) {
+    const published = parsePort(port.published)
+    const target = parsePort(port.target)
+
+    if (published === null || target === null) {
+      continue
+    }
+
+    mappings.push({ published, target })
+  }
+
+  return mappings
+}
+
+/**
  * Parse a docker-compose file using docker compose config
  *
  * @param cwd - Working directory containing the compose file
@@ -84,17 +132,7 @@ export async function parseComposeFile(
  * @returns Array of published port numbers
  */
 export function getServicePorts(service: ParsedComposeService): number[] {
-  if (!service.ports || service.ports.length === 0) {
-    return []
-  }
-
-  return service.ports
-    .map(p => {
-      // published can be string or number depending on docker compose version
-      const port = typeof p.published === 'string' ? parseInt(p.published, 10) : p.published
-      return port
-    })
-    .filter((port): port is number => typeof port === 'number' && !isNaN(port) && port > 0)
+  return getServicePortMappings(service).map(port => port.published)
 }
 
 /**
@@ -174,17 +212,18 @@ export async function checkComposeVersion(): Promise<{
 function generateTraefikLabels(
   worktreeName: string,
   serviceName: string,
-  port: number,
+  publishedPort: number,
+  targetPort: number,
   domain: string
 ): string[] {
-  const routerName = `${worktreeName}-${serviceName}-${port}`
+  const routerName = `${worktreeName}-${serviceName}-${publishedPort}`
   const hostname = `${worktreeName}.${domain}`
 
   return [
     `traefik.http.routers.${routerName}.rule=Host(\`${hostname}\`)`,
-    `traefik.http.routers.${routerName}.entrypoints=port${port}`,
+    `traefik.http.routers.${routerName}.entrypoints=port${publishedPort}`,
     `traefik.http.routers.${routerName}.service=${routerName}`,
-    `traefik.http.services.${routerName}.loadbalancer.server.port=${port}`,
+    `traefik.http.services.${routerName}.loadbalancer.server.port=${targetPort}`,
   ]
 }
 
@@ -204,7 +243,7 @@ export function generateOverrideContent(
   const services: Record<string, unknown> = {}
 
   for (const [serviceName, service] of Object.entries(parsedCompose.services)) {
-    const ports = getServicePorts(service)
+    const ports = getServicePortMappings(service)
 
     // Note: We don't set container_name here. Docker-compose automatically
     // namespaces containers using the project name from the -p flag, which
@@ -217,7 +256,9 @@ export function generateOverrideContent(
 
       // Add labels for each port
       for (const port of ports) {
-        labels.push(...generateTraefikLabels(worktreeName, serviceName, port, domain))
+        labels.push(
+          ...generateTraefikLabels(worktreeName, serviceName, port.published, port.target, domain)
+        )
       }
 
       serviceOverride.ports = [] // Will be prefixed with !override in output
