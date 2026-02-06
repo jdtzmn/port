@@ -13,6 +13,7 @@ import { sanitizeBranchName } from '../lib/sanitize.ts'
 import { getAllHostServices } from '../lib/registry.ts'
 import { isProcessRunning, cleanupStaleHostServices } from '../lib/hostService.ts'
 import * as output from '../lib/output.ts'
+import { failWithError } from '../lib/cli.ts'
 
 interface WorktreeStatus {
   name: string
@@ -79,14 +80,12 @@ export async function list(): Promise<void> {
   try {
     repoRoot = detectWorktree().repoRoot
   } catch {
-    output.error('Not in a git repository')
-    process.exit(1)
+    failWithError('Not in a git repository')
   }
 
   // Check if port is initialized
   if (!configExists(repoRoot)) {
-    output.error('Port not initialized. Run "port init" first.')
-    process.exit(1)
+    failWithError('Port not initialized. Run "port init" first.')
   }
 
   const config = await loadConfig(repoRoot)

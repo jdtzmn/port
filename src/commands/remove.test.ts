@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { CliError } from '../lib/cli.ts'
 
 const mocks = vi.hoisted(() => ({
   prompt: vi.fn(),
@@ -183,5 +184,22 @@ describe('remove command', () => {
     expect(mocks.pruneWorktrees).toHaveBeenCalledWith('/repo')
     expect(mocks.removeWorktree).not.toHaveBeenCalled()
     expect(mocks.removeWorktreeAtPath).not.toHaveBeenCalled()
+  })
+
+  test('throws a CLI error when not in a git repository', async () => {
+    mocks.detectWorktree.mockImplementation(() => {
+      throw new Error('not a git repo')
+    })
+
+    await expect(remove('demo-2')).rejects.toBeInstanceOf(CliError)
+    expect(mocks.error).toHaveBeenCalledWith('Not in a git repository')
+  })
+
+  test('throws a CLI error when worktree is missing', async () => {
+    mocks.worktreeExists.mockReturnValue(false)
+    mocks.findWorktreeByBranch.mockResolvedValue(null)
+
+    await expect(remove('demo-2')).rejects.toBeInstanceOf(CliError)
+    expect(mocks.error).toHaveBeenCalledWith('Worktree not found: demo-2')
   })
 })

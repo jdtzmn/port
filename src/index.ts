@@ -11,6 +11,7 @@ import { remove } from './commands/remove.ts'
 import { uninstall } from './commands/uninstall.ts'
 import { compose } from './commands/compose.ts'
 import { run } from './commands/run.ts'
+import { handleCliError } from './lib/cli.ts'
 
 const program = new Command()
 
@@ -120,4 +121,4 @@ program
     }
   })
 
-program.parse()
+program.parseAsync().catch(handleCliError)

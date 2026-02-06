@@ -12,6 +12,7 @@ import { unregisterProject, hasRegisteredProjects } from '../lib/registry.ts'
 import { runCompose, stopTraefik, isTraefikRunning, getProjectName } from '../lib/compose.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
+import { failWithError } from '../lib/cli.ts'
 
 interface RemoveOptions {
   force?: boolean
@@ -27,14 +28,12 @@ export async function remove(branch: string, options: RemoveOptions = {}): Promi
   try {
     repoRoot = detectWorktree().repoRoot
   } catch {
-    output.error('Not in a git repository')
-    process.exit(1)
+    failWithError('Not in a git repository')
   }
 
   // Check if port is initialized
   if (!configExists(repoRoot)) {
-    output.error('Port not initialized. Run "port init" first.')
-    process.exit(1)
+    failWithError('Port not initialized. Run "port init" first.')
   }
 
   // Sanitize branch name
@@ -48,8 +47,7 @@ export async function remove(branch: string, options: RemoveOptions = {}): Promi
     const registeredWorktree = await findWorktreeByBranch(repoRoot, branch)
 
     if (!registeredWorktree) {
-      output.error(`Worktree not found: ${sanitized}`)
-      process.exit(1)
+      failWithError(`Worktree not found: ${sanitized}`)
     }
 
     worktreePath = registeredWorktree.path
@@ -115,8 +113,7 @@ export async function remove(branch: string, options: RemoveOptions = {}): Promi
       output.success('Stale worktree metadata pruned')
     }
   } catch (error) {
-    output.error(`Failed to remove worktree: ${error}`)
-    process.exit(1)
+    failWithError(`Failed to remove worktree: ${error}`)
   }
 
   // Unregister project from global registry

@@ -15,6 +15,7 @@ import {
 import { getHooksDir, getHookPath } from '../lib/hooks.ts'
 import { checkDns } from '../lib/dns.ts'
 import * as output from '../lib/output.ts'
+import { failWithError } from '../lib/cli.ts'
 
 /** Default config template */
 const CONFIG_TEMPLATE = `{
@@ -107,8 +108,7 @@ export async function init(): Promise<void> {
   try {
     repoRoot = detectWorktree().repoRoot
   } catch {
-    output.error('Not in a git repository')
-    process.exit(1)
+    failWithError('Not in a git repository')
   }
 
   const portDir = getPortDir(repoRoot)
