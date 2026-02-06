@@ -133,7 +133,9 @@ describe('list command', () => {
 
     await expect(list()).resolves.toBeUndefined()
 
-    expect(mocks.info).toHaveBeenCalledWith('Not in a git repository. Showing global service status only.')
+    expect(mocks.info).toHaveBeenCalledWith(
+      'Not in a git repository. Showing global service status only.'
+    )
     expect(mocks.collectWorktreeStatuses).not.toHaveBeenCalled()
     expect(mocks.cleanupStaleHostServices).toHaveBeenCalledTimes(1)
     expect(mocks.error).not.toHaveBeenCalled()

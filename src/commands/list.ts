@@ -20,7 +20,9 @@ export async function list(): Promise<void> {
       const composeFile = getComposeFile(config)
       worktrees = await collectWorktreeStatuses(repoRoot, composeFile, config.domain)
     } else {
-      output.info('Current repository is not initialized with port. Showing global service status only.')
+      output.info(
+        'Current repository is not initialized with port. Showing global service status only.'
+      )
     }
   } catch {
     output.info('Not in a git repository. Showing global service status only.')
