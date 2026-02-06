@@ -1,6 +1,12 @@
-# Port CLI Tool
+# Port
 
 A CLI tool that manages git worktrees and automatically configures Traefik reverse proxy to expose services via local domains (e.g., `feature-1.port:3000`).
+
+| Terminal A (`feature-1`)                                           | Terminal B (`feature-2`)                                           |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| `port feature-1`<br>`port up`<br>`curl http://feature-1.port:3000` | `port feature-2`<br>`port up`<br>`curl http://feature-2.port:3000` |
+
+**Both worktrees can run the same service ports at the same time without conflicts.**
 
 ## Use Case
 
