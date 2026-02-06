@@ -14,6 +14,7 @@ import { run } from './commands/run.ts'
 import { handleCliError } from './lib/cli.ts'
 import { kill } from './commands/kill.ts'
 import { status } from './commands/status.ts'
+import { cleanup } from './commands/cleanup.ts'
 
 const program = new Command()
 
@@ -105,6 +106,12 @@ program
   .description('Stop host services listed in port ls (optionally by logical port)')
   .action(kill)
 
+// port cleanup
+program
+  .command('cleanup')
+  .description('Delete archived branches created by port remove (with confirmation)')
+  .action(cleanup)
+
 // port <branch> - default command to enter a worktree
 // This must be last to act as a catch-all for branch names
 program
@@ -128,6 +135,7 @@ program
         'run',
         'kill',
         'status',
+        'cleanup',
         'help',
       ]
       if (commands.includes(branch)) {

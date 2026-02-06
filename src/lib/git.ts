@@ -39,6 +39,44 @@ export async function branchExists(repoRoot: string, branch: string): Promise<bo
 }
 
 /**
+ * List archived local branches created by port remove
+ *
+ * @param repoRoot - The repository root path
+ * @returns Local branch names under archive/
+ */
+export async function listArchivedBranches(repoRoot: string): Promise<string[]> {
+  const git = getGit(repoRoot)
+
+  try {
+    const branches = await git.branchLocal()
+    return branches.all.filter(branch => branch.startsWith('archive/')).sort()
+  } catch (error) {
+    throw new GitError(`Failed to list archived branches: ${error}`)
+  }
+}
+
+/**
+ * Delete a local branch
+ *
+ * @param repoRoot - The repository root path
+ * @param branch - The branch to delete
+ * @param force - Use force delete (-D) when true
+ */
+export async function deleteLocalBranch(
+  repoRoot: string,
+  branch: string,
+  force: boolean = false
+): Promise<void> {
+  const git = getGit(repoRoot)
+
+  try {
+    await git.raw(['branch', force ? '-D' : '-d', branch])
+  } catch (error) {
+    throw new GitError(`Failed to delete branch '${branch}': ${error}`)
+  }
+}
+
+/**
  * Check if a remote branch exists
  *
  * @param repoRoot - The repository root path

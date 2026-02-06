@@ -35,3 +35,10 @@ test('Help includes the kill command', async () => {
   const instance = await findByText('kill [port]')
   expect(instance).toBeInTheConsole()
 })
+
+test('Help includes the cleanup command', async () => {
+  const { findByText } = await renderCLI(['--help'])
+
+  const instance = await findByText('cleanup')
+  expect(instance).toBeInTheConsole()
+})

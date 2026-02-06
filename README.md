@@ -161,21 +161,30 @@ port rm --keep-branch feature-1
 Stops services, removes the worktree, and soft-deletes the local branch by archiving it under `archive/<name>-<timestamp>`.
 Use `--keep-branch` to preserve the local branch name.
 
+### 10. Clean Up Archived Branches
+
+```bash
+port cleanup
+```
+
+Shows archived branches created by `port remove` and asks for confirmation before deleting all of them.
+
 ## Commands
 
-| Command                           | Description                                       |
-| --------------------------------- | ------------------------------------------------- |
-| `port init`                       | Initialize `.port/` directory structure           |
-| `port install [--dns-ip IP]`      | Set up DNS for `*.port` domains                   |
-| `port <branch>`                   | Enter a worktree (creates if doesn't exist)       |
-| `port up`                         | Start docker-compose services in current worktree |
-| `port down`                       | Stop docker-compose services and host processes   |
-| `port run <port> -- <command...>` | Run a host process with Traefik routing           |
-| `port remove <branch> [--force]`  | Remove worktree and archive local branch          |
-| `port compose <args...>`          | Run docker compose with auto `-f` flags           |
-| `port list`                       | List worktree and host-service summary            |
-| `port status`                     | Show per-service status by worktree               |
-| `port uninstall [--yes]`          | Remove DNS configuration for `*.port`             |
+| Command                                          | Description                                       |
+| ------------------------------------------------ | ------------------------------------------------- |
+| `port init`                                      | Initialize `.port/` directory structure           |
+| `port install [--dns-ip IP]`                     | Set up DNS for `*.port` domains                   |
+| `port <branch>`                                  | Enter a worktree (creates if doesn't exist)       |
+| `port up`                                        | Start docker-compose services in current worktree |
+| `port down`                                      | Stop docker-compose services and host processes   |
+| `port run <port> -- <command...>`                | Run a host process with Traefik routing           |
+| `port remove <branch> [--force] [--keep-branch]` | Remove worktree and archive local branch          |
+| `port compose <args...>`                         | Run docker compose with auto `-f` flags           |
+| `port list`                                      | List worktree and host-service summary            |
+| `port status`                                    | Show per-service status by worktree               |
+| `port cleanup`                                   | Delete archived local branches with confirmation  |
+| `port uninstall [--yes]`                         | Remove DNS configuration for `*.port`             |
 
 ## How It Works
 
