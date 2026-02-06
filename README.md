@@ -2,9 +2,24 @@
 
 A CLI tool that manages git worktrees and automatically configures Traefik reverse proxy to expose services via local domains (e.g., `feature-1.port:3000`).
 
-| Terminal A (`feature-1`)                                           | Terminal B (`feature-2`)                                           |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| `port feature-1`<br>`port up`<br>`curl http://feature-1.port:3000` | `port feature-2`<br>`port up`<br>`curl http://feature-2.port:3000` |
+<table>
+  <tr>
+    <th>Terminal A (<code>feature-1</code>)</th>
+    <th>Terminal B (<code>feature-2</code>)</th>
+  </tr>
+  <tr>
+    <td>
+      <pre><code>port feature-1
+port up
+curl http://feature-1.port:3000</code></pre>
+    </td>
+    <td>
+      <pre><code>port feature-2
+port up
+curl http://feature-2.port:3000</code></pre>
+    </td>
+  </tr>
+</table>
 
 **Both worktrees can run the same service ports at the same time without conflicts.**
 
