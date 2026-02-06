@@ -1,6 +1,4 @@
-import { detectWorktree } from '../lib/worktree.ts'
-import { configExists } from '../lib/config.ts'
-import { getHostService, getHostServicesForWorktree } from '../lib/registry.ts'
+import { getAllHostServices } from '../lib/registry.ts'
 import { cleanupStaleHostServices, stopHostService } from '../lib/hostService.ts'
 import type { HostService } from '../types.ts'
 import * as output from '../lib/output.ts'
@@ -16,42 +14,24 @@ function parseLogicalPort(portArg: string): number {
 
 /**
  * Stop running host processes started via `port run`
+ *
+ * By default this operates on all currently registered host services,
+ * regardless of the current repository/worktree.
  */
 export async function kill(portArg?: string): Promise<void> {
-  let worktreeInfo
-  try {
-    worktreeInfo = detectWorktree()
-  } catch (error) {
-    output.error(`${error}`)
-    process.exit(1)
-  }
-
-  const { repoRoot, name: branch } = worktreeInfo
-
-  if (!configExists(repoRoot)) {
-    output.error('Port not initialized. Run "port init" first.')
-    process.exit(1)
-  }
-
   await cleanupStaleHostServices()
 
   const logicalPort = portArg ? parseLogicalPort(portArg) : undefined
-  const services: HostService[] = []
-
-  if (logicalPort) {
-    const service = await getHostService(repoRoot, branch, logicalPort)
-    if (service) {
-      services.push(service)
-    }
-  } else {
-    services.push(...(await getHostServicesForWorktree(repoRoot, branch)))
-  }
+  const hostServices = await getAllHostServices()
+  const services: HostService[] = logicalPort
+    ? hostServices.filter(service => service.logicalPort === logicalPort)
+    : hostServices
 
   if (services.length === 0) {
     if (logicalPort) {
-      output.info(`No active host service found for ${branch}:${logicalPort}.`)
+      output.info(`No active host services found on logical port ${logicalPort}.`)
     } else {
-      output.info(`No active host services found for ${branch}.`)
+      output.info('No active host services found.')
     }
     return
   }

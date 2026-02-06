@@ -97,7 +97,10 @@ program
   })
 
 // port kill [port]
-program.command('kill [port]').description('Stop host processes started via port run').action(kill)
+program
+  .command('kill [port]')
+  .description('Stop host services listed in port ls (optionally by logical port)')
+  .action(kill)
 
 // port <branch> - default command to enter a worktree
 // This must be last to act as a catch-all for branch names
