@@ -5,10 +5,53 @@ import {
   unregisterProject,
   hasRegisteredProjects,
   getHostServicesForWorktree,
+  getProjectCount,
 } from '../lib/registry.ts'
 import { runCompose, stopTraefik, isTraefikRunning, getProjectName } from '../lib/compose.ts'
 import { stopHostService } from '../lib/hostService.ts'
 import * as output from '../lib/output.ts'
+
+async function stopTraefikGlobally(options?: { yes?: boolean }): Promise<void> {
+  const traefikRunning = await isTraefikRunning()
+
+  if (!traefikRunning) {
+    output.info('Traefik is not running.')
+    return
+  }
+
+  const projectCount = await getProjectCount()
+  let shouldStopTraefik = options?.yes ?? false
+
+  if (!shouldStopTraefik) {
+    output.newline()
+
+    const promptMessage =
+      projectCount > 0
+        ? `${projectCount} port project(s) still registered. Stop Traefik anyway?`
+        : 'Stop Traefik?'
+
+    const { stopTraefikConfirm } = await inquirer.prompt<{ stopTraefikConfirm: boolean }>([
+      {
+        type: 'confirm',
+        name: 'stopTraefikConfirm',
+        message: promptMessage,
+        default: true,
+      },
+    ])
+
+    shouldStopTraefik = stopTraefikConfirm
+  }
+
+  if (shouldStopTraefik) {
+    output.info('Stopping Traefik...')
+    try {
+      await stopTraefik()
+      output.success('Traefik stopped')
+    } catch (error) {
+      output.warn(`Failed to stop Traefik: ${error}`)
+    }
+  }
+}
 
 /**
  * Stop docker-compose services in the current worktree
@@ -21,16 +64,19 @@ export async function down(options?: { yes?: boolean }): Promise<void> {
   try {
     worktreeInfo = detectWorktree()
   } catch (error) {
-    output.error(`${error}`)
-    process.exit(1)
+    output.dim(`${error}`)
+    output.info('Not in a port-managed worktree. Attempting global Traefik shutdown...')
+    await stopTraefikGlobally(options)
+    return
   }
 
   const { repoRoot, worktreePath, name } = worktreeInfo
 
   // Check if port is initialized
   if (!configExists(repoRoot)) {
-    output.error('Port not initialized. Run "port init" first.')
-    process.exit(1)
+    output.info('Port is not initialized in this repository. Attempting global Traefik shutdown...')
+    await stopTraefikGlobally(options)
+    return
   }
 
   // Load config
