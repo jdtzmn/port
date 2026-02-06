@@ -14,6 +14,7 @@ import {
   getServicePorts,
   getProjectName,
 } from '../lib/compose.ts'
+import { checkDns } from '../lib/dns.ts'
 import * as output from '../lib/output.ts'
 
 /**
@@ -50,6 +51,15 @@ export async function up(): Promise<void> {
   // Load config
   const config = await loadConfig(repoRoot)
   const composeFile = getComposeFile(config)
+
+  const dnsConfigured = await checkDns(config.domain)
+  if (!dnsConfigured) {
+    output.warn(`DNS is not configured for *.${config.domain} domains`)
+    const installCommand =
+      config.domain === 'port' ? "'port install'" : `'port install --domain ${config.domain}'`
+    output.info(`Run ${output.command(installCommand)} to set up DNS`)
+    process.exit(1)
+  }
 
   // Parse docker-compose file to get services and ports
   output.info('Parsing docker-compose file...')
