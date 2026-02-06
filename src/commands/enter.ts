@@ -1,5 +1,5 @@
 import { spawn } from 'child_process'
-import { findGitRoot, getWorktreePath, worktreeExists } from '../lib/worktree.ts'
+import { detectWorktree, getWorktreePath, worktreeExists } from '../lib/worktree.ts'
 import { loadConfig, configExists, getTreesDir, getComposeFile } from '../lib/config.ts'
 import { createWorktree, removeWorktree } from '../lib/git.ts'
 import { writeOverrideFile, parseComposeFile, getProjectName } from '../lib/compose.ts'
@@ -20,10 +20,10 @@ interface EnterOptions {
  * @param options - Enter options
  */
 export async function enter(branch: string, options?: EnterOptions): Promise<void> {
-  // Find git root
-  const repoRoot = findGitRoot(process.cwd())
-
-  if (!repoRoot) {
+  let repoRoot: string
+  try {
+    repoRoot = detectWorktree().repoRoot
+  } catch {
     output.error('Not in a git repository')
     process.exit(1)
   }

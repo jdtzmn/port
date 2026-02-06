@@ -1,22 +1,32 @@
+import { existsSync } from 'fs'
 import inquirer from 'inquirer'
-import { findGitRoot, worktreeExists, getWorktreePath } from '../lib/worktree.ts'
+import { detectWorktree, worktreeExists, getWorktreePath } from '../lib/worktree.ts'
 import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
-import { removeWorktree } from '../lib/git.ts'
+import {
+  findWorktreeByBranch,
+  pruneWorktrees,
+  removeWorktree,
+  removeWorktreeAtPath,
+} from '../lib/git.ts'
 import { unregisterProject, hasRegisteredProjects } from '../lib/registry.ts'
 import { runCompose, stopTraefik, isTraefikRunning, getProjectName } from '../lib/compose.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
+
+interface RemoveOptions {
+  force?: boolean
+}
 
 /**
  * Remove a worktree and stop its services
  *
  * @param branch - The branch name of the worktree to remove
  */
-export async function remove(branch: string): Promise<void> {
-  // Find git root
-  const repoRoot = findGitRoot(process.cwd())
-
-  if (!repoRoot) {
+export async function remove(branch: string, options: RemoveOptions = {}): Promise<void> {
+  let repoRoot: string
+  try {
+    repoRoot = detectWorktree().repoRoot
+  } catch {
     output.error('Not in a git repository')
     process.exit(1)
   }
@@ -29,14 +39,42 @@ export async function remove(branch: string): Promise<void> {
 
   // Sanitize branch name
   const sanitized = sanitizeBranchName(branch)
+  const expectedWorktreePath = getWorktreePath(repoRoot, branch)
 
-  // Check if worktree exists
+  let worktreePath = expectedWorktreePath
+  let nonStandardWorktree = false
+
   if (!worktreeExists(repoRoot, branch)) {
-    output.error(`Worktree not found: ${sanitized}`)
-    process.exit(1)
-  }
+    const registeredWorktree = await findWorktreeByBranch(repoRoot, branch)
 
-  const worktreePath = getWorktreePath(repoRoot, branch)
+    if (!registeredWorktree) {
+      output.error(`Worktree not found: ${sanitized}`)
+      process.exit(1)
+    }
+
+    worktreePath = registeredWorktree.path
+    nonStandardWorktree = true
+
+    if (!options.force) {
+      output.warn(`Worktree ${output.branch(sanitized)} is registered at a non-standard path:`)
+      output.dim(worktreePath)
+
+      const { removeConfirm } = await inquirer.prompt<{ removeConfirm: boolean }>([
+        {
+          type: 'confirm',
+          name: 'removeConfirm',
+          message: 'Remove this worktree anyway?',
+          default: true,
+        },
+      ])
+
+      if (!removeConfirm) {
+        output.info('Removal cancelled')
+        return
+      }
+    }
+  }
+  const worktreePathExists = existsSync(worktreePath)
 
   // Load config
   const config = await loadConfig(repoRoot)
@@ -44,20 +82,34 @@ export async function remove(branch: string): Promise<void> {
 
   // Stop docker-compose services first
   const projectName = getProjectName(repoRoot, sanitized)
-  output.info(`Stopping services in ${output.branch(sanitized)}...`)
-  const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['down'])
-  if (exitCode !== 0) {
-    output.warn('Failed to stop services')
-    // Continue with removal even if stop fails
+  if (worktreePathExists) {
+    output.info(`Stopping services in ${output.branch(sanitized)}...`)
+    const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['down'])
+    if (exitCode !== 0) {
+      output.warn('Failed to stop services')
+      // Continue with removal even if stop fails
+    } else {
+      output.success('Services stopped')
+    }
   } else {
-    output.success('Services stopped')
+    output.warn(`Worktree path missing on disk: ${worktreePath}`)
+    output.info('Skipping service shutdown and pruning stale worktree metadata...')
   }
 
   // Remove git worktree
   output.info(`Removing worktree: ${output.branch(sanitized)}...`)
   try {
-    await removeWorktree(repoRoot, branch, true) // force removal
-    output.success('Worktree removed')
+    if (worktreePathExists) {
+      if (nonStandardWorktree) {
+        await removeWorktreeAtPath(repoRoot, worktreePath, true)
+      } else {
+        await removeWorktree(repoRoot, branch, true)
+      }
+      output.success('Worktree removed')
+    } else {
+      await pruneWorktrees(repoRoot)
+      output.success('Stale worktree metadata pruned')
+    }
   } catch (error) {
     output.error(`Failed to remove worktree: ${error}`)
     process.exit(1)

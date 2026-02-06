@@ -1,7 +1,7 @@
 import { mkdir, writeFile, chmod } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
-import { findGitRoot } from '../lib/worktree.ts'
+import { detectWorktree } from '../lib/worktree.ts'
 import {
   PORT_DIR,
   CONFIG_FILE,
@@ -62,10 +62,10 @@ const POST_CREATE_HOOK_TEMPLATE = `#!/bin/bash
  * Initialize .port directory in the current project
  */
 export async function init(): Promise<void> {
-  // Find git root
-  const repoRoot = findGitRoot(process.cwd())
-
-  if (!repoRoot) {
+  let repoRoot: string
+  try {
+    repoRoot = detectWorktree().repoRoot
+  } catch {
     output.error('Not in a git repository')
     process.exit(1)
   }

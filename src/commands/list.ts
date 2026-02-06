@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from 'fs'
 import { join } from 'path'
-import { findGitRoot } from '../lib/worktree.ts'
+import { detectWorktree } from '../lib/worktree.ts'
 import { getTreesDir, loadConfig, configExists, getComposeFile } from '../lib/config.ts'
 import {
   composePs,
@@ -68,10 +68,10 @@ async function getWorktreeStatus(
  * List all worktrees and their status
  */
 export async function list(): Promise<void> {
-  // Find git root
-  const repoRoot = findGitRoot(process.cwd())
-
-  if (!repoRoot) {
+  let repoRoot: string
+  try {
+    repoRoot = detectWorktree().repoRoot
+  } catch {
     output.error('Not in a git repository')
     process.exit(1)
   }

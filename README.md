@@ -144,6 +144,8 @@ Shows all worktrees, their service status, and any running host services.
 
 ```bash
 port remove feature-1
+# Skip confirmation for non-standard/stale worktree entries
+port rm -f feature-1
 ```
 
 Stops services and removes the worktree entirely.
@@ -158,7 +160,7 @@ Stops services and removes the worktree entirely.
 | `port up`                         | Start docker-compose services in current worktree |
 | `port down`                       | Stop docker-compose services and host processes   |
 | `port run <port> -- <command...>` | Run a host process with Traefik routing           |
-| `port remove <branch>`            | Remove a worktree entirely                        |
+| `port remove <branch> [--force]`  | Remove a worktree entirely                        |
 | `port compose <args...>`          | Run docker compose with auto `-f` flags           |
 | `port list`                       | List all worktrees and their status               |
 | `port uninstall [--yes]`          | Remove DNS configuration for `*.port`             |

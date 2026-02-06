@@ -1,6 +1,7 @@
 import simpleGit, { type SimpleGit } from 'simple-git'
 import { existsSync } from 'fs'
 import { getWorktreePath } from './worktree.ts'
+import { sanitizeBranchName } from './sanitize.ts'
 
 /**
  * Error thrown when git operations fail
@@ -143,12 +144,28 @@ export async function removeWorktree(
   branch: string,
   force: boolean = false
 ): Promise<void> {
-  const git = getGit(repoRoot)
   const worktreePath = getWorktreePath(repoRoot, branch)
 
   if (!existsSync(worktreePath)) {
     throw new GitError(`Worktree does not exist: ${worktreePath}`)
   }
+
+  return removeWorktreeAtPath(repoRoot, worktreePath, force)
+}
+
+/**
+ * Remove a worktree by absolute path
+ *
+ * @param repoRoot - The repository root path
+ * @param worktreePath - Absolute path to the worktree
+ * @param force - Force removal even if there are uncommitted changes
+ */
+export async function removeWorktreeAtPath(
+  repoRoot: string,
+  worktreePath: string,
+  force: boolean = false
+): Promise<void> {
+  const git = getGit(repoRoot)
 
   try {
     const args = ['worktree', 'remove']
@@ -159,8 +176,14 @@ export async function removeWorktree(
 
     await git.raw(args)
   } catch (error) {
-    throw new GitError(`Failed to remove worktree '${branch}': ${error}`)
+    throw new GitError(`Failed to remove worktree at '${worktreePath}': ${error}`)
   }
+}
+
+export interface WorktreeEntry {
+  path: string
+  branch: string
+  isMain: boolean
 }
 
 /**
@@ -169,14 +192,12 @@ export async function removeWorktree(
  * @param repoRoot - The repository root path
  * @returns Array of worktree info objects
  */
-export async function listWorktrees(
-  repoRoot: string
-): Promise<Array<{ path: string; branch: string; isMain: boolean }>> {
+export async function listWorktrees(repoRoot: string): Promise<WorktreeEntry[]> {
   const git = getGit(repoRoot)
 
   try {
     const output = await git.raw(['worktree', 'list', '--porcelain'])
-    const worktrees: Array<{ path: string; branch: string; isMain: boolean }> = []
+    const worktrees: WorktreeEntry[] = []
 
     let currentWorktree: { path?: string; branch?: string } = {}
 
@@ -201,6 +222,26 @@ export async function listWorktrees(
   } catch (error) {
     throw new GitError(`Failed to list worktrees: ${error}`)
   }
+}
+
+/**
+ * Find a registered worktree by branch name
+ *
+ * @param repoRoot - The repository root path
+ * @param branch - The branch name
+ * @returns The matching worktree entry, or null if not found
+ */
+export async function findWorktreeByBranch(
+  repoRoot: string,
+  branch: string
+): Promise<WorktreeEntry | null> {
+  const worktrees = await listWorktrees(repoRoot)
+  const sanitized = sanitizeBranchName(branch)
+  return (
+    worktrees.find(
+      worktree => worktree.branch === branch || sanitizeBranchName(worktree.branch) === sanitized
+    ) ?? null
+  )
 }
 
 /**

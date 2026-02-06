@@ -54,7 +54,8 @@ program
   .command('remove <branch>')
   .alias('rm')
   .description('Remove a worktree and stop its services')
-  .action(remove)
+  .option('-f, --force', 'Skip confirmation for non-standard/stale worktree entries')
+  .action((branch: string, options: { force?: boolean }) => remove(branch, options))
 
 // port uninstall
 program
