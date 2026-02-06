@@ -136,7 +136,16 @@ async function installMacOS(dnsIp: string, domain: string): Promise<boolean> {
   }
 
   if (dnsmasqRunning) {
-    output.dim('dnsmasq service already running')
+    output.info('Reloading dnsmasq service...')
+    try {
+      await execAsync('sudo brew services restart dnsmasq')
+      output.success('dnsmasq service reloaded')
+    } catch (error) {
+      output.error(`Failed to reload dnsmasq: ${error}`)
+      output.info('You can try running this command manually:')
+      output.info('  sudo brew services restart dnsmasq')
+      return false
+    }
   } else {
     // Start dnsmasq service
     output.info('Starting dnsmasq service...')
