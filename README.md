@@ -1,6 +1,6 @@
 # Port
 
-A CLI tool that manages git worktrees and automatically configures Traefik reverse proxy to expose services via local domains (e.g., `feature-1.port:3000`).
+**Run 2+ Docker compose worktrees on the same service ports at the same time without conflicts.**
 
 <table>
   <tr>
@@ -20,12 +20,6 @@ curl http://feature-2.port:3000</code></pre>
     </td>
   </tr>
 </table>
-
-**Both worktrees can run the same service ports at the same time without conflicts.**
-
-## Use Case
-
-Developers working with git worktrees can run `port feature-1` to create/enter a worktree, then `port up` to start services accessible at `feature-1.port:PORT`.
 
 ## Features
 
