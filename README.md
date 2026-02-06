@@ -4,19 +4,19 @@
 
 <table>
   <tr>
-    <th>Terminal A (<code>feature-1</code>)</th>
-    <th>Terminal B (<code>feature-2</code>)</th>
+    <th>Terminal A (<code>feature-1</code> worktree)</th>
+    <th>Terminal B (<code>feature-2</code> worktree)</th>
   </tr>
   <tr>
     <td>
-      <pre><code>port feature-1                 # create/enter worktree
-port up                        # start services
-curl http://feature-1.port:3000  # verify route</code></pre>
+      <pre><code>port feature-1
+port up
+# Services available at feature-1.port</code></pre>
     </td>
     <td>
-      <pre><code>port feature-2                 # create/enter worktree
-port up                        # start services
-curl http://feature-2.port:3000  # verify route</code></pre>
+      <pre><code>port feature-2
+port up
+# Services available at feature-2.port</code></pre>
     </td>
   </tr>
 </table>
