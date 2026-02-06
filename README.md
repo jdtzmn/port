@@ -33,11 +33,13 @@ port up
 ## Installation
 
 ```bash
-# Bun is required at runtime (the CLI uses a Bun shebang)
+# Port is published on npm, but requires Bun at runtime
 npm install -g @jdtzmn/port
-# or with bun
-bun install -g @jdtzmn/port
+# or install globally with Bun
+bun add -g @jdtzmn/port
 ```
+
+`port` executes with a Bun shebang (`#!/usr/bin/env bun`), so Bun must be installed and available on `PATH` even when the package is installed via npm.
 
 ## Quick Start
 
@@ -281,7 +283,7 @@ port/
 
 ## Requirements
 
-- Bun 1.0+
+- Bun 1.0+ (required runtime for the `port` CLI)
 - Git 2.7+
 - Docker & Docker Compose v2.24.0+
 - macOS or Linux
@@ -302,11 +304,17 @@ bun run dev init
 # Build
 bun run build
 
+# Type check
+bun run typecheck
+
 # Format code
 bun run format
 
 # Lint
 bun run lint
+
+# Test
+bun run test
 ```
 
 ### Testing in Ubuntu Container

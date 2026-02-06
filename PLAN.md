@@ -230,7 +230,7 @@ Where `49152` is the dynamically allocated actual port.
 ```typescript
 /**
  * Find an available port in the ephemeral range (49152-65535)
- * Uses Bun's net module to find a free port
+ * Uses Node-compatible `net` APIs to find a free port
  */
 export async function findAvailablePort(): Promise<number>
 
