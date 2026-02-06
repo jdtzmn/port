@@ -331,6 +331,58 @@ dig test.port
 
 > **Note:** The container overrides `/etc/resolv.conf` to use systemd-resolved for DNS, which allows `*.port` domain resolution to work. However, this means the container does not have access to the outside network (e.g., `apt-get update` or `curl` to external URLs will fail).
 
+## Compose Overrides Reference
+
+Port isolates worktrees in two layers:
+
+1. Compose invocation flags (`-p`, `-f`)
+2. A generated override file (`.port/override.yml`)
+
+Port always runs compose with your base file first and `.port/override.yml` second:
+
+```bash
+docker compose -p <project-name> -f docker-compose.yml -f .port/override.yml up -d
+```
+
+Here are all Port-managed overrides/compose controls and why they exist:
+
+| Port-managed change                                                       | Why it is necessary                                                                                                  |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `-p <project-name>` (compose flag)                                        | Namespaces compose resources per repo/worktree so similarly named stacks do not collide.                             |
+| `-f .port/override.yml` (compose flag)                                    | Applies Port's deterministic runtime adjustments without mutating your source compose file.                          |
+| `services.<name>.ports: !override []` (for services with published ports) | Removes host port binds so two worktrees can both run services that declare the same host ports.                     |
+| `services.<name>.labels: [...]`                                           | Adds Traefik router/service metadata so requests route by hostname (`<branch>.port`) instead of host port ownership. |
+| `services.<name>.networks: [traefik-network]`                             | Ensures Traefik can reach exposed services on the shared network.                                                    |
+| `services.<name>.container_name` rewrite (only when upstream sets one)    | Prevents global Docker container name conflicts when upstream hard-codes a fixed `container_name`.                   |
+| `networks.traefik-network.external: true`                                 | Connects project services to the globally managed Traefik network instead of creating per-project duplicates.        |
+
+Notes:
+
+- For services without published ports, Port does not inject Traefik labels/ports/network wiring.
+- Port intentionally does not override `image`, `build`, `environment`, `volumes`, `depends_on`, or `command`.
+
+Example generated shape:
+
+```yaml
+services:
+  web:
+    container_name: my-repo-feature-1-web
+    ports: !override []
+    networks:
+      - traefik-network
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.feature-1-web-3000.rule=Host(`feature-1.port`)
+      - traefik.http.routers.feature-1-web-3000.entrypoints=port3000
+      - traefik.http.routers.feature-1-web-3000.service=feature-1-web-3000
+      - traefik.http.services.feature-1-web-3000.loadbalancer.server.port=3000
+
+networks:
+  traefik-network:
+    external: true
+    name: traefik-network
+```
+
 ## License
 
 MIT
