@@ -1,8 +1,9 @@
-import { readFile, writeFile, mkdir } from 'fs/promises'
+import { readFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import type { Registry, Project, HostService } from '../types.ts'
+import { withFileLock, writeFileAtomic } from './state.ts'
 
 /** Optional env var to override global state directory (used by tests) */
 const GLOBAL_PORT_DIR_ENV = 'PORT_GLOBAL_DIR'
@@ -12,6 +13,7 @@ export const GLOBAL_PORT_DIR = process.env[GLOBAL_PORT_DIR_ENV]?.trim() || join(
 
 /** Registry file path */
 export const REGISTRY_FILE = join(GLOBAL_PORT_DIR, 'registry.json')
+export const REGISTRY_LOCK_FILE = join(GLOBAL_PORT_DIR, 'registry.lock')
 
 /**
  * Ensure the global .port directory exists
@@ -63,7 +65,16 @@ export async function loadRegistry(): Promise<Registry> {
  */
 export async function saveRegistry(registry: Registry): Promise<void> {
   await ensureGlobalDir()
-  await writeFile(REGISTRY_FILE, JSON.stringify(registry, null, 2))
+  await writeFileAtomic(REGISTRY_FILE, JSON.stringify(registry, null, 2))
+}
+
+async function mutateRegistry(mutator: (registry: Registry) => void): Promise<void> {
+  await ensureGlobalDir()
+  await withFileLock(REGISTRY_LOCK_FILE, async () => {
+    const registry = await loadRegistry()
+    mutator(registry)
+    await saveRegistry(registry)
+  })
 }
 
 /**
@@ -78,20 +89,15 @@ export async function registerProject(
   branch: string,
   ports: number[]
 ): Promise<void> {
-  const registry = await loadRegistry()
+  await mutateRegistry(registry => {
+    const existing = registry.projects.find(p => p.repo === repo && p.branch === branch)
 
-  // Check if already registered
-  const existing = registry.projects.find(p => p.repo === repo && p.branch === branch)
-
-  if (existing) {
-    // Update ports
-    existing.ports = ports
-  } else {
-    // Add new project
-    registry.projects.push({ repo, branch, ports })
-  }
-
-  await saveRegistry(registry)
+    if (existing) {
+      existing.ports = ports
+    } else {
+      registry.projects.push({ repo, branch, ports })
+    }
+  })
 }
 
 /**
@@ -101,11 +107,9 @@ export async function registerProject(
  * @param branch - Sanitized branch/worktree name
  */
 export async function unregisterProject(repo: string, branch: string): Promise<void> {
-  const registry = await loadRegistry()
-
-  registry.projects = registry.projects.filter(p => !(p.repo === repo && p.branch === branch))
-
-  await saveRegistry(registry)
+  await mutateRegistry(registry => {
+    registry.projects = registry.projects.filter(p => !(p.repo === repo && p.branch === branch))
+  })
 }
 
 /**
@@ -190,29 +194,24 @@ export async function getProjectCount(): Promise<number> {
  * @param service - The host service to register
  */
 export async function registerHostService(service: HostService): Promise<void> {
-  const registry = await loadRegistry()
+  await mutateRegistry(registry => {
+    if (!registry.hostServices) {
+      registry.hostServices = []
+    }
 
-  if (!registry.hostServices) {
-    registry.hostServices = []
-  }
+    const existingIndex = registry.hostServices.findIndex(
+      s =>
+        s.repo === service.repo &&
+        s.branch === service.branch &&
+        s.logicalPort === service.logicalPort
+    )
 
-  // Check if already registered
-  const existingIndex = registry.hostServices.findIndex(
-    s =>
-      s.repo === service.repo &&
-      s.branch === service.branch &&
-      s.logicalPort === service.logicalPort
-  )
-
-  if (existingIndex >= 0) {
-    // Update existing
-    registry.hostServices[existingIndex] = service
-  } else {
-    // Add new
-    registry.hostServices.push(service)
-  }
-
-  await saveRegistry(registry)
+    if (existingIndex >= 0) {
+      registry.hostServices[existingIndex] = service
+    } else {
+      registry.hostServices.push(service)
+    }
+  })
 }
 
 /**
@@ -227,17 +226,15 @@ export async function unregisterHostService(
   branch: string,
   logicalPort: number
 ): Promise<void> {
-  const registry = await loadRegistry()
+  await mutateRegistry(registry => {
+    if (!registry.hostServices) {
+      return
+    }
 
-  if (!registry.hostServices) {
-    return
-  }
-
-  registry.hostServices = registry.hostServices.filter(
-    s => !(s.repo === repo && s.branch === branch && s.logicalPort === logicalPort)
-  )
-
-  await saveRegistry(registry)
+    registry.hostServices = registry.hostServices.filter(
+      s => !(s.repo === repo && s.branch === branch && s.logicalPort === logicalPort)
+    )
+  })
 }
 
 /**

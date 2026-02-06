@@ -5,6 +5,8 @@ import { dirname } from 'path'
 import {
   loadRegistry,
   saveRegistry,
+  registerProject,
+  getAllProjects,
   registerHostService,
   unregisterHostService,
   getHostService,
@@ -120,6 +122,42 @@ describe('Host Service Registry Functions', () => {
 
       const registry = await loadRegistry()
       expect(registry.hostServices).toHaveLength(2)
+    })
+
+    test('keeps all concurrent host service registrations', async () => {
+      const services = Array.from({ length: 20 }, (_, index) =>
+        createMockHostService({
+          branch: `feature-${index}`,
+          logicalPort: 3000 + index,
+          actualPort: 49152 + index,
+          pid: 1000 + index,
+        })
+      )
+
+      await Promise.all(services.map(service => registerHostService(service)))
+
+      const allServices = await getAllHostServices()
+      expect(allServices).toHaveLength(20)
+      expect(allServices.map(service => service.logicalPort).sort((a, b) => a - b)).toEqual(
+        Array.from({ length: 20 }, (_, index) => 3000 + index)
+      )
+    })
+  })
+
+  describe('project registry concurrency', () => {
+    test('keeps all concurrent project registrations', async () => {
+      const repo = '/test/repo'
+      await Promise.all(
+        Array.from({ length: 20 }, (_, index) =>
+          registerProject(repo, `branch-${index}`, [3000 + index])
+        )
+      )
+
+      const projects = await getAllProjects()
+      expect(projects).toHaveLength(20)
+      expect(projects.map(project => project.branch).sort()).toEqual(
+        Array.from({ length: 20 }, (_, index) => `branch-${index}`).sort()
+      )
     })
   })
 

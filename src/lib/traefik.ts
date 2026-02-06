@@ -1,9 +1,10 @@
-import { readFile, writeFile, mkdir } from 'fs/promises'
+import { readFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { stringify as yamlStringify, parse as yamlParse } from 'yaml'
 import { GLOBAL_PORT_DIR, ensureGlobalDir } from './registry.ts'
 import type { TraefikConfig } from '../types.ts'
+import { withFileLock, writeFileAtomic } from './state.ts'
 
 /** Traefik directory within global port dir */
 export const TRAEFIK_DIR = join(GLOBAL_PORT_DIR, 'traefik')
@@ -17,8 +18,57 @@ export const TRAEFIK_COMPOSE_FILE = join(TRAEFIK_DIR, 'docker-compose.yml')
 /** Traefik dynamic config directory */
 export const TRAEFIK_DYNAMIC_DIR = join(TRAEFIK_DIR, 'dynamic')
 
+/** Traefik state lock file */
+export const TRAEFIK_LOCK_FILE = join(GLOBAL_PORT_DIR, 'traefik.lock')
+
 /** Traefik network name */
 export const TRAEFIK_NETWORK = 'traefik-network'
+
+async function withTraefikLock<T>(callback: () => Promise<T>): Promise<T> {
+  await ensureGlobalDir()
+  return withFileLock(TRAEFIK_LOCK_FILE, callback)
+}
+
+async function saveTraefikConfigUnlocked(config: TraefikConfig): Promise<void> {
+  await ensureTraefikDir()
+  const yaml = yamlStringify(config)
+  await writeFileAtomic(TRAEFIK_CONFIG_FILE, yaml)
+}
+
+async function updateTraefikComposeUnlocked(ports: number[]): Promise<void> {
+  await ensureTraefikDir()
+  await ensureTraefikDynamicDir()
+
+  const portMappings = ['80:80']
+  for (const port of ports) {
+    portMappings.push(`${port}:${port}`)
+  }
+
+  const compose = {
+    services: {
+      traefik: {
+        image: 'traefik:v3.0',
+        container_name: 'port-traefik',
+        restart: 'unless-stopped',
+        ports: portMappings,
+        extra_hosts: ['host.docker.internal:host-gateway'],
+        volumes: [
+          '/var/run/docker.sock:/var/run/docker.sock:ro',
+          './traefik.yml:/etc/traefik/traefik.yml:ro',
+          './dynamic:/etc/traefik/dynamic:ro',
+        ],
+        networks: [TRAEFIK_NETWORK],
+      },
+    },
+    networks: {
+      [TRAEFIK_NETWORK]: {
+        external: true,
+      },
+    },
+  }
+
+  await writeFileAtomic(TRAEFIK_COMPOSE_FILE, yamlStringify(compose))
+}
 
 /**
  * Ensure the traefik directory exists
@@ -99,9 +149,9 @@ export async function loadTraefikConfig(): Promise<TraefikConfig | null> {
  * @param config - The configuration to save
  */
 export async function saveTraefikConfig(config: TraefikConfig): Promise<void> {
-  await ensureTraefikDir()
-  const yaml = yamlStringify(config)
-  await writeFile(TRAEFIK_CONFIG_FILE, yaml)
+  await withTraefikLock(async () => {
+    await saveTraefikConfigUnlocked(config)
+  })
 }
 
 /**
@@ -148,27 +198,26 @@ export async function getMissingPorts(requiredPorts: number[]): Promise<number[]
  * @param newPorts - New ports to add
  */
 export async function addPortsToConfig(newPorts: number[]): Promise<void> {
-  let config = await loadTraefikConfig()
+  await withTraefikLock(async () => {
+    let config = await loadTraefikConfig()
 
-  if (!config) {
-    // Create new config with all ports
-    config = generateTraefikConfig(newPorts)
-  } else {
-    // Add new entrypoints
-    for (const port of newPorts) {
-      config.entryPoints[`port${port}`] = { address: `:${port}` }
-    }
+    if (!config) {
+      config = generateTraefikConfig(newPorts)
+    } else {
+      for (const port of newPorts) {
+        config.entryPoints[`port${port}`] = { address: `:${port}` }
+      }
 
-    // Ensure file provider is configured (for host services)
-    if (!config.providers.file) {
-      config.providers.file = {
-        directory: '/etc/traefik/dynamic',
-        watch: true,
+      if (!config.providers.file) {
+        config.providers.file = {
+          directory: '/etc/traefik/dynamic',
+          watch: true,
+        }
       }
     }
-  }
 
-  await saveTraefikConfig(config)
+    await saveTraefikConfigUnlocked(config)
+  })
 }
 
 /**
@@ -207,39 +256,9 @@ export function generateTraefikCompose(): string {
  * @param ports - All ports that need to be exposed
  */
 export async function updateTraefikCompose(ports: number[]): Promise<void> {
-  await ensureTraefikDir()
-  await ensureTraefikDynamicDir()
-
-  // Generate port mappings
-  const portMappings = ['80:80']
-  for (const port of ports) {
-    portMappings.push(`${port}:${port}`)
-  }
-
-  const compose = {
-    services: {
-      traefik: {
-        image: 'traefik:v3.0',
-        container_name: 'port-traefik',
-        restart: 'unless-stopped',
-        ports: portMappings,
-        extra_hosts: ['host.docker.internal:host-gateway'],
-        volumes: [
-          '/var/run/docker.sock:/var/run/docker.sock:ro',
-          './traefik.yml:/etc/traefik/traefik.yml:ro',
-          './dynamic:/etc/traefik/dynamic:ro',
-        ],
-        networks: [TRAEFIK_NETWORK],
-      },
-    },
-    networks: {
-      [TRAEFIK_NETWORK]: {
-        external: true,
-      },
-    },
-  }
-
-  await writeFile(TRAEFIK_COMPOSE_FILE, yamlStringify(compose))
+  await withTraefikLock(async () => {
+    await updateTraefikComposeUnlocked(ports)
+  })
 }
 
 /**
@@ -257,16 +276,18 @@ export function traefikFilesExist(): boolean {
  * @param ports - Initial ports to configure
  */
 export async function initTraefikFiles(ports: number[]): Promise<void> {
-  await ensureTraefikDir()
+  await withTraefikLock(async () => {
+    await ensureTraefikDir()
 
-  if (!existsSync(TRAEFIK_CONFIG_FILE)) {
-    const config = generateTraefikConfig(ports)
-    await saveTraefikConfig(config)
-  }
+    if (!existsSync(TRAEFIK_CONFIG_FILE)) {
+      const config = generateTraefikConfig(ports)
+      await saveTraefikConfigUnlocked(config)
+    }
 
-  if (!existsSync(TRAEFIK_COMPOSE_FILE)) {
-    await updateTraefikCompose(ports)
-  }
+    if (!existsSync(TRAEFIK_COMPOSE_FILE)) {
+      await updateTraefikComposeUnlocked(ports)
+    }
+  })
 }
 
 /**
@@ -286,29 +307,29 @@ export async function hasFileProvider(): Promise<boolean> {
  * @returns true if config was updated
  */
 export async function ensureFileProvider(): Promise<boolean> {
-  const config = await loadTraefikConfig()
+  return withTraefikLock(async () => {
+    const config = await loadTraefikConfig()
 
-  if (!config) {
-    return false // No config to update
-  }
+    if (!config) {
+      return false
+    }
 
-  if (config.providers.file) {
-    return false // Already has file provider
-  }
+    if (config.providers.file) {
+      return false
+    }
 
-  // Add file provider
-  config.providers.file = {
-    directory: '/etc/traefik/dynamic',
-    watch: true,
-  }
+    config.providers.file = {
+      directory: '/etc/traefik/dynamic',
+      watch: true,
+    }
 
-  await saveTraefikConfig(config)
+    await saveTraefikConfigUnlocked(config)
 
-  // Also update compose to mount the dynamic directory
-  const configuredPorts = await getConfiguredPorts()
-  await updateTraefikCompose(configuredPorts)
+    const configuredPorts = await getConfiguredPorts()
+    await updateTraefikComposeUnlocked(configuredPorts)
 
-  return true
+    return true
+  })
 }
 
 /**
@@ -319,21 +340,21 @@ export async function ensureFileProvider(): Promise<boolean> {
  * @returns true if configuration was updated
  */
 export async function ensureTraefikPorts(requiredPorts: number[]): Promise<boolean> {
-  const missingPorts = await getMissingPorts(requiredPorts)
-  const needsFileProvider = !(await hasFileProvider())
+  return withTraefikLock(async () => {
+    const missingPorts = await getMissingPorts(requiredPorts)
+    const needsFileProvider = !(await hasFileProvider())
 
-  if (missingPorts.length === 0 && traefikFilesExist() && !needsFileProvider) {
-    return false
-  }
+    if (missingPorts.length === 0 && traefikFilesExist() && !needsFileProvider) {
+      return false
+    }
 
-  // Get all ports (existing + new)
-  const configuredPorts = await getConfiguredPorts()
-  const allPorts = [...new Set([...configuredPorts, ...requiredPorts])].sort((a, b) => a - b)
+    const configuredPorts = await getConfiguredPorts()
+    const allPorts = [...new Set([...configuredPorts, ...requiredPorts])].sort((a, b) => a - b)
 
-  // Update both config and compose
-  const config = generateTraefikConfig(allPorts)
-  await saveTraefikConfig(config)
-  await updateTraefikCompose(allPorts)
+    const config = generateTraefikConfig(allPorts)
+    await saveTraefikConfigUnlocked(config)
+    await updateTraefikComposeUnlocked(allPorts)
 
-  return true
+    return true
+  })
 }
