@@ -16,7 +16,21 @@ import { kill } from './commands/kill.ts'
 import { status } from './commands/status.ts'
 import { cleanup } from './commands/cleanup.ts'
 
-const program = new Command()
+export const program = new Command()
+
+function getReservedCommands(): Set<string> {
+  const reserved = new Set<string>(['help'])
+
+  for (const command of program.commands) {
+    reserved.add(command.name())
+
+    for (const alias of command.aliases()) {
+      reserved.add(alias)
+    }
+  }
+
+  return reserved
+}
 
 program
   .name('port')
@@ -125,25 +139,7 @@ program
   .action(async (branch: string | undefined, options: { shell: boolean }) => {
     if (branch) {
       // Check if it looks like a command that wasn't matched
-      const commands = [
-        'init',
-        'install',
-        'uninstall',
-        'list',
-        'ls',
-        'up',
-        'down',
-        'remove',
-        'rm',
-        'compose',
-        'dc',
-        'run',
-        'kill',
-        'status',
-        'cleanup',
-        'help',
-      ]
-      if (commands.includes(branch)) {
+      if (getReservedCommands().has(branch)) {
         program.help()
         return
       }
@@ -154,4 +150,6 @@ program
     }
   })
 
-program.parseAsync().catch(handleCliError)
+if (import.meta.main) {
+  program.parseAsync().catch(handleCliError)
+}

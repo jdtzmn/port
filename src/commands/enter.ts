@@ -1,13 +1,15 @@
 import { spawn } from 'child_process'
 import { detectWorktree, getWorktreePath, worktreeExists } from '../lib/worktree.ts'
 import { loadConfig, configExists, getTreesDir, getComposeFile } from '../lib/config.ts'
-import { createWorktree, removeWorktree } from '../lib/git.ts'
+import { branchExists, createWorktree, remoteBranchExists, removeWorktree } from '../lib/git.ts'
 import { writeOverrideFile, parseComposeFile, getProjectName } from '../lib/compose.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import { hookExists, runPostCreateHook } from '../lib/hooks.ts'
 import { mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
+import inquirer from 'inquirer'
 import * as output from '../lib/output.ts'
+import { findSimilarCommand } from '../lib/commands.ts'
 
 interface EnterOptions {
   noShell?: boolean
@@ -59,6 +61,40 @@ export async function enter(branch: string, options?: EnterOptions): Promise<voi
     worktreePath = getWorktreePath(repoRoot, branch)
     output.dim(`Using existing worktree: ${sanitized}`)
   } else {
+    const localBranch = await branchExists(repoRoot, branch)
+    const remoteBranch = localBranch ? false : await remoteBranchExists(repoRoot, branch)
+
+    if (!localBranch && !remoteBranch) {
+      const similarCommand = findSimilarCommand(branch)
+
+      if (similarCommand) {
+        output.warn(
+          `"${branch}" looks similar to the "${similarCommand.command}" command. You are about to create a new branch.`
+        )
+
+        let shouldCreateBranch = true
+
+        if (process.stdin.isTTY) {
+          const response = await inquirer.prompt<{ createBranch: boolean }>([
+            {
+              type: 'confirm',
+              name: 'createBranch',
+              message: `Create new branch "${branch}" anyway?`,
+              default: false,
+            },
+          ])
+          shouldCreateBranch = response.createBranch
+        } else {
+          output.dim('Non-interactive terminal detected, skipping confirmation prompt')
+        }
+
+        if (!shouldCreateBranch) {
+          output.info(`Cancelled. Run 'port ${similarCommand.command}' if you meant the command.`)
+          process.exit(1)
+        }
+      }
+    }
+
     output.info(`Creating worktree for branch: ${sanitized}`)
     try {
       worktreePath = await createWorktree(repoRoot, branch)

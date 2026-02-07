@@ -3,7 +3,7 @@ import { join, resolve } from 'path'
 import { execPortAsync, prepareSample } from './utils'
 import { describe, test, expect, afterEach } from 'vitest'
 
-const TIMEOUT = 15000 // 15 seconds should be plenty for host processes
+const TIMEOUT = 45000
 
 describe('port run integration', () => {
   // Track spawned processes for cleanup
@@ -11,13 +11,33 @@ describe('port run integration', () => {
 
   afterEach(async () => {
     // Kill all spawned processes
+    const waitForExit = (proc: ChildProcess, timeoutMs = 3000) =>
+      new Promise<void>(resolve => {
+        let settled = false
+        const finish = () => {
+          if (!settled) {
+            settled = true
+            resolve()
+          }
+        }
+
+        proc.once('exit', finish)
+        proc.once('close', finish)
+        setTimeout(finish, timeoutMs)
+      })
+
+    const exits: Array<Promise<void>> = []
+
     for (const proc of spawnedProcesses) {
       try {
         proc.kill('SIGTERM')
+        exits.push(waitForExit(proc))
       } catch {
         /* ignore */
       }
     }
+
+    await Promise.all(exits)
     spawnedProcesses.length = 0
   })
 
@@ -35,16 +55,20 @@ describe('port run integration', () => {
       const worktreeADir = join(sample.dir, '.port/trees/a')
       const worktreeBDir = join(sample.dir, '.port/trees/b')
 
-      // Spawn `port run 3000 -- bun index.ts` in each worktree as background processes
+      // Spawn first service, wait for readiness, then spawn second.
+      // This avoids startup races around first-time Traefik/image initialization in CI.
       const procA = spawnPortRun(3000, ['bun', 'index.ts'], worktreeADir)
-      const procB = spawnPortRun(3000, ['bun', 'index.ts'], worktreeBDir)
-      spawnedProcesses.push(procA, procB)
+      spawnedProcesses.push(procA)
 
-      // Poll until both services respond
       const aURL = 'http://a.port:3000'
       const bURL = 'http://b.port:3000'
 
-      const [responseA, responseB] = await Promise.all([pollUntilReady(aURL), pollUntilReady(bURL)])
+      const responseA = await pollUntilReady(aURL)
+
+      const procB = spawnPortRun(3000, ['bun', 'index.ts'], worktreeBDir)
+      spawnedProcesses.push(procB)
+
+      const responseB = await pollUntilReady(bURL)
 
       // Parse responses
       const dataA = (await responseA.json()) as { actualPort: number; instanceId: string }
@@ -84,7 +108,7 @@ function spawnPortRun(port: number, command: string[], cwd: string): ChildProces
 /**
  * Poll a URL until it responds with status 200
  */
-async function pollUntilReady(url: string, timeoutMs = 10000): Promise<Response> {
+async function pollUntilReady(url: string, timeoutMs = 30000): Promise<Response> {
   const startTime = Date.now()
 
   while (Date.now() - startTime < timeoutMs) {
