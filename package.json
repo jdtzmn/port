@@ -1,7 +1,19 @@
 {
   "name": "@jdtzmn/port",
   "version": "0.1.0",
-  "description": "Bun-powered CLI for managing git worktrees with automatic Traefik configuration",
+  "description": "CLI tool for managing git worktrees with automatic Traefik configuration",
+  "author": "Jacob Daitzman <jdtzmn@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jdtzmn/port.git"
+  },
+  "homepage": "https://github.com/jdtzmn/port#readme",
+  "bugs": {
+    "url": "https://github.com/jdtzmn/port/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "module": "dist/index.js",
   "main": "dist/index.js",
   "type": "module",
