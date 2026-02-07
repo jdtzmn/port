@@ -89,7 +89,17 @@ export async function enter(branch: string, options?: EnterOptions): Promise<voi
         }
 
         if (!shouldCreateBranch) {
-          output.info(`Cancelled. Run 'port ${similarCommand.command}' if you meant the command.`)
+          const forwardedArgs = getForwardedArgs(branch)
+          const suggestedCommand = ['port', similarCommand.command, ...forwardedArgs].join(' ')
+
+          const runSuggestedCommand = await promptToRunSuggestedCommand(suggestedCommand)
+
+          if (runSuggestedCommand) {
+            await runCommand(similarCommand.command, forwardedArgs)
+            return
+          }
+
+          output.info('Cancelled.')
           process.exit(1)
         }
       }
@@ -185,4 +195,55 @@ export async function enter(branch: string, options?: EnterOptions): Promise<voi
     output.error(`Failed to spawn shell: ${error}`)
     process.exit(1)
   })
+}
+
+function getForwardedArgs(branch: string): string[] {
+  const argv = process.argv.slice(2)
+  const branchIndex = argv.indexOf(branch)
+
+  if (branchIndex === -1) {
+    return argv
+  }
+
+  return [...argv.slice(0, branchIndex), ...argv.slice(branchIndex + 1)]
+}
+
+async function promptToRunSuggestedCommand(suggestedCommand: string): Promise<boolean> {
+  const response = await inquirer.prompt<{ runSuggestedCommand: boolean }>([
+    {
+      type: 'confirm',
+      name: 'runSuggestedCommand',
+      message: `Run "${suggestedCommand}" instead?`,
+      default: true,
+    },
+  ])
+
+  return response.runSuggestedCommand
+}
+
+async function runCommand(command: string, args: string[]): Promise<void> {
+  const scriptPath = process.argv[1]
+
+  if (!scriptPath) {
+    output.error('Could not determine CLI entry point')
+    process.exit(1)
+  }
+
+  const child = spawn(process.execPath, [scriptPath, command, ...args], {
+    stdio: 'inherit',
+    env: process.env,
+  })
+
+  const exitCode = await new Promise<number>(resolve => {
+    child.on('exit', code => {
+      resolve(code ?? 0)
+    })
+
+    child.on('error', error => {
+      output.error(`Failed to run suggested command: ${error}`)
+      resolve(1)
+    })
+  })
+
+  process.exit(exitCode)
 }

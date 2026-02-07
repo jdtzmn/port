@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   hookExists: vi.fn(),
   runPostCreateHook: vi.fn(),
   prompt: vi.fn(),
+  spawn: vi.fn(),
   findSimilarCommand: vi.fn(),
   success: vi.fn(),
   warn: vi.fn(),
@@ -66,6 +67,10 @@ vi.mock('inquirer', () => ({
   },
 }))
 
+vi.mock('child_process', () => ({
+  spawn: mocks.spawn,
+}))
+
 vi.mock('../lib/commands.ts', () => ({
   findSimilarCommand: mocks.findSimilarCommand,
 }))
@@ -86,6 +91,7 @@ import { enter } from './enter.ts'
 describe('enter typo confirmation', () => {
   let exitSpy: ReturnType<typeof vi.spyOn>
   const originalIsTTY = process.stdin.isTTY
+  const originalArgv = process.argv
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -112,6 +118,15 @@ describe('enter typo confirmation', () => {
     mocks.command.mockImplementation((value: string) => value)
 
     Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true })
+    process.argv = ['/usr/local/bin/bun', '/repo/dist/index.js', 'instal', '--no-shell']
+
+    mocks.spawn.mockImplementation(() => ({
+      on: (event: string, handler: (code?: number) => void) => {
+        if (event === 'exit') {
+          handler(0)
+        }
+      },
+    }))
 
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => {
       throw new Error(`process.exit:${typeof code === 'number' ? code : 0}`)
@@ -120,11 +135,14 @@ describe('enter typo confirmation', () => {
 
   afterEach(() => {
     Object.defineProperty(process.stdin, 'isTTY', { value: originalIsTTY, configurable: true })
+    process.argv = originalArgv
     exitSpy.mockRestore()
   })
 
   test('cancels creation when the user rejects typo confirmation', async () => {
-    mocks.prompt.mockResolvedValue({ createBranch: false })
+    mocks.prompt
+      .mockResolvedValueOnce({ createBranch: false })
+      .mockResolvedValueOnce({ runSuggestedCommand: false })
 
     await expect(enter('instal', { noShell: true })).rejects.toThrow('process.exit:1')
 
@@ -136,10 +154,16 @@ describe('enter typo confirmation', () => {
         default: false,
       },
     ])
+    expect(mocks.prompt).toHaveBeenCalledWith([
+      {
+        type: 'confirm',
+        name: 'runSuggestedCommand',
+        message: 'Run "port install --no-shell" instead?',
+        default: true,
+      },
+    ])
     expect(mocks.createWorktree).not.toHaveBeenCalled()
-    expect(mocks.info).toHaveBeenCalledWith(
-      "Cancelled. Run 'port install' if you meant the command."
-    )
+    expect(mocks.info).toHaveBeenCalledWith('Cancelled.')
   })
 
   test('creates worktree when the user confirms typo warning', async () => {
@@ -149,5 +173,30 @@ describe('enter typo confirmation', () => {
 
     expect(mocks.prompt).toHaveBeenCalledTimes(1)
     expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'instal')
+  })
+
+  test('runs suggested command with forwarded flags when the user confirms', async () => {
+    process.argv = [
+      '/usr/local/bin/bun',
+      '/repo/dist/index.js',
+      'instal',
+      '--yes',
+      '--domain',
+      'dev',
+    ]
+    mocks.prompt
+      .mockResolvedValueOnce({ createBranch: false })
+      .mockResolvedValueOnce({ runSuggestedCommand: true })
+
+    await expect(enter('instal', { noShell: true })).rejects.toThrow('process.exit:0')
+
+    expect(mocks.spawn).toHaveBeenCalledWith(
+      process.execPath,
+      ['/repo/dist/index.js', 'install', '--yes', '--domain', 'dev'],
+      expect.objectContaining({
+        stdio: 'inherit',
+        env: process.env,
+      })
+    )
   })
 })
