@@ -15,6 +15,7 @@ import { handleCliError } from './lib/cli.ts'
 import { kill } from './commands/kill.ts'
 import { status } from './commands/status.ts'
 import { cleanup } from './commands/cleanup.ts'
+import { urls } from './commands/urls.ts'
 
 export const program = new Command()
 
@@ -64,6 +65,12 @@ program
 
 // port status
 program.command('status').description('Show per-service status for all worktrees').action(status)
+
+// port urls [service]
+program
+  .command('urls [service]')
+  .description('Show service URLs for the current worktree')
+  .action(urls)
 
 // port up
 program

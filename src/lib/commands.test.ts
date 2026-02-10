@@ -5,6 +5,7 @@ describe('command name helpers', () => {
   test('recognizes reserved commands and aliases', () => {
     expect(isReservedCommand('install')).toBe(true)
     expect(isReservedCommand('ls')).toBe(true)
+    expect(isReservedCommand('urls')).toBe(true)
     expect(isReservedCommand('feature/install-docs')).toBe(false)
   })
 

@@ -151,6 +151,15 @@ For per-service details by worktree:
 port status
 ```
 
+Show URLs for services in the current worktree:
+
+```bash
+port urls
+port urls ui-frontend
+```
+
+`port urls` only works inside a worktree.
+
 ### 9. Remove a Worktree
 
 ```bash
@@ -186,6 +195,7 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port compose <args...>`                         | Run docker compose with auto `-f` flags              |
 | `port list`                                      | List worktree and host-service summary               |
 | `port status`                                    | Show per-service status by worktree                  |
+| `port urls [service]`                            | Show service URLs for current worktree               |
 | `port cleanup`                                   | Delete archived local branches with confirmation     |
 | `port uninstall [--yes] [--domain DOMAIN]`       | Remove DNS configuration for wildcard domain         |
 
