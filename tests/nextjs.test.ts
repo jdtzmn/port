@@ -40,20 +40,20 @@ describe('Next.js routing through Traefik', () => {
       })
 
       // Create two worktrees (--no-shell so they exit immediately)
-      await execPortAsync(['A', '--no-shell'], sample.dir)
-      await execPortAsync(['B', '--no-shell'], sample.dir)
+      await execPortAsync(['next-a', '--no-shell'], sample.dir)
+      await execPortAsync(['next-b', '--no-shell'], sample.dir)
 
       // Navigate to the worktree directories and run `up`
       // Note: branch names are lowercased by sanitizeBranchName
-      const worktreeADir = join(sample.dir, './.port/trees/a')
-      const worktreeBDir = join(sample.dir, './.port/trees/b')
+      const worktreeADir = join(sample.dir, './.port/trees/next-a')
+      const worktreeBDir = join(sample.dir, './.port/trees/next-b')
 
       await execPortAsync(['up'], worktreeADir)
       await execPortAsync(['up'], worktreeBDir)
 
       // Fetch UUIDs from both worktrees via API route
-      const aApiUrl = 'http://a.port:3000/api/id'
-      const bApiUrl = 'http://b.port:3000/api/id'
+      const aApiUrl = 'http://next-a.port:3000/api/id'
+      const bApiUrl = 'http://next-b.port:3000/api/id'
 
       const aResponse = await fetchJson<{ id: string }>(aApiUrl)
       const bResponse = await fetchJson<{ id: string }>(bApiUrl)

@@ -1,7 +1,10 @@
 import { describe, test, expect } from 'vitest'
 import { prepareSample, renderCLI } from '@tests/utils'
+import { useIsolatedPortGlobalDir } from '@tests/isolatedGlobalDir'
 
 describe('port kill command', () => {
+  useIsolatedPortGlobalDir('port-kill-test')
+
   test('can run outside a port-managed project and reports no services', async () => {
     const sample = await prepareSample('db-and-server', {
       gitInit: true,

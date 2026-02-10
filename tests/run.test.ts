@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'child_process'
 import { join, resolve } from 'path'
 import { execPortAsync, prepareSample } from './utils'
-import { describe, test, expect, afterEach } from 'vitest'
+import { afterEach, describe, test, expect } from 'vitest'
 
 const TIMEOUT = 45000
 
@@ -49,19 +49,19 @@ describe('port run integration', () => {
       })
 
       // Create worktrees A and B
-      await execPortAsync(['A', '--no-shell'], sample.dir)
-      await execPortAsync(['B', '--no-shell'], sample.dir)
+      await execPortAsync(['run-a', '--no-shell'], sample.dir)
+      await execPortAsync(['run-b', '--no-shell'], sample.dir)
 
-      const worktreeADir = join(sample.dir, '.port/trees/a')
-      const worktreeBDir = join(sample.dir, '.port/trees/b')
+      const worktreeADir = join(sample.dir, '.port/trees/run-a')
+      const worktreeBDir = join(sample.dir, '.port/trees/run-b')
 
       // Spawn first service, wait for readiness, then spawn second.
       // This avoids startup races around first-time Traefik/image initialization in CI.
       const procA = spawnPortRun(3000, ['bun', 'index.ts'], worktreeADir)
       spawnedProcesses.push(procA)
 
-      const aURL = 'http://a.port:3000'
-      const bURL = 'http://b.port:3000'
+      const aURL = 'http://run-a.port:3000'
+      const bURL = 'http://run-b.port:3000'
 
       const responseA = await pollUntilReady(aURL)
 
