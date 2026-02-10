@@ -58,6 +58,29 @@ describe('generateOverrideContent', () => {
     )
   })
 
+  test('adds TCP routing labels for postgres-style connections', () => {
+    const parsedCompose: ParsedComposeFile = {
+      name: 'demo',
+      services: {
+        db: {
+          image: 'postgres:16',
+          ports: [{ published: 5432, target: 5432 }],
+        },
+      },
+    }
+
+    const override = generateOverrideContent(parsedCompose, 'feature-1', 'port')
+
+    expect(override).toContain(
+      'traefik.tcp.routers.feature-1-db-5432.rule=HostSNI(`feature-1.port`)'
+    )
+    expect(override).toContain('traefik.tcp.routers.feature-1-db-5432.entrypoints=port5432')
+    expect(override).toContain('traefik.tcp.routers.feature-1-db-5432.tls=true')
+    expect(override).toContain(
+      'traefik.tcp.services.feature-1-db-5432.loadbalancer.server.port=5432'
+    )
+  })
+
   test('keeps separate mappings when published and target differ', () => {
     const parsedCompose: ParsedComposeFile = {
       name: 'layerone',

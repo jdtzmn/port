@@ -1,8 +1,36 @@
 import { waitFor } from 'cli-testing-library'
+import { createConnection } from 'net'
 import { describe, test, expect } from 'vitest'
 import { prepareSample, renderCLI } from '../../tests/utils'
 
 const SAMPLES_TIMEOUT = 30_000
+
+async function probePostgresSslResponse(host: string, port: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const socket = createConnection({ host, port })
+    const timeout = setTimeout(() => {
+      socket.destroy()
+      reject(new Error(`Timed out probing Postgres at ${host}:${port}`))
+    }, 8000)
+
+    socket.once('error', error => {
+      clearTimeout(timeout)
+      reject(error)
+    })
+
+    socket.once('connect', () => {
+      // PostgreSQL SSLRequest packet (length=8, code=80877103)
+      socket.write(Buffer.from([0, 0, 0, 8, 4, 210, 22, 47]))
+    })
+
+    socket.once('data', data => {
+      clearTimeout(timeout)
+      const response = data.subarray(0, 1).toString('ascii')
+      socket.end()
+      resolve(response)
+    })
+  })
+}
 
 describe('samples start', () => {
   test(
@@ -38,6 +66,34 @@ describe('samples start', () => {
         timeout: SAMPLES_TIMEOUT,
       })
       await sample.cleanup()
+    },
+    SAMPLES_TIMEOUT + 1000
+  )
+
+  test(
+    'routes postgres traffic through the .port domain',
+    async () => {
+      const sample = await prepareSample('db-and-server', {
+        initWithConfig: true,
+      })
+
+      try {
+        const { findByText } = await renderCLI(['up'], sample.dir)
+
+        await findByText('Traefik dashboard:', {}, { timeout: SAMPLES_TIMEOUT })
+
+        const postgresHost = new URL(sample.urlWithPort(5432)).hostname
+        const sslResponse = await probePostgresSslResponse(postgresHost, 5432)
+
+        expect(['S', 'N']).toContain(sslResponse)
+
+        const downInstance = await renderCLI(['down', '-y'], sample.dir)
+        await waitFor(() => expect(downInstance.hasExit()).toMatchObject({ exitCode: 0 }), {
+          timeout: SAMPLES_TIMEOUT,
+        })
+      } finally {
+        await sample.cleanup()
+      }
     },
     SAMPLES_TIMEOUT + 1000
   )

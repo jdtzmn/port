@@ -342,16 +342,7 @@ export async function checkComposeVersion(): Promise<{
   return { supported, version }
 }
 
-/**
- * Generate Traefik labels for a service
- *
- * @param worktreeName - Sanitized worktree/branch name
- * @param serviceName - Name of the docker-compose service
- * @param port - Port to expose
- * @param domain - Domain suffix (default: 'port')
- * @returns Array of Traefik labels
- */
-function generateTraefikLabels(
+function generateTraefikHttpLabels(
   worktreeName: string,
   serviceName: string,
   publishedPort: number,
@@ -366,6 +357,45 @@ function generateTraefikLabels(
     `traefik.http.routers.${routerName}.entrypoints=port${publishedPort}`,
     `traefik.http.routers.${routerName}.service=${routerName}`,
     `traefik.http.services.${routerName}.loadbalancer.server.port=${targetPort}`,
+  ]
+}
+
+function generateTraefikTcpLabels(
+  worktreeName: string,
+  serviceName: string,
+  publishedPort: number,
+  targetPort: number,
+  domain: string
+): string[] {
+  const routerName = `${worktreeName}-${serviceName}-${publishedPort}`
+  const hostname = `${worktreeName}.${domain}`
+
+  return [
+    `traefik.tcp.routers.${routerName}.rule=HostSNI(\`${hostname}\`)`,
+    `traefik.tcp.routers.${routerName}.entrypoints=port${publishedPort}`,
+    `traefik.tcp.routers.${routerName}.service=${routerName}`,
+    `traefik.tcp.routers.${routerName}.tls=true`,
+    `traefik.tcp.services.${routerName}.loadbalancer.server.port=${targetPort}`,
+  ]
+}
+
+/**
+ * Generate Traefik labels for a service port.
+ *
+ * We emit both HTTP and TCP routers so hostname-based routing works for
+ * HTTP traffic and TCP protocols (for example Postgres) on the same
+ * `.port` domain conventions.
+ */
+function generateTraefikLabels(
+  worktreeName: string,
+  serviceName: string,
+  publishedPort: number,
+  targetPort: number,
+  domain: string
+): string[] {
+  return [
+    ...generateTraefikHttpLabels(worktreeName, serviceName, publishedPort, targetPort, domain),
+    ...generateTraefikTcpLabels(worktreeName, serviceName, publishedPort, targetPort, domain),
   ]
 }
 
