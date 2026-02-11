@@ -16,6 +16,7 @@ import { kill } from './commands/kill.ts'
 import { status } from './commands/status.ts'
 import { cleanup } from './commands/cleanup.ts'
 import { urls } from './commands/urls.ts'
+import { onboard } from './commands/onboard.ts'
 import { detectWorktree } from './lib/worktree.ts'
 import { branchExists } from './lib/git.ts'
 import * as output from './lib/output.ts'
@@ -69,6 +70,12 @@ program
   .command('init')
   .description('Initialize .port/ directory in the current project')
   .action(init)
+
+// port onboard
+program
+  .command('onboard')
+  .description('Show recommended Port workflow and command guide')
+  .action(onboard)
 
 // port install
 program

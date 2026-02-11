@@ -43,6 +43,12 @@ bun add -g @jdtzmn/port
 
 ## Quick Start
 
+Want a guided workflow in the CLI?
+
+```bash
+port onboard
+```
+
 ### 1. Initialize Project
 
 ```bash
@@ -186,22 +192,23 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 
 ## Commands
 
-| Command                                          | Description                                          |
-| ------------------------------------------------ | ---------------------------------------------------- |
-| `port init`                                      | Initialize `.port/` directory structure              |
-| `port install [--dns-ip IP] [--domain DOMAIN]`   | Set up DNS for wildcard domain (default from config) |
-| `port enter <branch>`                             | Enter a worktree explicitly (including command names) |
-| `port <branch>`                                  | Enter a worktree (creates if doesn't exist)          |
-| `port up`                                        | Start docker-compose services in current worktree    |
-| `port down`                                      | Stop docker-compose services and host processes      |
-| `port run <port> -- <command...>`                | Run a host process with Traefik routing              |
-| `port remove <branch> [--force] [--keep-branch]` | Remove worktree and archive local branch             |
-| `port compose <args...>`                         | Run docker compose with auto `-f` flags              |
-| `port list`                                      | List worktree and host-service summary               |
-| `port status`                                    | Show per-service status by worktree                  |
-| `port urls [service]`                            | Show service URLs for current worktree               |
-| `port cleanup`                                   | Delete archived local branches with confirmation     |
-| `port uninstall [--yes] [--domain DOMAIN]`       | Remove DNS configuration for wildcard domain         |
+| Command                                          | Description                                           |
+| ------------------------------------------------ | ----------------------------------------------------- |
+| `port init`                                      | Initialize `.port/` directory structure               |
+| `port onboard`                                   | Print recommended workflow and command usage guide    |
+| `port install [--dns-ip IP] [--domain DOMAIN]`   | Set up DNS for wildcard domain (default from config)  |
+| `port enter <branch>`                            | Enter a worktree explicitly (including command names) |
+| `port <branch>`                                  | Enter a worktree (creates if doesn't exist)           |
+| `port up`                                        | Start docker-compose services in current worktree     |
+| `port down`                                      | Stop docker-compose services and host processes       |
+| `port run <port> -- <command...>`                | Run a host process with Traefik routing               |
+| `port remove <branch> [--force] [--keep-branch]` | Remove worktree and archive local branch              |
+| `port compose <args...>`                         | Run docker compose with auto `-f` flags               |
+| `port list`                                      | List worktree and host-service summary                |
+| `port status`                                    | Show per-service status by worktree                   |
+| `port urls [service]`                            | Show service URLs for current worktree                |
+| `port cleanup`                                   | Delete archived local branches with confirmation      |
+| `port uninstall [--yes] [--domain DOMAIN]`       | Remove DNS configuration for wildcard domain          |
 
 ## How It Works
 
