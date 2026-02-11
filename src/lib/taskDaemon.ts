@@ -3,9 +3,18 @@ import { existsSync } from 'fs'
 import { mkdir, readFile, rm } from 'fs/promises'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import { countActiveTasks, getTaskRuntimeDir, reconcileTaskQueue } from './taskStore.ts'
+import {
+  countActiveTasks,
+  getTaskRuntimeDir,
+  listRunningTasks,
+  listRunnableQueuedTasks,
+  patchTask,
+  reconcileTaskQueue,
+  updateTaskStatus,
+} from './taskStore.ts'
 import { withFileLock, writeFileAtomic } from './state.ts'
 import { loadConfig } from './config.ts'
+import { LocalTaskExecutionAdapter, type TaskRunHandle } from './taskAdapter.ts'
 
 export interface DaemonState {
   pid: number
@@ -21,6 +30,7 @@ const DAEMON_START_LOCK_FILE = 'daemon-start.lock'
 const LOOP_POLL_MS = 1000
 
 export const DEFAULT_DAEMON_IDLE_STOP_MS = 10 * 60 * 1000
+const DEFAULT_TASK_TIMEOUT_MS = 30 * 60 * 1000
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -164,6 +174,242 @@ export async function runTaskDaemon(
     status: 'starting',
   }
 
+  const scriptPath = process.argv[1]
+  if (!scriptPath) {
+    throw new Error('Unable to determine CLI entrypoint for daemon worker execution')
+  }
+  const adapter = new LocalTaskExecutionAdapter(scriptPath)
+
+  async function getTaskTimeoutMs(): Promise<number> {
+    try {
+      const config = await loadConfig(repoRoot)
+      const minutes = config.task?.timeoutMinutes
+      if (typeof minutes === 'number' && minutes > 0) {
+        return minutes * 60 * 1000
+      }
+    } catch {
+      // Use default timeout.
+    }
+
+    return DEFAULT_TASK_TIMEOUT_MS
+  }
+
+  async function buildRunHandle(taskId: string): Promise<TaskRunHandle | null> {
+    const runningTasks = await listRunningTasks(repoRoot)
+    const task = runningTasks.find(candidate => candidate.id === taskId)
+    const runtime = task?.runtime
+    if (!task || !runtime?.workerPid || !runtime.worktreePath) {
+      return null
+    }
+
+    return {
+      taskId,
+      runId: `${taskId}-unknown`,
+      workerPid: runtime.workerPid,
+      worktreePath: runtime.worktreePath,
+      branch: task.branch ?? `port-task-${taskId}`,
+    }
+  }
+
+  async function handleRunningTasks(): Promise<void> {
+    const runningTasks = await listRunningTasks(repoRoot)
+
+    for (const task of runningTasks) {
+      const runtime = task.runtime
+      if (!runtime?.workerPid || !runtime.worktreePath) {
+        continue
+      }
+
+      const handle: TaskRunHandle = {
+        taskId: task.id,
+        runId: `${task.id}-runtime`,
+        workerPid: runtime.workerPid,
+        worktreePath: runtime.worktreePath,
+        branch: task.branch ?? `port-task-${task.id}`,
+      }
+
+      const timedOut = runtime.timeoutAt
+        ? Date.now() >= new Date(runtime.timeoutAt).getTime()
+        : false
+
+      if (timedOut) {
+        await adapter.cancel(handle)
+        await patchTask(
+          repoRoot,
+          task.id,
+          {
+            runtime: {
+              ...runtime,
+              finishedAt: nowIso(),
+              retainedForDebug: true,
+            },
+          },
+          {
+            type: 'task.worker.timeout',
+            message: 'Worker exceeded configured task timeout',
+          }
+        )
+        await updateTaskStatus(repoRoot, task.id, 'timeout', 'Worker exceeded task timeout')
+        continue
+      }
+
+      const workerStatus = await adapter.status(handle)
+      if (workerStatus === 'running') {
+        continue
+      }
+
+      const refreshed = await patchTask(repoRoot, task.id, {}, undefined)
+      if (!refreshed) {
+        continue
+      }
+
+      if (refreshed.status === 'completed') {
+        try {
+          await adapter.cleanup(repoRoot, handle)
+          await patchTask(
+            repoRoot,
+            task.id,
+            {
+              runtime: {
+                ...(refreshed.runtime ?? runtime),
+                cleanedAt: nowIso(),
+                retainedForDebug: false,
+              },
+            },
+            {
+              type: 'task.worker.cleaned',
+              message: 'Ephemeral worktree removed after successful completion',
+            }
+          )
+        } catch (error) {
+          await patchTask(
+            repoRoot,
+            task.id,
+            {
+              runtime: {
+                ...(refreshed.runtime ?? runtime),
+                retainedForDebug: true,
+              },
+            },
+            {
+              type: 'task.worker.cleanup_failed',
+              message: `Failed to remove worktree: ${error}`,
+            }
+          )
+        }
+        continue
+      }
+
+      if (
+        refreshed.status === 'failed' ||
+        refreshed.status === 'cancelled' ||
+        refreshed.status === 'timeout'
+      ) {
+        await patchTask(
+          repoRoot,
+          task.id,
+          {
+            runtime: {
+              ...(refreshed.runtime ?? runtime),
+              retainedForDebug: true,
+              finishedAt: refreshed.runtime?.finishedAt ?? nowIso(),
+            },
+          },
+          {
+            type: 'task.worker.retained',
+            message: 'Task failed and worktree was retained for debugging',
+          }
+        )
+        continue
+      }
+
+      await updateTaskStatus(repoRoot, task.id, 'failed', 'Worker exited unexpectedly')
+      await patchTask(
+        repoRoot,
+        task.id,
+        {
+          runtime: {
+            ...(refreshed.runtime ?? runtime),
+            finishedAt: nowIso(),
+            retainedForDebug: true,
+          },
+        },
+        {
+          type: 'task.worker.crashed',
+          message: 'Worker process exited without reporting terminal status',
+        }
+      )
+    }
+  }
+
+  async function startRunnableTasks(): Promise<void> {
+    const timeoutMs = await getTaskTimeoutMs()
+    const runnable = await listRunnableQueuedTasks(repoRoot)
+    const task = runnable[0]
+
+    if (!task) {
+      return
+    }
+
+    await updateTaskStatus(repoRoot, task.id, 'preparing', 'Preparing local worker')
+
+    try {
+      const prepared = await adapter.prepare(repoRoot, task)
+      const startedAt = nowIso()
+      const timeoutAt = new Date(Date.now() + timeoutMs).toISOString()
+      await patchTask(
+        repoRoot,
+        task.id,
+        {
+          runtime: {
+            preparedAt: startedAt,
+            worktreePath: prepared.worktreePath,
+            timeoutAt,
+            retainedForDebug: false,
+          },
+        },
+        {
+          type: 'task.worker.prepared',
+          message: prepared.worktreePath,
+        }
+      )
+
+      const handle = await adapter.start(repoRoot, task, prepared)
+      await patchTask(
+        repoRoot,
+        task.id,
+        {
+          runtime: {
+            workerPid: handle.workerPid,
+            worktreePath: handle.worktreePath,
+            startedAt,
+            timeoutAt,
+            retainedForDebug: false,
+          },
+        },
+        {
+          type: 'task.worker.started',
+          message: `pid=${handle.workerPid}`,
+        }
+      )
+    } catch (error) {
+      await updateTaskStatus(
+        repoRoot,
+        task.id,
+        'failed',
+        `Worker preparation/start failed: ${error}`
+      )
+      const maybeHandle = await buildRunHandle(task.id)
+      if (maybeHandle) {
+        try {
+          await adapter.cleanup(repoRoot, maybeHandle)
+        } catch {
+          // Best effort cleanup.
+        }
+      }
+    }
+  }
+
   process.on('SIGTERM', () => {
     stopping = true
   })
@@ -177,6 +423,8 @@ export async function runTaskDaemon(
 
   while (!stopping) {
     await reconcileTaskQueue(repoRoot)
+    await handleRunningTasks()
+    await startRunnableTasks()
     const activeCount = await countActiveTasks(repoRoot)
     const now = Date.now()
 

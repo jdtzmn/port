@@ -6,10 +6,13 @@ const mocks = vi.hoisted(() => ({
   createTask: vi.fn(),
   listTasks: vi.fn(),
   getTask: vi.fn(),
+  patchTask: vi.fn(),
+  updateTaskStatus: vi.fn(),
   ensureTaskDaemon: vi.fn(),
   runTaskDaemon: vi.fn(),
   stopTaskDaemon: vi.fn(),
   cleanupTaskRuntime: vi.fn(),
+  execFileAsync: vi.fn(),
   success: vi.fn(),
   dim: vi.fn(),
   info: vi.fn(),
@@ -27,6 +30,12 @@ vi.mock('../lib/taskStore.ts', () => ({
   createTask: mocks.createTask,
   listTasks: mocks.listTasks,
   getTask: mocks.getTask,
+  patchTask: mocks.patchTask,
+  updateTaskStatus: mocks.updateTaskStatus,
+}))
+
+vi.mock('../lib/exec.ts', () => ({
+  execFileAsync: mocks.execFileAsync,
 }))
 
 vi.mock('../lib/taskDaemon.ts', () => ({
@@ -46,7 +55,7 @@ vi.mock('../lib/output.ts', () => ({
   branch: mocks.branch,
 }))
 
-import { taskCleanup, taskDaemon, taskList, taskRead, taskStart } from './task.ts'
+import { taskCleanup, taskDaemon, taskList, taskRead, taskStart, taskWorker } from './task.ts'
 
 describe('task command', () => {
   beforeEach(() => {
@@ -98,5 +107,43 @@ describe('task command', () => {
     expect(mocks.stopTaskDaemon).toHaveBeenCalledWith('/repo')
     expect(mocks.cleanupTaskRuntime).toHaveBeenCalledWith('/repo')
     expect(mocks.success).toHaveBeenCalledWith('Stopped task daemon')
+  })
+
+  test('task worker marks completed when execution succeeds', async () => {
+    mocks.getTask.mockResolvedValue({ id: 'task-1', title: 'hello', runtime: {} })
+    mocks.updateTaskStatus.mockResolvedValue(undefined)
+    mocks.patchTask.mockResolvedValue(undefined)
+    mocks.execFileAsync.mockResolvedValue({ stdout: '', stderr: '' })
+
+    await taskWorker({ taskId: 'task-1', repo: '/repo', worktree: '/repo/.port/trees/task-1' })
+
+    expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      'running',
+      'Worker started'
+    )
+    expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      'completed',
+      'Worker completed successfully'
+    )
+  })
+
+  test('task worker marks failed when execution throws', async () => {
+    mocks.getTask.mockResolvedValue({ id: 'task-2', title: 'boom [fail]', runtime: {} })
+    mocks.execFileAsync.mockResolvedValue({ stdout: '', stderr: '' })
+
+    await expect(
+      taskWorker({ taskId: 'task-2', repo: '/repo', worktree: '/repo/.port/trees/task-2' })
+    ).rejects.toThrow('Task requested failure')
+
+    expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
+      '/repo',
+      'task-2',
+      'failed',
+      expect.stringContaining('Task requested failure')
+    )
   })
 })

@@ -1,13 +1,21 @@
 import * as output from '../lib/output.ts'
 import { detectWorktree } from '../lib/worktree.ts'
 import { failWithError } from '../lib/cli.ts'
-import { createTask, getTask, listTasks, type PortTaskMode } from '../lib/taskStore.ts'
+import {
+  createTask,
+  getTask,
+  listTasks,
+  patchTask,
+  type PortTaskMode,
+  updateTaskStatus,
+} from '../lib/taskStore.ts'
 import {
   cleanupTaskRuntime,
   ensureTaskDaemon,
   runTaskDaemon,
   stopTaskDaemon,
 } from '../lib/taskDaemon.ts'
+import { execFileAsync } from '../lib/exec.ts'
 
 function getRepoRootOrFail(): string {
   try {
@@ -89,6 +97,18 @@ export async function taskRead(taskId: string): Promise<void> {
   if (task.attach?.state) {
     output.info(`Attach state: ${task.attach.state}`)
   }
+  if (task.runtime?.workerPid) {
+    output.info(`Worker PID: ${task.runtime.workerPid}`)
+  }
+  if (task.runtime?.worktreePath) {
+    output.info(`Worktree: ${task.runtime.worktreePath}`)
+  }
+  if (task.runtime?.timeoutAt) {
+    output.info(`Timeout at: ${task.runtime.timeoutAt}`)
+  }
+  if (task.runtime?.retainedForDebug) {
+    output.info('Retained: true')
+  }
   output.dim(`Created: ${task.createdAt}`)
   output.dim(`Updated: ${task.updatedAt}`)
 }
@@ -99,7 +119,10 @@ export async function taskCleanup(): Promise<void> {
 
   if (stopped.reason === 'active_tasks') {
     output.warn('Daemon still has active tasks; skipping shutdown.')
-  } else if (stopped.reason === 'stopped') {
+    return
+  }
+
+  if (stopped.reason === 'stopped') {
     output.success('Stopped task daemon')
   }
 
@@ -114,4 +137,84 @@ export async function taskDaemon(options: { serve?: boolean; repo?: string }): P
 
   const repoRoot = options.repo ?? getRepoRootOrFail()
   await runTaskDaemon(repoRoot)
+}
+
+function parseSleepHint(title: string): number {
+  const match = title.match(/\[sleep=(\d+)\]/)
+  if (!match?.[1]) {
+    return 750
+  }
+
+  const parsed = Number.parseInt(match[1], 10)
+  if (Number.isNaN(parsed) || parsed < 0) {
+    return 750
+  }
+
+  return parsed
+}
+
+export async function taskWorker(options: {
+  taskId: string
+  repo: string
+  worktree: string
+}): Promise<void> {
+  const task = await getTask(options.repo, options.taskId)
+  if (!task) {
+    failWithError(`Task not found: ${options.taskId}`)
+  }
+
+  await updateTaskStatus(options.repo, options.taskId, 'running', 'Worker started')
+
+  try {
+    const sleepMs = parseSleepHint(task.title)
+
+    // Validate worktree git context and simulate deterministic execution.
+    await execFileAsync('git', ['status', '--short'], { cwd: options.worktree })
+    await new Promise(resolve => setTimeout(resolve, sleepMs))
+
+    if (task.title.includes('[fail]')) {
+      throw new Error('Task requested failure via [fail] marker')
+    }
+
+    await patchTask(
+      options.repo,
+      options.taskId,
+      {
+        runtime: {
+          ...(task.runtime ?? {}),
+          finishedAt: new Date().toISOString(),
+          lastExitCode: 0,
+        },
+      },
+      {
+        type: 'task.worker.finished',
+        message: 'Worker exited successfully',
+      }
+    )
+    await updateTaskStatus(
+      options.repo,
+      options.taskId,
+      'completed',
+      'Worker completed successfully'
+    )
+  } catch (error) {
+    await patchTask(
+      options.repo,
+      options.taskId,
+      {
+        runtime: {
+          ...(task.runtime ?? {}),
+          finishedAt: new Date().toISOString(),
+          lastExitCode: 1,
+          retainedForDebug: true,
+        },
+      },
+      {
+        type: 'task.worker.failed',
+        message: `${error}`,
+      }
+    )
+    await updateTaskStatus(options.repo, options.taskId, 'failed', `Worker failed: ${error}`)
+    throw error
+  }
 }

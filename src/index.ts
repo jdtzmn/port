@@ -17,7 +17,14 @@ import { status } from './commands/status.ts'
 import { cleanup } from './commands/cleanup.ts'
 import { urls } from './commands/urls.ts'
 import { onboard } from './commands/onboard.ts'
-import { taskCleanup, taskDaemon, taskList, taskRead, taskStart } from './commands/task.ts'
+import {
+  taskCleanup,
+  taskDaemon,
+  taskList,
+  taskRead,
+  taskStart,
+  taskWorker,
+} from './commands/task.ts'
 import { detectWorktree } from './lib/worktree.ts'
 import { branchExists } from './lib/git.ts'
 import * as output from './lib/output.ts'
@@ -105,6 +112,24 @@ taskCommand
   .option('--serve', 'Run daemon loop', false)
   .option('--repo <path>', 'Repository root for daemon state')
   .action(taskDaemon)
+
+taskCommand
+  .command('worker')
+  .description('Internal task worker command')
+  .option('--task-id <id>', 'Task id')
+  .option('--repo <path>', 'Repository root')
+  .option('--worktree <path>', 'Ephemeral worktree path')
+  .action(async (options: { taskId?: string; repo?: string; worktree?: string }) => {
+    if (!options.taskId || !options.repo || !options.worktree) {
+      throw new Error('task worker requires --task-id, --repo, and --worktree')
+    }
+
+    await taskWorker({
+      taskId: options.taskId,
+      repo: options.repo,
+      worktree: options.worktree,
+    })
+  })
 
 // port install
 program

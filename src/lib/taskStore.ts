@@ -48,6 +48,17 @@ export interface PortTask {
     lockKey?: string
     blockedByTaskId?: string
   }
+  runtime?: {
+    workerPid?: number
+    worktreePath?: string
+    timeoutAt?: string
+    preparedAt?: string
+    startedAt?: string
+    finishedAt?: string
+    cleanedAt?: string
+    retainedForDebug?: boolean
+    lastExitCode?: number
+  }
   createdAt: string
   updatedAt: string
 }
@@ -303,6 +314,55 @@ export async function updateTaskStatus(
 
     return task
   })
+}
+
+export async function patchTask(
+  repoRoot: string,
+  taskId: string,
+  patch: Partial<PortTask>,
+  event?: { type: string; message?: string }
+): Promise<PortTask | null> {
+  await ensureTaskStorage(repoRoot)
+  const lockPath = getTaskIndexLockPath(repoRoot)
+
+  return withFileLock(lockPath, async () => {
+    const index = await readTaskIndex(repoRoot)
+    const task = index.tasks.find(item => item.id === taskId)
+
+    if (!task) {
+      return null
+    }
+
+    Object.assign(task, patch)
+    task.updatedAt = nowIso()
+    reconcileBranchQueue(index.tasks)
+
+    await writeTaskIndex(repoRoot, index)
+
+    if (event) {
+      await appendTaskEvent(repoRoot, {
+        id: randomUUID(),
+        taskId,
+        type: event.type,
+        at: task.updatedAt,
+        message: event.message,
+      })
+    }
+
+    return task
+  })
+}
+
+export async function listRunnableQueuedTasks(repoRoot: string): Promise<PortTask[]> {
+  const tasks = await listTasks(repoRoot)
+  return tasks
+    .filter(task => task.status === 'queued' && !task.queue?.blockedByTaskId)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+}
+
+export async function listRunningTasks(repoRoot: string): Promise<PortTask[]> {
+  const tasks = await listTasks(repoRoot)
+  return tasks.filter(task => task.status === 'preparing' || task.status === 'running')
 }
 
 export async function countActiveTasks(repoRoot: string): Promise<number> {
