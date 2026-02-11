@@ -1,6 +1,6 @@
 {
   "name": "@jdtzmn/port",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CLI tool for managing git worktrees with automatic Traefik configuration",
   "author": "Jacob Daitzman <jdtzmn@gmail.com>",
   "repository": {
