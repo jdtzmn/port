@@ -73,4 +73,35 @@ describe('loadConfig', () => {
 
     expect(config.domain).toBe(DEFAULT_DOMAIN)
   })
+
+  test('parses task and remote namespaces', async () => {
+    const configPath = join(repoRoot, PORT_DIR, CONFIG_FILE)
+    await writeFile(
+      configPath,
+      [
+        '{',
+        '  "task": {',
+        '    "daemonIdleStopMinutes": 10,',
+        '    "lockMode": "branch",',
+        '    "attach": { "enabled": true, "client": "configured" }',
+        '  },',
+        '  "remote": {',
+        '    "adapter": "local"',
+        '  }',
+        '}',
+      ].join('\n')
+    )
+
+    const config = await loadConfig(repoRoot)
+    expect(config.task?.daemonIdleStopMinutes).toBe(10)
+    expect(config.task?.attach?.enabled).toBe(true)
+    expect(config.remote?.adapter).toBe('local')
+  })
+
+  test('rejects invalid task lock mode', async () => {
+    const configPath = join(repoRoot, PORT_DIR, CONFIG_FILE)
+    await writeFile(configPath, '{ "task": { "lockMode": "invalid" } }')
+
+    await expect(loadConfig(repoRoot)).rejects.toBeInstanceOf(ConfigError)
+  })
 })

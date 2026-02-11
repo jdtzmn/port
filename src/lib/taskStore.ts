@@ -44,6 +44,10 @@ export interface PortTask {
     checkpointId?: string
     resumeTokenExpiresAt?: string
   }
+  queue?: {
+    lockKey?: string
+    blockedByTaskId?: string
+  }
   createdAt: string
   updatedAt: string
 }
@@ -61,6 +65,14 @@ interface TaskIndex {
   tasks: PortTask[]
 }
 
+const ACTIVE_TASK_STATUSES = new Set<PortTaskStatus>([
+  'queued',
+  'preparing',
+  'running',
+  'paused_for_attach',
+  'resume_failed',
+])
+
 const JOBS_DIR = 'jobs'
 const EVENTS_DIR = 'events'
 const RUNTIME_DIR = 'runtime'
@@ -69,6 +81,54 @@ const INDEX_LOCK_FILE = 'index.lock'
 
 function nowIso(): string {
   return new Date().toISOString()
+}
+
+function isTaskActive(task: PortTask): boolean {
+  return ACTIVE_TASK_STATUSES.has(task.status)
+}
+
+function reconcileBranchQueue(tasks: PortTask[]): void {
+  const byLockKey = new Map<string, PortTask[]>()
+
+  for (const task of tasks) {
+    if (task.mode !== 'write' || !task.branch) {
+      continue
+    }
+
+    const lockKey = task.queue?.lockKey ?? task.branch
+    task.queue = {
+      ...(task.queue ?? {}),
+      lockKey,
+    }
+
+    const grouped = byLockKey.get(lockKey) ?? []
+    grouped.push(task)
+    byLockKey.set(lockKey, grouped)
+  }
+
+  for (const groupedTasks of byLockKey.values()) {
+    groupedTasks.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    let previousActiveId: string | undefined
+
+    for (const task of groupedTasks) {
+      if (!isTaskActive(task)) {
+        if (task.queue) {
+          task.queue.blockedByTaskId = undefined
+        }
+        continue
+      }
+
+      if (!previousActiveId) {
+        if (task.queue) {
+          task.queue.blockedByTaskId = undefined
+        }
+      } else if (task.queue) {
+        task.queue.blockedByTaskId = previousActiveId
+      }
+
+      previousActiveId = task.id
+    }
+  }
 }
 
 function getJobsDir(repoRoot: string): string {
@@ -128,6 +188,8 @@ async function readTaskIndex(repoRoot: string): Promise<TaskIndex> {
       },
     }))
 
+    reconcileBranchQueue(migratedTasks)
+
     return { version: 2, tasks: migratedTasks }
   } catch {
     return { version: 2, tasks: [] }
@@ -173,11 +235,18 @@ export async function createTask(
         supportsTranscript: false,
         supportsFailedSnapshot: false,
       },
+      queue:
+        (input.mode ?? 'write') === 'write' && input.branch
+          ? {
+              lockKey: input.branch,
+            }
+          : undefined,
       createdAt: timestamp,
       updatedAt: timestamp,
     }
 
     index.tasks.push(task)
+    reconcileBranchQueue(index.tasks)
     await writeTaskIndex(repoRoot, index)
     await appendTaskEvent(repoRoot, {
       id: randomUUID(),
@@ -221,6 +290,7 @@ export async function updateTaskStatus(
 
     task.status = status
     task.updatedAt = nowIso()
+    reconcileBranchQueue(index.tasks)
 
     await writeTaskIndex(repoRoot, index)
     await appendTaskEvent(repoRoot, {
@@ -237,13 +307,16 @@ export async function updateTaskStatus(
 
 export async function countActiveTasks(repoRoot: string): Promise<number> {
   const tasks = await listTasks(repoRoot)
-  return tasks.filter(task => {
-    return (
-      task.status === 'queued' ||
-      task.status === 'preparing' ||
-      task.status === 'running' ||
-      task.status === 'paused_for_attach' ||
-      task.status === 'resume_failed'
-    )
-  }).length
+  return tasks.filter(isTaskActive).length
+}
+
+export async function reconcileTaskQueue(repoRoot: string): Promise<void> {
+  await ensureTaskStorage(repoRoot)
+  const lockPath = getTaskIndexLockPath(repoRoot)
+
+  await withFileLock(lockPath, async () => {
+    const index = await readTaskIndex(repoRoot)
+    reconcileBranchQueue(index.tasks)
+    await writeTaskIndex(repoRoot, index)
+  })
 }

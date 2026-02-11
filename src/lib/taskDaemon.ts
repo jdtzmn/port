@@ -3,7 +3,7 @@ import { existsSync } from 'fs'
 import { mkdir, readFile, rm } from 'fs/promises'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import { countActiveTasks, getTaskRuntimeDir } from './taskStore.ts'
+import { countActiveTasks, getTaskRuntimeDir, reconcileTaskQueue } from './taskStore.ts'
 import { withFileLock, writeFileAtomic } from './state.ts'
 import { loadConfig } from './config.ts'
 
@@ -176,6 +176,7 @@ export async function runTaskDaemon(
   await writeDaemonState(repoRoot, state)
 
   while (!stopping) {
+    await reconcileTaskQueue(repoRoot)
     const activeCount = await countActiveTasks(repoRoot)
     const now = Date.now()
 

@@ -2,6 +2,7 @@ import path from 'path'
 import { test, expect, describe, beforeEach, afterEach } from 'vitest'
 import { prepareSample, renderCLI } from '@tests/utils'
 import { existsSync } from 'fs'
+import { readFile } from 'fs/promises'
 import { execAsync } from '../lib/exec.ts'
 
 describe('Git repo detection tests', () => {
@@ -58,5 +59,14 @@ describe('Directory creation tests', () => {
     await findByText('Initialization complete', {}, { timeout: 10000 })
 
     expect(existsSync(path.join(sampleDir, '.port', 'override-compose.yml'))).toBeTruthy()
+  })
+
+  test('should scaffold task and remote config namespaces', async () => {
+    const { findByText } = await renderCLI(['init'], sampleDir)
+    await findByText('Initialization complete', {}, { timeout: 10000 })
+
+    const configText = await readFile(path.join(sampleDir, '.port', 'config.jsonc'), 'utf-8')
+    expect(configText).toContain('"task"')
+    expect(configText).toContain('"remote"')
   })
 })

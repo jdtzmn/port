@@ -52,8 +52,11 @@ export async function taskList(): Promise<void> {
 
   for (const task of tasks) {
     const attachState = task.attach?.state ? ` (${task.attach.state})` : ''
+    const queueState = task.queue?.blockedByTaskId
+      ? ` blocked-by=${task.queue.blockedByTaskId}`
+      : ''
     output.info(
-      `${output.branch(task.id)}  ${task.status}${attachState}  ${task.mode}  ${task.title}`
+      `${output.branch(task.id)}  ${task.status}${attachState}  ${task.mode}${queueState}  ${task.title}`
     )
   }
 }
@@ -77,6 +80,12 @@ export async function taskRead(taskId: string): Promise<void> {
   output.info(
     `Attach caps: handoff=${task.capabilities.supportsAttachHandoff}, resumeToken=${task.capabilities.supportsResumeToken}`
   )
+  if (task.queue?.lockKey) {
+    output.info(`Queue lock: ${task.queue.lockKey}`)
+  }
+  if (task.queue?.blockedByTaskId) {
+    output.info(`Blocked by: ${task.queue.blockedByTaskId}`)
+  }
   if (task.attach?.state) {
     output.info(`Attach state: ${task.attach.state}`)
   }

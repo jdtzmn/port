@@ -53,4 +53,30 @@ describe('taskStore', () => {
 
     expect(await countActiveTasks(repoRoot)).toBe(1)
   })
+
+  test('queues write tasks for the same branch behind the first active task', async () => {
+    const repoRoot = makeRepoRoot()
+    const first = await createTask(repoRoot, {
+      title: 'first write',
+      mode: 'write',
+      branch: 'feature-a',
+    })
+    const second = await createTask(repoRoot, {
+      title: 'second write',
+      mode: 'write',
+      branch: 'feature-a',
+    })
+
+    const initialFirst = await getTask(repoRoot, first.id)
+    const initialSecond = await getTask(repoRoot, second.id)
+
+    expect(initialFirst?.queue?.lockKey).toBe('feature-a')
+    expect(initialFirst?.queue?.blockedByTaskId).toBeUndefined()
+    expect(initialSecond?.queue?.blockedByTaskId).toBe(first.id)
+
+    await updateTaskStatus(repoRoot, first.id, 'completed')
+
+    const unblockedSecond = await getTask(repoRoot, second.id)
+    expect(unblockedSecond?.queue?.blockedByTaskId).toBeUndefined()
+  })
 })
