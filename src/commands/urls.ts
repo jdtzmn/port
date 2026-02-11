@@ -15,11 +15,6 @@ export async function urls(serviceName?: string): Promise<void> {
     process.exit(1)
   }
 
-  if (worktreeInfo.isMainRepo) {
-    output.error('port urls must be run inside a port worktree')
-    process.exit(1)
-  }
-
   const { repoRoot, worktreePath, name } = worktreeInfo
 
   if (!configExists(repoRoot)) {

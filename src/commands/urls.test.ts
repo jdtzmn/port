@@ -129,7 +129,7 @@ describe('urls command', () => {
     expect(mocks.error).toHaveBeenCalledWith('Service "ui-frontend" not found in current worktree')
   })
 
-  test('fails when run in main repository instead of worktree', async () => {
+  test('prints service URLs when run in the main repository', async () => {
     mocks.detectWorktree.mockReturnValue({
       repoRoot: '/repo',
       worktreePath: '/repo',
@@ -137,8 +137,19 @@ describe('urls command', () => {
       isMainRepo: true,
     })
 
-    await expect(urls()).rejects.toThrow('process.exit:1')
+    mocks.parseComposeFile.mockResolvedValue({
+      name: 'repo',
+      services: {
+        web: {},
+      },
+    })
+    mocks.getServicePorts.mockReturnValue([3000])
 
-    expect(mocks.error).toHaveBeenCalledWith('port urls must be run inside a port worktree')
+    await urls()
+
+    expect(mocks.header).toHaveBeenCalledWith('Service URLs for repo:')
+    expect(mocks.serviceUrls).toHaveBeenCalledWith([
+      { name: 'web', urls: ['http://repo.port:3000'] },
+    ])
   })
 })

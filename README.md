@@ -158,7 +158,7 @@ port urls
 port urls ui-frontend
 ```
 
-`port urls` only works inside a worktree.
+`port urls` works in either a worktree or the main repository.
 
 ### 9. Remove a Worktree
 
