@@ -17,6 +17,7 @@ import { status } from './commands/status.ts'
 import { cleanup } from './commands/cleanup.ts'
 import { urls } from './commands/urls.ts'
 import { onboard } from './commands/onboard.ts'
+import { taskCleanup, taskDaemon, taskList, taskRead, taskStart } from './commands/task.ts'
 import { detectWorktree } from './lib/worktree.ts'
 import { branchExists } from './lib/git.ts'
 import * as output from './lib/output.ts'
@@ -76,6 +77,34 @@ program
   .command('onboard')
   .description('Show recommended Port workflow and command guide')
   .action(onboard)
+
+// port task
+const taskCommand = program.command('task').description('Manage background tasks')
+
+taskCommand
+  .command('start <title>')
+  .description('Queue a background task and ensure daemon is running')
+  .option('--mode <mode>', 'Task mode: read or write', 'write')
+  .option('--branch <branch>', 'Optional branch lock key for write task routing')
+  .action(async (title: string, options: { mode: 'read' | 'write'; branch?: string }) => {
+    await taskStart(title, { mode: options.mode, branch: options.branch })
+  })
+
+taskCommand.command('list').description('List persisted tasks').action(taskList)
+
+taskCommand.command('read <id>').description('Show details for a task').action(taskRead)
+
+taskCommand
+  .command('cleanup')
+  .description('Clean task runtime state and stop daemon if idle')
+  .action(taskCleanup)
+
+taskCommand
+  .command('daemon')
+  .description('Internal daemon control command')
+  .option('--serve', 'Run daemon loop', false)
+  .option('--repo <path>', 'Repository root for daemon state')
+  .action(taskDaemon)
 
 // port install
 program

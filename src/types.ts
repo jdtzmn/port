@@ -1,11 +1,48 @@
 /**
  * Project configuration stored in .port/config.jsonc
  */
+export interface PortTaskAttachConfig {
+  /** Reserve attach workflow toggle for v3 */
+  enabled?: boolean
+  /** Attach client selector/config key */
+  client?: string
+  /** Planned idle timeout while attached */
+  idleTimeoutMinutes?: number
+  /** Planned reconnect grace window */
+  reconnectGraceSeconds?: number
+}
+
+export interface PortTaskConfig {
+  /** Default task timeout */
+  timeoutMinutes?: number
+  /** Daemon idle auto-stop */
+  daemonIdleStopMinutes?: number
+  /** Clean tree required before apply */
+  requireCleanApply?: boolean
+  /** Optional branch-level lock mode */
+  lockMode?: 'branch' | 'repo'
+  /** Planned default apply method */
+  applyMethod?: 'auto' | 'cherry-pick' | 'bundle' | 'patch'
+  /** Forward-compatible attach config */
+  attach?: PortTaskAttachConfig
+}
+
+export interface PortRemoteConfig {
+  /** Active execution adapter */
+  adapter?: string
+  /** Adapter-specific config payload */
+  adapters?: Record<string, Record<string, unknown>>
+}
+
 export interface PortConfig {
   /** Domain suffix - services available at <branch-name>.<domain> (default: "port") */
   domain: string
   /** Path to docker-compose file (default: "docker-compose.yml") */
   compose?: string
+  /** Task runtime/scheduler configuration */
+  task?: PortTaskConfig
+  /** Remote adapter configuration */
+  remote?: PortRemoteConfig
 }
 
 /**

@@ -2,7 +2,12 @@ import { readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { parse as parseJsonc, type ParseError } from 'jsonc-parser'
-import type { PortConfig } from '../types.ts'
+import type {
+  PortConfig,
+  PortTaskConfig,
+  PortRemoteConfig,
+  PortTaskAttachConfig,
+} from '../types.ts'
 
 const JSONC_PARSE_OPTIONS = {
   allowTrailingComma: true,
@@ -105,10 +110,147 @@ function validateConfig(config: unknown): PortConfig {
     compose = c.compose.trim()
   }
 
+  const task = validateTaskConfig(c.task)
+  const remote = validateRemoteConfig(c.remote)
+
   return {
     domain,
     compose,
+    task,
+    remote,
   }
+}
+
+function validateTaskAttachConfig(value: unknown): PortTaskAttachConfig | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    throw new ConfigError('task.attach must be an object')
+  }
+
+  const attach = value as Record<string, unknown>
+  const out: PortTaskAttachConfig = {}
+
+  if (attach.enabled !== undefined) {
+    if (typeof attach.enabled !== 'boolean') {
+      throw new ConfigError('task.attach.enabled must be a boolean')
+    }
+    out.enabled = attach.enabled
+  }
+
+  if (attach.client !== undefined) {
+    if (typeof attach.client !== 'string' || attach.client.trim() === '') {
+      throw new ConfigError('task.attach.client must be a non-empty string')
+    }
+    out.client = attach.client.trim()
+  }
+
+  if (attach.idleTimeoutMinutes !== undefined) {
+    if (typeof attach.idleTimeoutMinutes !== 'number' || attach.idleTimeoutMinutes <= 0) {
+      throw new ConfigError('task.attach.idleTimeoutMinutes must be a positive number')
+    }
+    out.idleTimeoutMinutes = attach.idleTimeoutMinutes
+  }
+
+  if (attach.reconnectGraceSeconds !== undefined) {
+    if (typeof attach.reconnectGraceSeconds !== 'number' || attach.reconnectGraceSeconds <= 0) {
+      throw new ConfigError('task.attach.reconnectGraceSeconds must be a positive number')
+    }
+    out.reconnectGraceSeconds = attach.reconnectGraceSeconds
+  }
+
+  return out
+}
+
+function validateTaskConfig(value: unknown): PortTaskConfig | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    throw new ConfigError('task must be an object')
+  }
+
+  const task = value as Record<string, unknown>
+  const out: PortTaskConfig = {}
+
+  if (task.timeoutMinutes !== undefined) {
+    if (typeof task.timeoutMinutes !== 'number' || task.timeoutMinutes <= 0) {
+      throw new ConfigError('task.timeoutMinutes must be a positive number')
+    }
+    out.timeoutMinutes = task.timeoutMinutes
+  }
+
+  if (task.daemonIdleStopMinutes !== undefined) {
+    if (typeof task.daemonIdleStopMinutes !== 'number' || task.daemonIdleStopMinutes <= 0) {
+      throw new ConfigError('task.daemonIdleStopMinutes must be a positive number')
+    }
+    out.daemonIdleStopMinutes = task.daemonIdleStopMinutes
+  }
+
+  if (task.requireCleanApply !== undefined) {
+    if (typeof task.requireCleanApply !== 'boolean') {
+      throw new ConfigError('task.requireCleanApply must be a boolean')
+    }
+    out.requireCleanApply = task.requireCleanApply
+  }
+
+  if (task.lockMode !== undefined) {
+    if (task.lockMode !== 'branch' && task.lockMode !== 'repo') {
+      throw new ConfigError('task.lockMode must be "branch" or "repo"')
+    }
+    out.lockMode = task.lockMode
+  }
+
+  if (task.applyMethod !== undefined) {
+    if (
+      task.applyMethod !== 'auto' &&
+      task.applyMethod !== 'cherry-pick' &&
+      task.applyMethod !== 'bundle' &&
+      task.applyMethod !== 'patch'
+    ) {
+      throw new ConfigError('task.applyMethod must be one of: auto, cherry-pick, bundle, patch')
+    }
+    out.applyMethod = task.applyMethod
+  }
+
+  out.attach = validateTaskAttachConfig(task.attach)
+  return out
+}
+
+function validateRemoteConfig(value: unknown): PortRemoteConfig | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    throw new ConfigError('remote must be an object')
+  }
+
+  const remote = value as Record<string, unknown>
+  const out: PortRemoteConfig = {}
+
+  if (remote.adapter !== undefined) {
+    if (typeof remote.adapter !== 'string' || remote.adapter.trim() === '') {
+      throw new ConfigError('remote.adapter must be a non-empty string')
+    }
+    out.adapter = remote.adapter.trim()
+  }
+
+  if (remote.adapters !== undefined) {
+    if (
+      typeof remote.adapters !== 'object' ||
+      remote.adapters === null ||
+      Array.isArray(remote.adapters)
+    ) {
+      throw new ConfigError('remote.adapters must be an object')
+    }
+    out.adapters = remote.adapters as Record<string, Record<string, unknown>>
+  }
+
+  return out
 }
 
 /**

@@ -58,6 +58,13 @@ test('Help includes the onboard command', async () => {
   expect(instance).toBeInTheConsole()
 })
 
+test('Help includes the task command', async () => {
+  const { findByText } = await renderCLI(['--help'])
+
+  const instance = await findByText('task')
+  expect(instance).toBeInTheConsole()
+})
+
 test('Shows a hint when command name collides with a branch', async () => {
   const sample = await prepareSample('simple-server', { initWithConfig: true })
 

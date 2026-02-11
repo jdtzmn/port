@@ -23,7 +23,19 @@ const CONFIG_TEMPLATE = `{
   "domain": "port",
 
   // Path to docker-compose file (default: docker-compose.yml)
-  "compose": "docker-compose.yml"
+  "compose": "docker-compose.yml",
+
+  // Background task runtime settings (v2)
+  "task": {
+    // Daemon auto-stop timeout when idle
+    "daemonIdleStopMinutes": 10
+  },
+
+  // Execution adapter settings (v2, remote-ready)
+  "remote": {
+    // Active adapter id
+    "adapter": "local"
+  }
 }
 `
 
@@ -37,6 +49,9 @@ override.user.yml
 
 # Hook logs
 logs/
+
+# Task runtime state and artifacts
+jobs/
 `
 
 /** Post-create hook template */

@@ -207,6 +207,10 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port list`                                      | List worktree and host-service summary                |
 | `port status`                                    | Show per-service status by worktree                   |
 | `port urls [service]`                            | Show service URLs for current worktree                |
+| `port task start <title>`                        | Queue a background task                               |
+| `port task list`                                 | List persisted background tasks                       |
+| `port task read <id>`                            | Show task details                                     |
+| `port task cleanup`                              | Clean task runtime and stop idle daemon               |
 | `port cleanup`                                   | Delete archived local branches with confirmation      |
 | `port uninstall [--yes] [--domain DOMAIN]`       | Remove DNS configuration for wildcard domain          |
 
