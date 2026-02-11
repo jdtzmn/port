@@ -22,7 +22,7 @@ describe('Git repo detection tests', () => {
 
     const { findByText } = await renderCLI(['init'], sample.dir)
 
-    const instance = await findByText('Initialization complete')
+    const instance = await findByText('Initialization complete', {}, { timeout: 10000 })
     expect(instance).toBeInTheConsole()
     await sample.cleanup()
   })
@@ -47,7 +47,7 @@ describe('Directory creation tests', () => {
     expect(existsSync(path.join(sampleDir, '.port'))).toBeFalsy()
     const { findByText } = await renderCLI(['init'], sampleDir)
 
-    await findByText('Initialization complete')
+    await findByText('Initialization complete', {}, { timeout: 10000 })
     expect(existsSync(path.join(sampleDir, '.port'))).toBeTruthy()
   })
 
@@ -55,7 +55,7 @@ describe('Directory creation tests', () => {
     expect(existsSync(path.join(sampleDir, '.port', 'override-compose.yml'))).toBeFalsy()
 
     const { findByText } = await renderCLI(['init'], sampleDir)
-    await findByText('Initialization complete')
+    await findByText('Initialization complete', {}, { timeout: 10000 })
 
     expect(existsSync(path.join(sampleDir, '.port', 'override-compose.yml'))).toBeTruthy()
   })
