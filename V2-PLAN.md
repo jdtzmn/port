@@ -22,6 +22,7 @@ Core goals:
 - Job support from day one: both read/write, with write-path priority.
 - Ephemeral execution by default.
 - Preserve commit series by default when applying changes.
+- v3 direction (design now, implement later): **attach/handoff workflow** for interactive steering.
 
 ---
 
@@ -40,6 +41,12 @@ Core goals:
 - `port task apply <id> [--method auto|cherry-pick|bundle|patch] [--squash]`
 - `port task cleanup`
 
+v3-directed control-plane additions (forward-compatible in v2 schema/interface design):
+
+- `port task attach <id>`
+- `port task pause <id>`
+- `port task resume <id>`
+
 ### `port remote` commands (v2 scaffold)
 
 - `port remote adapters`
@@ -50,6 +57,7 @@ Notes:
 
 - Remote transport choice is intentionally deferred.
 - v2 ships adapter registry + interface + stub adapter.
+- Attach/handoff transport direction is WebSocket stream, but v2 only reserves contracts/state.
 
 ---
 
@@ -100,6 +108,10 @@ interface ExecutionAdapter {
     supportsLogs: boolean
     supportsStreaming: boolean
     supportsResume: boolean
+    supportsAttachHandoff: boolean
+    supportsResumeToken: boolean
+    supportsTranscript: boolean
+    supportsFailedSnapshot: boolean
   }
 
   prepare(job: JobSpec): Promise<PreparedExecution>
@@ -109,6 +121,11 @@ interface ExecutionAdapter {
   cancel(handle: RunHandle): Promise<void>
   collect(handle: RunHandle): Promise<CollectedArtifacts>
   cleanup(prepared: PreparedExecution): Promise<void>
+
+  // v3-directed (interface reserved now; implementation can be no-op/stub in v2)
+  requestHandoff(handle: RunHandle): Promise<HandoffReady>
+  attachContext(handle: RunHandle): Promise<AttachContext>
+  resumeFromAttach(handle: RunHandle, token: ResumeToken): Promise<void>
 }
 ```
 
@@ -121,14 +138,21 @@ This contract is the boundary that makes local and future remote execution swapp
 - `queued`
 - `preparing`
 - `running`
+- `paused_for_attach` (non-terminal; timeout paused)
 - terminal: `completed | failed | timeout | cancelled`
 - `cleaned` (post-terminal cleanup completion marker)
+
+Additional non-terminal error substate (v3-directed):
+
+- `resume_failed` (resume attempt after detach/client crash failed; task remains recoverable)
 
 Defaults:
 
 - Task timeout: **30 minutes**
 - Retries: **none by default**
 - Write tasks targeting same branch: **queued automatically**
+- Attach idle timeout target (v3): **15 minutes**
+- Reconnect grace target (v3): **2 minutes**
 
 ---
 
@@ -144,6 +168,7 @@ Defaults:
 Optional:
 
 - Human summary markdown (`result.md`)
+- Attach artifacts (v3): transcript/logs + handoff metadata + detach patch
 
 ### Artifact location
 
@@ -161,6 +186,14 @@ Suggested layout:
     changes.patch
     stdout.log
     stderr.log
+    attach/
+      session.json
+      lifecycle.jsonl
+      commands.log
+      io.log
+      detach.patch
+      snapshot.tar
+      snapshot.manifest.json
 ```
 
 Retention defaults:
@@ -168,6 +201,7 @@ Retention defaults:
 - Completed: **30 days**
 - Failed: **90 days**
 - Retention configurable
+- Attach transcripts follow task retention defaults
 
 ---
 
@@ -217,6 +251,16 @@ Example shape:
     },
     "lockMode": "branch",
     "applyMethod": "auto",
+    "attach": {
+      "enabled": true,
+      "client": "configured",
+      "idleTimeoutMinutes": 15,
+      "reconnectGraceSeconds": 120,
+      "autoResumeOnDetach": true,
+      "pauseAtBoundary": "tool_return",
+      "stateLabel": "paused_for_attach",
+      "transcriptLevel": "full",
+    },
   },
   "remote": {
     "adapter": "local",
@@ -232,6 +276,7 @@ Example shape:
 Security default:
 
 - Worker env passthrough is deny-by-default allowlist.
+- Attach transcript redaction defaults to strict env-value masking.
 
 ---
 
@@ -244,6 +289,7 @@ Security default:
 - Local adapter implementation using ephemeral worktrees.
 - Branch lock manager.
 - Basic CLI (`start/list/read/logs/cancel/wait`).
+- Reserve task schema fields for attach/handoff metadata (no behavior required in v2).
 
 ### Phase 2: Artifacts + Apply
 
@@ -262,6 +308,8 @@ Security default:
 - Adapter registry and capability model.
 - Stub remote adapter wired through shared interface.
 - `port remote adapters/status/doctor`.
+- Reserve attach/handoff interface hooks and capability flags across local + stub adapters.
+- Ensure `task read`/`task list` can surface attach-related state fields without extra command surface.
 
 ---
 
@@ -275,6 +323,10 @@ Security default:
   - Mitigate with clean-tree precheck and stop-on-conflict.
 - Remote complexity creep
   - Mitigate by freezing interface first and deferring transport decisions.
+- Interactive handoff race conditions
+  - Mitigate with safe-boundary handoff (`tool_return`), single attacher lock, explicit takeover rules.
+- Transcript/security exposure
+  - Mitigate with strict redaction defaults, transcript levels, and retention controls.
 
 ---
 
@@ -287,3 +339,4 @@ Security default:
 5. Branch lock queueing prevents concurrent write-task collisions on same branch.
 6. Daemon auto-starts, idles out at 10 minutes, and can be cleaned up predictably.
 7. Adapter registry + stub adapter exists, using the same interface as local adapter.
+8. v2 persistence and adapter contracts include forward-compatible attach/handoff fields and capability flags without requiring interactive runtime support yet.
