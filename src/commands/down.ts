@@ -86,12 +86,20 @@ export async function down(options?: { yes?: boolean }): Promise<void> {
   // Stop docker-compose services
   const projectName = getProjectName(repoRoot, name)
   output.info(`Stopping services in ${output.branch(name)}...`)
-  const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['down'], {
-    repoRoot,
-    branch: name,
-    domain: config.domain,
-  })
-  if (exitCode !== 0) {
+  let composeExitCode = 0
+  try {
+    const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['down'], {
+      repoRoot,
+      branch: name,
+      domain: config.domain,
+    })
+    composeExitCode = exitCode
+  } catch (error) {
+    composeExitCode = 1
+    output.warn(`Compose down encountered an error: ${error}`)
+  }
+
+  if (composeExitCode !== 0) {
     output.error('Failed to stop services')
     // Continue to unregister even if stop fails
   } else {

@@ -142,4 +142,23 @@ describe('down fallback behavior', () => {
     expect(mocks.stopTraefik).not.toHaveBeenCalled()
     expect(mocks.info).toHaveBeenCalledWith('Traefik is not running.')
   })
+
+  test('still reaches Traefik shutdown when compose down throws', async () => {
+    mocks.detectWorktree.mockReturnValue({
+      repoRoot: '/repo',
+      worktreePath: '/repo',
+      name: 'main',
+      isMainRepo: true,
+    })
+    mocks.configExists.mockReturnValue(true)
+    mocks.runCompose.mockRejectedValue(new Error('open .port/override.yml: no such file'))
+    mocks.hasRegisteredProjects.mockResolvedValue(false)
+    mocks.isTraefikRunning.mockResolvedValue(true)
+
+    await down({ yes: true })
+
+    expect(mocks.error).toHaveBeenCalledWith('Failed to stop services')
+    expect(mocks.unregisterProject).toHaveBeenCalledWith('/repo', 'main')
+    expect(mocks.stopTraefik).toHaveBeenCalledTimes(1)
+  })
 })
