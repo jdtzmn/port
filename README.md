@@ -103,9 +103,12 @@ This "dual-mode" setup allows both services to coexist without conflicts.
 
 ```bash
 port feature-1
+port enter feature-1
 ```
 
 This creates a new worktree and spawns a subshell inside it.
+Use `port enter <branch>` when your branch name collides with a command (for example `status` or `install`).
+If a branch and command collide, running `port <command>` shows a hint to use `port enter <branch>`.
 
 ### 5. Start Services
 
@@ -187,6 +190,7 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | ------------------------------------------------ | ---------------------------------------------------- |
 | `port init`                                      | Initialize `.port/` directory structure              |
 | `port install [--dns-ip IP] [--domain DOMAIN]`   | Set up DNS for wildcard domain (default from config) |
+| `port enter <branch>`                             | Enter a worktree explicitly (including command names) |
 | `port <branch>`                                  | Enter a worktree (creates if doesn't exist)          |
 | `port up`                                        | Start docker-compose services in current worktree    |
 | `port down`                                      | Stop docker-compose services and host processes      |

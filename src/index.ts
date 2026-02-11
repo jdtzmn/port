@@ -16,6 +16,9 @@ import { kill } from './commands/kill.ts'
 import { status } from './commands/status.ts'
 import { cleanup } from './commands/cleanup.ts'
 import { urls } from './commands/urls.ts'
+import { detectWorktree } from './lib/worktree.ts'
+import { branchExists } from './lib/git.ts'
+import * as output from './lib/output.ts'
 
 export const program = new Command()
 
@@ -31,6 +34,29 @@ function getReservedCommands(): Set<string> {
   }
 
   return reserved
+}
+
+async function maybeWarnCommandBranchCollision(): Promise<void> {
+  const token = process.argv[2]
+
+  if (!token || token.startsWith('-') || token === 'enter') {
+    return
+  }
+
+  if (!getReservedCommands().has(token)) {
+    return
+  }
+
+  let repoRoot: string
+  try {
+    repoRoot = detectWorktree().repoRoot
+  } catch {
+    return
+  }
+
+  if (await branchExists(repoRoot, token)) {
+    output.dim(`Hint: branch "${token}" matches a command. Use "port enter ${token}".`)
+  }
 }
 
 program
@@ -65,6 +91,18 @@ program
 
 // port status
 program.command('status').description('Show per-service status for all worktrees').action(status)
+
+// port enter <branch>
+program
+  .command('enter <branch>')
+  .description('Enter a worktree by branch name (works even for command-name branches)')
+  .option('--no-shell', 'Skip spawning a subshell (useful for CI/scripting)')
+  .action(async (branch: string, options: { shell?: boolean }, command: Command) => {
+    const commandShell = options.shell
+    const parentShell = command.parent?.opts<{ shell?: boolean }>().shell
+    const shellEnabled = commandShell ?? parentShell ?? true
+    await enter(branch, { noShell: !shellEnabled })
+  })
 
 // port urls [service]
 program
@@ -140,6 +178,10 @@ program
 
 // port <branch> - default command to enter a worktree
 // This must be last to act as a catch-all for branch names
+program.hook('preAction', async () => {
+  await maybeWarnCommandBranchCollision()
+})
+
 program
   .argument('[branch]', 'Branch name to enter (creates worktree if needed)')
   .option('--no-shell', 'Skip spawning a subshell (useful for CI/scripting)')

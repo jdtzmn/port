@@ -199,4 +199,15 @@ describe('enter typo confirmation', () => {
       })
     )
   })
+
+  test('supports explicit enter for branch names that match commands', async () => {
+    mocks.findSimilarCommand.mockReturnValue({ command: 'status', distance: 0, similarity: 1 })
+    mocks.branchExists.mockResolvedValue(true)
+    mocks.createWorktree.mockResolvedValue('/repo/.port/trees/status')
+
+    await enter('status', { noShell: true })
+
+    expect(mocks.prompt).not.toHaveBeenCalled()
+    expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'status')
+  })
 })
