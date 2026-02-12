@@ -85,6 +85,7 @@ test('Task help includes logs/watch/wait/cancel/artifacts commands', async () =>
   expect(await findByText('logs [options] <id>')).toBeInTheConsole()
   expect(await findByText('watch [options]')).toBeInTheConsole()
   expect(await findByText('wait [options] <id>')).toBeInTheConsole()
+  expect(await findByText('resume <id>')).toBeInTheConsole()
   expect(await findByText('cancel <id>')).toBeInTheConsole()
   expect(await findByText('artifacts <id>')).toBeInTheConsole()
   expect(await findByText('events [options]')).toBeInTheConsole()

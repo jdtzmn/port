@@ -100,6 +100,48 @@ describe('LocalTaskExecutionAdapter', () => {
     expect(mocks.spawn).toHaveBeenCalled()
   })
 
+  test('checkpoints and restores a worker from saved checkpoint', async () => {
+    mocks.spawn.mockReturnValue({ pid: 9876 })
+    mocks.processKill.mockImplementation((_pid: number, signal?: NodeJS.Signals | number) => {
+      if (signal === 0) {
+        throw new Error('not running')
+      }
+      return true
+    })
+
+    const adapter = new LocalTaskExecutionAdapter('/repo/src/index.ts')
+    const checkpoint = await adapter.checkpoint({
+      taskId: 'task-1234',
+      runId: 'run-1',
+      workerPid: 1111,
+      worktreePath: '/repo/.port/trees/port-task-task-1234',
+      branch: 'port-task-task-1234',
+    })
+
+    const restored = await adapter.restore(
+      '/repo',
+      {
+        id: 'task-1234',
+        title: 'demo',
+        mode: 'write',
+        status: 'resuming',
+        adapter: 'local',
+        capabilities: {
+          supportsAttachHandoff: false,
+          supportsResumeToken: false,
+          supportsTranscript: false,
+          supportsFailedSnapshot: false,
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      checkpoint
+    )
+
+    expect(restored.workerPid).toBe(9876)
+    expect(mocks.spawn).toHaveBeenCalled()
+  })
+
   test('cancels running worker and cleans up worktree', async () => {
     const adapter = new LocalTaskExecutionAdapter('/repo/src/index.ts')
 

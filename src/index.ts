@@ -28,6 +28,7 @@ import {
   taskEvents,
   taskLogs,
   taskRead,
+  taskResume,
   taskStart,
   taskWait,
   taskWatch,
@@ -131,6 +132,11 @@ taskCommand
       : undefined
     return taskWait(id, { timeoutSeconds })
   })
+
+taskCommand
+  .command('resume <id>')
+  .description('Resume a non-terminal task from checkpoints')
+  .action(taskResume)
 
 taskCommand.command('cancel <id>').description('Cancel a running or queued task').action(taskCancel)
 

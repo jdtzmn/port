@@ -106,7 +106,7 @@ export async function taskRead(taskId: string): Promise<void> {
   }
   output.info(`Adapter: ${task.adapter}`)
   output.info(
-    `Attach caps: handoff=${task.capabilities.supportsAttachHandoff}, resumeToken=${task.capabilities.supportsResumeToken}`
+    `Caps: checkpoint=${task.capabilities.supportsCheckpoint ?? false}, restore=${task.capabilities.supportsRestore ?? false}, handoff=${task.capabilities.supportsAttachHandoff}, resumeToken=${task.capabilities.supportsResumeToken}`
   )
   if (task.queue?.lockKey) {
     output.info(`Queue lock: ${task.queue.lockKey}`)
@@ -125,6 +125,14 @@ export async function taskRead(taskId: string): Promise<void> {
   }
   if (task.runtime?.timeoutAt) {
     output.info(`Timeout at: ${task.runtime.timeoutAt}`)
+  }
+  if (task.runtime?.runAttempt) {
+    output.info(`Run attempt: ${task.runtime.runAttempt}`)
+  }
+  if (task.runtime?.checkpoint) {
+    output.info(
+      `Checkpoint: ${task.runtime.checkpoint.adapterId} (${task.runtime.checkpoint.runId})`
+    )
   }
   if (task.runtime?.retainedForDebug) {
     output.info('Retained: true')
@@ -241,6 +249,28 @@ export async function taskWait(
 
     await new Promise(resolve => setTimeout(resolve, 1000))
   }
+}
+
+export async function taskResume(taskId: string): Promise<void> {
+  const repoRoot = getRepoRootOrFail()
+  const task = await getTask(repoRoot, taskId)
+  if (!task) {
+    failWithError(`Task not found: ${taskId}`)
+  }
+
+  if (isTerminalTaskStatus(task.status)) {
+    output.info(
+      `Task ${output.branch(task.id)} is terminal (${task.status}); use attach to revive it.`
+    )
+    return
+  }
+
+  if (task.status !== 'queued') {
+    await updateTaskStatus(repoRoot, task.id, 'resuming', 'Resume requested by user')
+  }
+
+  await ensureTaskDaemon(repoRoot)
+  output.success(`Resume requested for ${output.branch(task.id)}`)
 }
 
 export async function taskCancel(taskId: string): Promise<void> {

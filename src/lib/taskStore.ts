@@ -4,11 +4,13 @@ import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { withFileLock, writeFileAtomic } from './state.ts'
 import { appendGlobalTaskEvent } from './taskEventStream.ts'
+import type { TaskCheckpointRef } from './taskAdapter.ts'
 
 export type PortTaskStatus =
   | 'queued'
   | 'preparing'
   | 'running'
+  | 'resuming'
   | 'paused_for_attach'
   | 'resume_failed'
   | 'completed'
@@ -27,6 +29,8 @@ export interface PortTask {
   branch?: string
   adapter: string
   capabilities: {
+    supportsCheckpoint?: boolean
+    supportsRestore?: boolean
     supportsAttachHandoff: boolean
     supportsResumeToken: boolean
     supportsTranscript: boolean
@@ -50,6 +54,7 @@ export interface PortTask {
     blockedByTaskId?: string
   }
   runtime?: {
+    runAttempt?: number
     workerPid?: number
     worktreePath?: string
     timeoutAt?: string
@@ -59,6 +64,8 @@ export interface PortTask {
     cleanedAt?: string
     retainedForDebug?: boolean
     lastExitCode?: number
+    checkpoint?: TaskCheckpointRef
+    checkpointHistory?: TaskCheckpointRef[]
   }
   createdAt: string
   updatedAt: string
@@ -81,6 +88,7 @@ const ACTIVE_TASK_STATUSES = new Set<PortTaskStatus>([
   'queued',
   'preparing',
   'running',
+  'resuming',
   'paused_for_attach',
   'resume_failed',
 ])
@@ -205,6 +213,8 @@ async function readTaskIndex(repoRoot: string): Promise<TaskIndex> {
       ...task,
       adapter: task.adapter ?? 'local',
       capabilities: {
+        supportsCheckpoint: task.capabilities?.supportsCheckpoint ?? false,
+        supportsRestore: task.capabilities?.supportsRestore ?? false,
         supportsAttachHandoff: task.capabilities?.supportsAttachHandoff ?? false,
         supportsResumeToken: task.capabilities?.supportsResumeToken ?? false,
         supportsTranscript: task.capabilities?.supportsTranscript ?? false,
@@ -255,6 +265,8 @@ export async function createTask(
       branch: input.branch,
       adapter: 'local',
       capabilities: {
+        supportsCheckpoint: false,
+        supportsRestore: false,
         supportsAttachHandoff: false,
         supportsResumeToken: false,
         supportsTranscript: false,
@@ -376,7 +388,9 @@ export async function listRunnableQueuedTasks(repoRoot: string): Promise<PortTas
 
 export async function listRunningTasks(repoRoot: string): Promise<PortTask[]> {
   const tasks = await listTasks(repoRoot)
-  return tasks.filter(task => task.status === 'preparing' || task.status === 'running')
+  return tasks.filter(
+    task => task.status === 'preparing' || task.status === 'running' || task.status === 'resuming'
+  )
 }
 
 export async function countActiveTasks(repoRoot: string): Promise<number> {

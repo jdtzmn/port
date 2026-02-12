@@ -102,6 +102,7 @@ import {
   taskList,
   taskLogs,
   taskRead,
+  taskResume,
   taskStart,
   taskWait,
   taskWatch,
@@ -195,6 +196,38 @@ describe('task command', () => {
     await taskWait('task-1')
 
     expect(mocks.success).toHaveBeenCalledWith('Task task-1 is completed')
+  })
+
+  test('task resume sets resuming status for non-terminal tasks', async () => {
+    mocks.getTask.mockResolvedValue({ id: 'task-1', status: 'running' })
+    mocks.isTerminalTaskStatus.mockReturnValue(false)
+
+    await taskResume('task-1')
+
+    expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      'resuming',
+      'Resume requested by user'
+    )
+    expect(mocks.ensureTaskDaemon).toHaveBeenCalledWith('/repo')
+  })
+
+  test('task resume keeps terminal tasks ended', async () => {
+    mocks.getTask.mockResolvedValue({ id: 'task-1', status: 'completed' })
+    mocks.isTerminalTaskStatus.mockReturnValue(true)
+
+    await taskResume('task-1')
+
+    expect(mocks.updateTaskStatus).not.toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      'resuming',
+      expect.anything()
+    )
+    expect(mocks.info).toHaveBeenCalledWith(
+      'Task task-1 is terminal (completed); use attach to revive it.'
+    )
   })
 
   test('task cancel marks task cancelled', async () => {

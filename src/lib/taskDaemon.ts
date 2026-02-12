@@ -10,11 +10,12 @@ import {
   listRunnableQueuedTasks,
   patchTask,
   reconcileTaskQueue,
+  type PortTask,
   updateTaskStatus,
 } from './taskStore.ts'
 import { withFileLock, writeFileAtomic } from './state.ts'
 import { loadConfig } from './config.ts'
-import type { TaskRunHandle } from './taskAdapter.ts'
+import type { TaskCheckpointRef, TaskRunHandle } from './taskAdapter.ts'
 import { resolveTaskAdapter } from './taskAdapterRegistry.ts'
 import { dispatchConfiguredTaskSubscribers } from './taskSubscribers.ts'
 
@@ -197,6 +198,30 @@ export async function runTaskDaemon(
     return DEFAULT_TASK_TIMEOUT_MS
   }
 
+  async function persistCheckpoint(
+    taskId: string,
+    runtime: NonNullable<PortTask['runtime']>,
+    checkpoint: TaskCheckpointRef,
+    eventType: string,
+    eventMessage: string
+  ): Promise<void> {
+    await patchTask(
+      repoRoot,
+      taskId,
+      {
+        runtime: {
+          ...runtime,
+          checkpoint,
+          checkpointHistory: [...(runtime.checkpointHistory ?? []), checkpoint],
+        },
+      },
+      {
+        type: eventType,
+        message: eventMessage,
+      }
+    )
+  }
+
   async function buildRunHandle(taskId: string): Promise<TaskRunHandle | null> {
     const runningTasks = await listRunningTasks(repoRoot)
     const task = runningTasks.find(candidate => candidate.id === taskId)
@@ -207,10 +232,65 @@ export async function runTaskDaemon(
 
     return {
       taskId,
-      runId: `${taskId}-unknown`,
+      runId: runtime.checkpoint?.runId ?? `${taskId}-unknown`,
       workerPid: runtime.workerPid,
       worktreePath: runtime.worktreePath,
       branch: task.branch ?? `port-task-${taskId}`,
+    }
+  }
+
+  async function attemptRestoreFromCheckpoint(
+    task: PortTask,
+    runtime: NonNullable<PortTask['runtime']>,
+    reason: string
+  ): Promise<boolean> {
+    if (!adapter.capabilities.supportsRestore || !runtime.checkpoint) {
+      return false
+    }
+
+    try {
+      const restoredHandle = await adapter.restore(repoRoot, task, runtime.checkpoint)
+      const checkpoint = await adapter.checkpoint(restoredHandle)
+      const resumedAt = nowIso()
+      const timeoutAt =
+        runtime.timeoutAt ?? new Date(Date.now() + (await getTaskTimeoutMs())).toISOString()
+      const nextRuntime = {
+        ...runtime,
+        runAttempt: (runtime.runAttempt ?? 0) + 1,
+        workerPid: restoredHandle.workerPid,
+        worktreePath: restoredHandle.worktreePath,
+        startedAt: resumedAt,
+        timeoutAt,
+        retainedForDebug: false,
+      }
+
+      await persistCheckpoint(
+        task.id,
+        nextRuntime,
+        checkpoint,
+        'task.restored',
+        `${reason};run=${checkpoint.runId}`
+      )
+      await updateTaskStatus(repoRoot, task.id, 'running', 'Restored from adapter checkpoint')
+      return true
+    } catch (error) {
+      await updateTaskStatus(repoRoot, task.id, 'failed', `Checkpoint restore failed: ${error}`)
+      await patchTask(
+        repoRoot,
+        task.id,
+        {
+          runtime: {
+            ...runtime,
+            finishedAt: nowIso(),
+            retainedForDebug: true,
+          },
+        },
+        {
+          type: 'task.restore.failed',
+          message: `${error}`,
+        }
+      )
+      return true
     }
   }
 
@@ -219,13 +299,20 @@ export async function runTaskDaemon(
 
     for (const task of runningTasks) {
       const runtime = task.runtime
-      if (!runtime?.workerPid || !runtime.worktreePath) {
+      if (!runtime) {
+        continue
+      }
+
+      if (!runtime.workerPid || !runtime.worktreePath) {
+        if (task.status === 'resuming') {
+          await attemptRestoreFromCheckpoint(task, runtime, 'resume_without_live_worker')
+        }
         continue
       }
 
       const handle: TaskRunHandle = {
         taskId: task.id,
-        runId: `${task.id}-runtime`,
+        runId: runtime.checkpoint?.runId ?? `${task.id}-runtime`,
         workerPid: runtime.workerPid,
         worktreePath: runtime.worktreePath,
         branch: task.branch ?? `port-task-${task.id}`,
@@ -258,6 +345,27 @@ export async function runTaskDaemon(
 
       const workerStatus = await adapter.status(handle)
       if (workerStatus === 'running') {
+        if (adapter.capabilities.supportsCheckpoint) {
+          try {
+            const checkpoint = await adapter.checkpoint(handle)
+            await patchTask(
+              repoRoot,
+              task.id,
+              {
+                runtime: {
+                  ...runtime,
+                  checkpoint,
+                },
+              },
+              {
+                type: 'task.checkpoint.updated',
+                message: `run=${checkpoint.runId}`,
+              }
+            )
+          } catch {
+            // Ignore checkpoint refresh failures to keep execution moving.
+          }
+        }
         continue
       }
 
@@ -326,6 +434,18 @@ export async function runTaskDaemon(
         continue
       }
 
+      if (
+        adapter.capabilities.supportsRestore &&
+        refreshed.runtime?.checkpoint &&
+        (refreshed.status === 'running' ||
+          refreshed.status === 'preparing' ||
+          refreshed.status === 'resuming')
+      ) {
+        await updateTaskStatus(repoRoot, task.id, 'resuming', 'Attempting restore from checkpoint')
+        await attemptRestoreFromCheckpoint(task, refreshed.runtime, 'worker_exited_non_terminal')
+        continue
+      }
+
       await updateTaskStatus(repoRoot, task.id, 'failed', 'Worker exited unexpectedly')
       await patchTask(
         repoRoot,
@@ -358,7 +478,15 @@ export async function runTaskDaemon(
     await patchTask(
       repoRoot,
       task.id,
-      { adapter: adapter.id },
+      {
+        adapter: adapter.id,
+        capabilities: {
+          ...(task.capabilities ?? {}),
+          supportsCheckpoint: adapter.capabilities.supportsCheckpoint,
+          supportsRestore: adapter.capabilities.supportsRestore,
+          supportsAttachHandoff: adapter.capabilities.supportsAttachHandoff,
+        },
+      },
       {
         type: 'task.adapter.selected',
         message: adapterResolution.fallbackUsed
@@ -389,22 +517,24 @@ export async function runTaskDaemon(
       )
 
       const handle = await adapter.start(repoRoot, task, prepared)
-      await patchTask(
-        repoRoot,
+      const checkpoint = await adapter.checkpoint(handle)
+      const nextRuntime = {
+        ...(task.runtime ?? {}),
+        runAttempt: (task.runtime?.runAttempt ?? 0) + 1,
+        preparedAt: startedAt,
+        workerPid: handle.workerPid,
+        worktreePath: handle.worktreePath,
+        startedAt,
+        timeoutAt,
+        retainedForDebug: false,
+      }
+
+      await persistCheckpoint(
         task.id,
-        {
-          runtime: {
-            workerPid: handle.workerPid,
-            worktreePath: handle.worktreePath,
-            startedAt,
-            timeoutAt,
-            retainedForDebug: false,
-          },
-        },
-        {
-          type: 'task.worker.started',
-          message: `pid=${handle.workerPid}`,
-        }
+        nextRuntime,
+        checkpoint,
+        'task.worker.started',
+        `pid=${handle.workerPid};run=${checkpoint.runId}`
       )
     } catch (error) {
       await updateTaskStatus(

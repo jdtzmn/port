@@ -3,6 +3,7 @@ import { loadConfig } from './config.ts'
 import {
   LocalTaskExecutionAdapter,
   type PreparedExecution,
+  type TaskCheckpointRef,
   type TaskExecutionAdapter,
   type TaskRunHandle,
 } from './taskAdapter.ts'
@@ -21,6 +22,11 @@ export interface TaskAdapterDescriptor {
 
 class StubRemoteTaskExecutionAdapter implements TaskExecutionAdapter {
   readonly id = 'stub-remote'
+  readonly capabilities = {
+    supportsCheckpoint: true,
+    supportsRestore: true,
+    supportsAttachHandoff: false,
+  }
 
   async prepare(_repoRoot: string, task: PortTask): Promise<PreparedExecution> {
     return {
@@ -41,6 +47,18 @@ class StubRemoteTaskExecutionAdapter implements TaskExecutionAdapter {
 
   async status(_handle: TaskRunHandle): Promise<'running' | 'exited'> {
     return 'exited'
+  }
+
+  async checkpoint(_handle: TaskRunHandle): Promise<TaskCheckpointRef> {
+    throw new Error('stub-remote does not support checkpoints yet')
+  }
+
+  async restore(
+    _repoRoot: string,
+    task: PortTask,
+    _checkpoint: TaskCheckpointRef
+  ): Promise<TaskRunHandle> {
+    throw new Error(`Remote stub adapter does not restore task ${task.id} yet`)
   }
 
   async cancel(_handle: TaskRunHandle): Promise<void> {
