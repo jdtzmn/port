@@ -218,6 +218,9 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port task artifacts <id>`                       | Show required artifact paths and presence             |
 | `port task apply <id>`                           | Apply task output with CP->bundle->patch fallback     |
 | `port task cleanup`                              | Clean task runtime and stop idle daemon               |
+| `port remote adapters`                           | List available task execution adapters                |
+| `port remote status`                             | Show configured and resolved adapter                  |
+| `port remote doctor`                             | Diagnose adapter configuration health                 |
 | `port cleanup`                                   | Delete archived local branches with confirmation      |
 | `port uninstall [--yes] [--domain DOMAIN]`       | Remove DNS configuration for wildcard domain          |
 

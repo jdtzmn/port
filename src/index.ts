@@ -17,6 +17,7 @@ import { status } from './commands/status.ts'
 import { cleanup } from './commands/cleanup.ts'
 import { urls } from './commands/urls.ts'
 import { onboard } from './commands/onboard.ts'
+import { remoteAdapters, remoteDoctor, remoteStatus } from './commands/remote.ts'
 import {
   taskArtifacts,
   taskCleanup,
@@ -147,6 +148,23 @@ taskCommand
   .option('--follow', 'Continue polling for new events', false)
   .option('--once', 'In follow mode, exit after first poll tick', false)
   .action((options: { consumer?: string; follow?: boolean; once?: boolean }) => taskEvents(options))
+
+// port remote
+const remoteCommand = program
+  .command('remote')
+  .description('Inspect and diagnose task execution adapters')
+
+remoteCommand.command('adapters').description('List known task adapters').action(remoteAdapters)
+
+remoteCommand
+  .command('status')
+  .description('Show configured and resolved task adapter')
+  .action(remoteStatus)
+
+remoteCommand
+  .command('doctor')
+  .description('Run diagnostics for remote/task adapter configuration')
+  .action(remoteDoctor)
 
 taskCommand
   .command('apply <id>')

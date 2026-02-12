@@ -14,7 +14,8 @@ import {
 } from './taskStore.ts'
 import { withFileLock, writeFileAtomic } from './state.ts'
 import { loadConfig } from './config.ts'
-import { LocalTaskExecutionAdapter, type TaskRunHandle } from './taskAdapter.ts'
+import type { TaskRunHandle } from './taskAdapter.ts'
+import { resolveTaskAdapter } from './taskAdapterRegistry.ts'
 import { dispatchConfiguredTaskSubscribers } from './taskSubscribers.ts'
 
 export interface DaemonState {
@@ -179,7 +180,8 @@ export async function runTaskDaemon(
   if (!scriptPath) {
     throw new Error('Unable to determine CLI entrypoint for daemon worker execution')
   }
-  const adapter = new LocalTaskExecutionAdapter(scriptPath)
+  const adapterResolution = await resolveTaskAdapter(repoRoot, scriptPath)
+  const adapter = adapterResolution.adapter
 
   async function getTaskTimeoutMs(): Promise<number> {
     try {
@@ -353,6 +355,17 @@ export async function runTaskDaemon(
     }
 
     await updateTaskStatus(repoRoot, task.id, 'preparing', 'Preparing local worker')
+    await patchTask(
+      repoRoot,
+      task.id,
+      { adapter: adapter.id },
+      {
+        type: 'task.adapter.selected',
+        message: adapterResolution.fallbackUsed
+          ? `configured=${adapterResolution.configuredId}, resolved=${adapterResolution.resolvedId}`
+          : adapterResolution.resolvedId,
+      }
+    )
 
     try {
       const prepared = await adapter.prepare(repoRoot, task)

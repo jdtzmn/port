@@ -65,6 +65,13 @@ test('Help includes the task command', async () => {
   expect(instance).toBeInTheConsole()
 })
 
+test('Help includes the remote command', async () => {
+  const { findByText } = await renderCLI(['--help'])
+
+  const instance = await findByText('remote')
+  expect(instance).toBeInTheConsole()
+})
+
 test('Task help includes apply command', async () => {
   const { findByText } = await renderCLI(['task', '--help'])
 
