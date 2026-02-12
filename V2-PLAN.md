@@ -22,6 +22,8 @@ Core goals:
 - Job support from day one: both read/write, with write-path priority.
 - Ephemeral execution by default.
 - Preserve commit series by default when applying changes.
+- Resume model: **adapter-native checkpoint/restore**, not one global graph format.
+- Resume retention: **indefinite by default** (bounded by configurable retention only).
 - v3 direction (design now, implement later): **attach/handoff workflow** for interactive steering.
 
 ---
@@ -46,6 +48,12 @@ v3-directed control-plane additions (forward-compatible in v2 schema/interface d
 - `port task attach <id>`
 - `port task pause <id>`
 - `port task resume <id>`
+
+Resume behavior contract (locked):
+
+- `resume` always restarts background processing.
+- If task is `running` or `waiting_on_children`, it continues from checkpoint.
+- If task is terminal (`completed|failed|timeout|cancelled`), it remains terminal and `resume` is a no-op with guidance to attach/read/apply.
 
 ### `port remote` commands (v2 scaffold)
 
@@ -112,6 +120,8 @@ interface ExecutionAdapter {
     supportsResumeToken: boolean
     supportsTranscript: boolean
     supportsFailedSnapshot: boolean
+    supportsCheckpoint: boolean
+    supportsRestore: boolean
   }
 
   prepare(job: JobSpec): Promise<PreparedExecution>
@@ -122,6 +132,10 @@ interface ExecutionAdapter {
   collect(handle: RunHandle): Promise<CollectedArtifacts>
   cleanup(prepared: PreparedExecution): Promise<void>
 
+  // Adapter-native continuity contract (required)
+  checkpoint(handle: RunHandle): Promise<CheckpointRef>
+  restore(checkpoint: CheckpointRef): Promise<RunHandle>
+
   // v3-directed (interface reserved now; implementation can be no-op/stub in v2)
   requestHandoff(handle: RunHandle): Promise<HandoffReady>
   attachContext(handle: RunHandle): Promise<AttachContext>
@@ -131,6 +145,12 @@ interface ExecutionAdapter {
 
 This contract is the boundary that makes local and future remote execution swappable.
 
+Important:
+
+- Port scheduler stores universal orchestration state (status, lineage, locks, artifact pointers).
+- Adapter stores execution-native workflow position (OpenCode session continuation, graph cursor, etc.).
+- For OpenCode adapters, checkpoint/restore should preserve `opencode --continue` compatibility.
+
 ---
 
 ## Task State Machine
@@ -138,6 +158,9 @@ This contract is the boundary that makes local and future remote execution swapp
 - `queued`
 - `preparing`
 - `running`
+- `waiting_on_children`
+- `resumable`
+- `resuming`
 - `paused_for_attach` (non-terminal; timeout paused)
 - terminal: `completed | failed | timeout | cancelled`
 - `cleaned` (post-terminal cleanup completion marker)
@@ -154,6 +177,11 @@ Defaults:
 - Attach idle timeout target (v3): **15 minutes**
 - Reconnect grace target (v3): **2 minutes**
 
+Lineage requirement:
+
+- Parent/child dependencies are persisted.
+- Parent can auto-transition to `waiting_on_children` and later become `resumable` when children finish.
+
 ---
 
 ## Artifacts and Retention
@@ -169,6 +197,7 @@ Optional:
 
 - Human summary markdown (`result.md`)
 - Attach artifacts (v3): transcript/logs + handoff metadata + detach patch
+- Checkpoint artifacts: adapter checkpoint references and restore metadata
 
 ### Artifact location
 
@@ -194,6 +223,8 @@ Suggested layout:
       detach.patch
       snapshot.tar
       snapshot.manifest.json
+    checkpoint.json
+    lineage.json
 ```
 
 Retention defaults:
@@ -202,6 +233,7 @@ Retention defaults:
 - Failed: **90 days**
 - Retention configurable
 - Attach transcripts follow task retention defaults
+- Checkpoints follow task retention defaults and are resumable indefinitely while retained
 
 ---
 
@@ -302,6 +334,7 @@ Security default:
 - `task watch` live table + `--logs` mode.
 - Per-task immediate notifications.
 - Optional OpenCode notification adapter.
+- `task resume` command wired to checkpoint/restore flow.
 
 ### Phase 4: Remote Scaffold
 
@@ -310,6 +343,7 @@ Security default:
 - `port remote adapters/status/doctor`.
 - Reserve attach/handoff interface hooks and capability flags across local + stub adapters.
 - Ensure `task read`/`task list` can surface attach-related state fields without extra command surface.
+- Validate adapter checkpoint/restore parity (local + stub remote) via contract tests.
 
 ---
 
@@ -340,3 +374,4 @@ Security default:
 6. Daemon auto-starts, idles out at 10 minutes, and can be cleaned up predictably.
 7. Adapter registry + stub adapter exists, using the same interface as local adapter.
 8. v2 persistence and adapter contracts include forward-compatible attach/handoff fields and capability flags without requiring interactive runtime support yet.
+9. `port task resume` uses adapter restore checkpoints for non-terminal tasks and preserves terminal-state semantics.

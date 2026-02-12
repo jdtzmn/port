@@ -14,6 +14,11 @@ Add a first-class `attach` workflow so a user can take control of an in-flight b
 
 This plan standardizes a **handoff model** (not live multiplexed control of a single running process).
 
+Continuation model aligns with v2 decision:
+
+- Port stores orchestration state (status/lineage/locks/artifacts).
+- Adapters own workflow-position continuity via `checkpoint`/`restore`.
+
 ---
 
 ## Product Decisions (Locked)
@@ -54,6 +59,8 @@ This plan standardizes a **handoff model** (not live multiplexed control of a si
 - Resume is allowed from any owner session.
 - If user edited files while attached, resumed agent must **replan from current workspace**.
 - Task timeout is paused while attached and resumes when background execution resumes.
+- `resume` restarts background execution only for non-terminal states.
+- Terminal tasks remain terminal; user should use `attach` (if supported), `read`, or `apply` flows.
 
 ### Detach behavior
 
@@ -118,7 +125,12 @@ interface AttachCapableExecutionAdapter extends ExecutionAdapter {
     supportsResumeToken: true
     supportsTranscript: true
     supportsFailedSnapshot: true
+    supportsCheckpoint: true
+    supportsRestore: true
   }
+
+  checkpoint(handle: RunHandle): Promise<CheckpointRef>
+  restore(checkpoint: CheckpointRef): Promise<RunHandle>
 
   requestHandoff(handle: RunHandle): Promise<HandoffReady>
   attachContext(handle: RunHandle): Promise<AttachContext>
@@ -153,6 +165,11 @@ Config shape (illustrative):
 
 If client launch fails, command returns actionable guidance for manual continuation.
 
+OpenCode-specific guidance:
+
+- Adapter checkpoint may store OpenCode session/log references needed for `opencode --continue`.
+- If exact session restore is unavailable, adapter must provide fallback resume context summary.
+
 ---
 
 ## Persistence and Metadata
@@ -165,6 +182,8 @@ Minimum continuation metadata (locked):
 - `lockOwner`
 - `resumeToken`
 - `attachClientHint`
+- `checkpointRef` (adapter-native)
+- `restoreStrategy` (native session restore vs fallback summary)
 
 Attach details should appear in:
 
