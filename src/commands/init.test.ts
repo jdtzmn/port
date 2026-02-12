@@ -2,7 +2,7 @@ import path from 'path'
 import { test, expect, describe, beforeEach, afterEach } from 'vitest'
 import { prepareSample, renderCLI } from '@tests/utils'
 import { existsSync } from 'fs'
-import { readFile } from 'fs/promises'
+import { mkdir, readFile, writeFile } from 'fs/promises'
 import { execAsync } from '../lib/exec.ts'
 
 describe('Git repo detection tests', () => {
@@ -68,5 +68,19 @@ describe('Directory creation tests', () => {
     const configText = await readFile(path.join(sampleDir, '.port', 'config.jsonc'), 'utf-8')
     expect(configText).toContain('"task"')
     expect(configText).toContain('"remote"')
+  })
+
+  test('should update existing .port/.gitignore with required entries', async () => {
+    const portDir = path.join(sampleDir, '.port')
+    await mkdir(portDir, { recursive: true })
+    await writeFile(path.join(portDir, '.gitignore'), 'trees/\nlogs/\n')
+
+    const { findByText } = await renderCLI(['init'], sampleDir)
+    await findByText('Initialization complete', {}, { timeout: 10000 })
+
+    const gitignoreText = await readFile(path.join(portDir, '.gitignore'), 'utf-8')
+    expect(gitignoreText).toContain('override.yml')
+    expect(gitignoreText).toContain('override.user.yml')
+    expect(gitignoreText).toContain('jobs/')
   })
 })
