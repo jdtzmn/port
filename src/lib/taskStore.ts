@@ -11,6 +11,7 @@ export type PortTaskStatus =
   | 'preparing'
   | 'running'
   | 'resuming'
+  | 'reviving_for_attach'
   | 'paused_for_attach'
   | 'resume_failed'
   | 'completed'
@@ -98,6 +99,7 @@ const ACTIVE_TASK_STATUSES = new Set<PortTaskStatus>([
   'preparing',
   'running',
   'resuming',
+  'reviving_for_attach',
   'paused_for_attach',
   'resume_failed',
 ])
@@ -398,7 +400,11 @@ export async function listRunnableQueuedTasks(repoRoot: string): Promise<PortTas
 export async function listRunningTasks(repoRoot: string): Promise<PortTask[]> {
   const tasks = await listTasks(repoRoot)
   return tasks.filter(
-    task => task.status === 'preparing' || task.status === 'running' || task.status === 'resuming'
+    task =>
+      task.status === 'preparing' ||
+      task.status === 'running' ||
+      task.status === 'resuming' ||
+      task.status === 'reviving_for_attach'
   )
 }
 

@@ -192,38 +192,39 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 
 ## Commands
 
-| Command                                          | Description                                           |
-| ------------------------------------------------ | ----------------------------------------------------- |
-| `port init`                                      | Initialize `.port/` directory structure               |
-| `port onboard`                                   | Print recommended workflow and command usage guide    |
-| `port install [--dns-ip IP] [--domain DOMAIN]`   | Set up DNS for wildcard domain (default from config)  |
-| `port enter <branch>`                            | Enter a worktree explicitly (including command names) |
-| `port <branch>`                                  | Enter a worktree (creates if doesn't exist)           |
-| `port up`                                        | Start docker-compose services in current worktree     |
-| `port down`                                      | Stop docker-compose services and host processes       |
-| `port run <port> -- <command...>`                | Run a host process with Traefik routing               |
-| `port remove <branch> [--force] [--keep-branch]` | Remove worktree and archive local branch              |
-| `port compose <args...>`                         | Run docker compose with auto `-f` flags               |
-| `port list`                                      | List worktree and host-service summary                |
-| `port status`                                    | Show per-service status by worktree                   |
-| `port urls [service]`                            | Show service URLs for current worktree                |
-| `port task start <title>`                        | Queue a background task                               |
-| `port task list`                                 | List persisted background tasks                       |
-| `port task read <id>`                            | Show task details                                     |
-| `port task logs <id>`                            | Show task logs (stdout by default)                    |
-| `port task watch [--logs <id>]`                  | Watch live task table or tail task logs               |
-| `port task events [--consumer ID]`               | Stream adapter-agnostic task events                   |
-| `port task wait <id>`                            | Wait for task to finish                               |
-| `port task resume <id>`                          | Resume non-terminal task execution from checkpoints   |
-| `port task cancel <id>`                          | Cancel a running or queued task                       |
-| `port task artifacts <id>`                       | Show required artifact paths and presence             |
-| `port task apply <id>`                           | Apply task output with CP->bundle->patch fallback     |
-| `port task cleanup`                              | Clean task runtime and stop idle daemon               |
-| `port remote adapters`                           | List available task execution adapters                |
-| `port remote status`                             | Show configured and resolved adapter                  |
-| `port remote doctor`                             | Diagnose adapter configuration health                 |
-| `port cleanup`                                   | Delete archived local branches with confirmation      |
-| `port uninstall [--yes] [--domain DOMAIN]`       | Remove DNS configuration for wildcard domain          |
+| Command                                          | Description                                             |
+| ------------------------------------------------ | ------------------------------------------------------- |
+| `port init`                                      | Initialize `.port/` directory structure                 |
+| `port onboard`                                   | Print recommended workflow and command usage guide      |
+| `port install [--dns-ip IP] [--domain DOMAIN]`   | Set up DNS for wildcard domain (default from config)    |
+| `port enter <branch>`                            | Enter a worktree explicitly (including command names)   |
+| `port <branch>`                                  | Enter a worktree (creates if doesn't exist)             |
+| `port up`                                        | Start docker-compose services in current worktree       |
+| `port down`                                      | Stop docker-compose services and host processes         |
+| `port run <port> -- <command...>`                | Run a host process with Traefik routing                 |
+| `port remove <branch> [--force] [--keep-branch]` | Remove worktree and archive local branch                |
+| `port compose <args...>`                         | Run docker compose with auto `-f` flags                 |
+| `port list`                                      | List worktree and host-service summary                  |
+| `port status`                                    | Show per-service status by worktree                     |
+| `port urls [service]`                            | Show service URLs for current worktree                  |
+| `port task start <title>`                        | Queue a background task                                 |
+| `port task list`                                 | List persisted background tasks                         |
+| `port task read <id>`                            | Show task details                                       |
+| `port task attach <id>`                          | Revive task from checkpoint and attach continuation run |
+| `port task logs <id>`                            | Show task logs (stdout by default)                      |
+| `port task watch [--logs <id>]`                  | Watch live task table or tail task logs                 |
+| `port task events [--consumer ID]`               | Stream adapter-agnostic task events                     |
+| `port task wait <id>`                            | Wait for task to finish                                 |
+| `port task resume <id>`                          | Resume non-terminal task execution from checkpoints     |
+| `port task cancel <id>`                          | Cancel a running or queued task                         |
+| `port task artifacts <id>`                       | Show required artifact paths and presence               |
+| `port task apply <id>`                           | Apply task output with CP->bundle->patch fallback       |
+| `port task cleanup`                              | Clean task runtime and stop idle daemon                 |
+| `port remote adapters`                           | List available task execution adapters                  |
+| `port remote status`                             | Show configured and resolved adapter                    |
+| `port remote doctor`                             | Diagnose adapter configuration health                   |
+| `port cleanup`                                   | Delete archived local branches with confirmation        |
+| `port uninstall [--yes] [--domain DOMAIN]`       | Remove DNS configuration for wildcard domain            |
 
 ## How It Works
 

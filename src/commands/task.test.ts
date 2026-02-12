@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   listTaskArtifactPaths: vi.fn(),
   readGlobalTaskEvents: vi.fn(),
   consumeGlobalTaskEvents: vi.fn(),
+  resolveTaskAdapter: vi.fn(),
   success: vi.fn(),
   dim: vi.fn(),
   info: vi.fn(),
@@ -76,6 +77,10 @@ vi.mock('../lib/taskEventStream.ts', () => ({
   consumeGlobalTaskEvents: mocks.consumeGlobalTaskEvents,
 }))
 
+vi.mock('../lib/taskAdapterRegistry.ts', () => ({
+  resolveTaskAdapter: mocks.resolveTaskAdapter,
+}))
+
 vi.mock('../lib/taskDaemon.ts', () => ({
   ensureTaskDaemon: mocks.ensureTaskDaemon,
   runTaskDaemon: mocks.runTaskDaemon,
@@ -95,6 +100,7 @@ vi.mock('../lib/output.ts', () => ({
 
 import {
   taskApply,
+  taskAttach,
   taskArtifacts,
   taskCancel,
   taskCleanup,
@@ -125,6 +131,37 @@ describe('task command', () => {
     mocks.readTaskEvents.mockResolvedValue([])
     mocks.readGlobalTaskEvents.mockResolvedValue({ events: [], nextLine: 0 })
     mocks.consumeGlobalTaskEvents.mockResolvedValue(0)
+    mocks.resolveTaskAdapter.mockResolvedValue({
+      adapter: {
+        id: 'local',
+        capabilities: {
+          supportsCheckpoint: true,
+          supportsRestore: true,
+          supportsAttachHandoff: false,
+        },
+        restore: vi.fn().mockResolvedValue({
+          taskId: 'task-1',
+          runId: 'run-2',
+          workerPid: 777,
+          worktreePath: '/repo/.port/trees/port-task-task-1',
+          branch: 'port-task-task-1',
+        }),
+        checkpoint: vi.fn().mockResolvedValue({
+          adapterId: 'local',
+          taskId: 'task-1',
+          runId: 'run-2',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          payload: {
+            workerPid: 777,
+            worktreePath: '/repo/.port/trees/port-task-task-1',
+            branch: 'port-task-task-1',
+          },
+        }),
+      },
+      configuredId: 'local',
+      resolvedId: 'local',
+      fallbackUsed: false,
+    })
   })
 
   test('task start queues a task and ensures daemon', async () => {
@@ -359,6 +396,95 @@ describe('task command', () => {
       'git',
       ['apply', '--3way', '/repo/.port/jobs/artifacts/task-1/changes.patch'],
       { cwd: '/repo' }
+    )
+  })
+
+  test('task attach revives terminal task with continuation run', async () => {
+    mocks.getTask
+      .mockResolvedValueOnce({
+        id: 'task-1',
+        status: 'completed',
+        attach: {},
+        runtime: {
+          runAttempt: 1,
+          checkpoint: {
+            adapterId: 'local',
+            taskId: 'task-1',
+            runId: 'run-1',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            payload: {
+              workerPid: 123,
+              worktreePath: '/repo/.port/trees/port-task-task-1',
+              branch: 'port-task-task-1',
+            },
+          },
+          runs: [
+            {
+              attempt: 1,
+              runId: 'run-1',
+              status: 'completed',
+              startedAt: '2026-01-01T00:00:00.000Z',
+              finishedAt: '2026-01-01T00:00:01.000Z',
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'task-1',
+        attach: {},
+        runtime: {
+          runAttempt: 1,
+          checkpoint: {
+            adapterId: 'local',
+            taskId: 'task-1',
+            runId: 'run-1',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            payload: {
+              workerPid: 123,
+              worktreePath: '/repo/.port/trees/port-task-task-1',
+              branch: 'port-task-task-1',
+            },
+          },
+          runs: [
+            {
+              attempt: 1,
+              runId: 'run-1',
+              status: 'completed',
+              startedAt: '2026-01-01T00:00:00.000Z',
+              finishedAt: '2026-01-01T00:00:01.000Z',
+            },
+          ],
+        },
+      })
+
+    await taskAttach('task-1')
+
+    expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      'reviving_for_attach',
+      'Attach requested; reviving task'
+    )
+    expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      'running',
+      'Revived for attach'
+    )
+    expect(mocks.patchTask).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      expect.objectContaining({ runtime: expect.any(Object), attach: expect.any(Object) }),
+      expect.objectContaining({ type: 'task.attach.revive_succeeded' })
+    )
+  })
+
+  test('task attach fails without checkpoint', async () => {
+    mocks.getTask.mockResolvedValue({ id: 'task-1', status: 'completed', runtime: {} })
+
+    await expect(taskAttach('task-1')).rejects.toBeInstanceOf(CliError)
+    expect(mocks.error).toHaveBeenCalledWith(
+      'Task task-1 does not have checkpoint data required for attach revival'
     )
   })
 })

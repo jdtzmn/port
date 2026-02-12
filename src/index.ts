@@ -20,6 +20,7 @@ import { onboard } from './commands/onboard.ts'
 import { remoteAdapters, remoteDoctor, remoteStatus } from './commands/remote.ts'
 import {
   taskArtifacts,
+  taskAttach,
   taskCleanup,
   taskDaemon,
   taskApply,
@@ -109,6 +110,11 @@ taskCommand
 taskCommand.command('list').description('List persisted tasks').action(taskList)
 
 taskCommand.command('read <id>').description('Show details for a task').action(taskRead)
+
+taskCommand
+  .command('attach <id>')
+  .description('Revive task from checkpoint and attach continuation run')
+  .action(taskAttach)
 
 taskCommand
   .command('artifacts <id>')

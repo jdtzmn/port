@@ -37,6 +37,7 @@ import {
   writeTaskPatchFromWorktree,
 } from '../lib/taskArtifacts.ts'
 import { consumeGlobalTaskEvents, readGlobalTaskEvents } from '../lib/taskEventStream.ts'
+import { resolveTaskAdapter } from '../lib/taskAdapterRegistry.ts'
 
 function getRepoRootOrFail(): string {
   try {
@@ -609,6 +610,144 @@ function markRunTerminalRuntime(
     activeRunId: undefined,
     finishedAt,
     runs,
+  }
+}
+
+function appendContinuationRunRuntime(
+  runtime: NonNullable<PortTask['runtime']>,
+  options: {
+    runId: string
+    reason: string
+    startedAt: string
+    workerPid: number
+    worktreePath: string
+  }
+): NonNullable<PortTask['runtime']> {
+  const attempt = (runtime.runAttempt ?? 0) + 1
+  return {
+    ...runtime,
+    runAttempt: attempt,
+    activeRunId: options.runId,
+    workerPid: options.workerPid,
+    worktreePath: options.worktreePath,
+    startedAt: options.startedAt,
+    retainedForDebug: false,
+    runs: [
+      ...(runtime.runs ?? []),
+      {
+        attempt,
+        runId: options.runId,
+        status: 'restored',
+        startedAt: options.startedAt,
+        reason: options.reason,
+      },
+    ],
+  }
+}
+
+export async function taskAttach(taskId: string): Promise<void> {
+  const repoRoot = getRepoRootOrFail()
+  const task = await getTask(repoRoot, taskId)
+  if (!task) {
+    failWithError(`Task not found: ${taskId}`)
+  }
+
+  if (!task.runtime?.checkpoint) {
+    failWithError(`Task ${taskId} does not have checkpoint data required for attach revival`)
+  }
+
+  const scriptPath = process.argv[1]
+  if (!scriptPath) {
+    failWithError('Unable to resolve CLI entrypoint for attach revive')
+  }
+
+  const resolved = await resolveTaskAdapter(repoRoot, scriptPath)
+  const adapter = resolved.adapter
+
+  if (!adapter.capabilities.supportsRestore) {
+    failWithError(`Adapter ${adapter.id} does not support restore for attach`)
+  }
+
+  await updateTaskStatus(
+    repoRoot,
+    task.id,
+    'reviving_for_attach',
+    'Attach requested; reviving task'
+  )
+  await patchTask(
+    repoRoot,
+    task.id,
+    {
+      attach: {
+        ...(task.attach ?? {}),
+        state: 'pending_handoff',
+      },
+    },
+    {
+      type: 'task.attach.revive_started',
+      message: `adapter=${adapter.id}`,
+    }
+  )
+
+  try {
+    const restoredHandle = await adapter.restore(repoRoot, task, task.runtime.checkpoint)
+    const checkpoint = await adapter.checkpoint(restoredHandle)
+    const startedAt = new Date().toISOString()
+
+    const latest = await getTask(repoRoot, task.id)
+    const runtime = appendContinuationRunRuntime(latest?.runtime ?? task.runtime, {
+      runId: checkpoint.runId,
+      reason: 'attach_revival',
+      startedAt,
+      workerPid: restoredHandle.workerPid,
+      worktreePath: restoredHandle.worktreePath,
+    })
+
+    await patchTask(
+      repoRoot,
+      task.id,
+      {
+        runtime: {
+          ...runtime,
+          checkpoint,
+          checkpointHistory: [...(runtime.checkpointHistory ?? []), checkpoint],
+        },
+        attach: {
+          ...(latest?.attach ?? task.attach ?? {}),
+          state: 'client_attached',
+          sessionHandle: checkpoint.runId,
+        },
+      },
+      {
+        type: 'task.attach.revive_succeeded',
+        message: `run=${checkpoint.runId}`,
+      }
+    )
+
+    await updateTaskStatus(repoRoot, task.id, 'running', 'Revived for attach')
+    output.success(
+      `Revived ${output.branch(task.id)} and attached continuation run ${checkpoint.runId}`
+    )
+    output.info(
+      'Interactive attach handoff UI is not implemented yet; task continues in background.'
+    )
+  } catch (error) {
+    await patchTask(
+      repoRoot,
+      task.id,
+      {
+        attach: {
+          ...(task.attach ?? {}),
+          state: 'detached',
+        },
+      },
+      {
+        type: 'task.attach.revive_failed',
+        message: `${error}`,
+      }
+    )
+    await updateTaskStatus(repoRoot, task.id, 'resume_failed', `Attach revive failed: ${error}`)
+    failWithError(`Failed to revive task ${taskId} for attach: ${error}`)
   }
 }
 
