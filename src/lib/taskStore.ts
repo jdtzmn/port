@@ -24,6 +24,7 @@ export type PortTaskMode = 'read' | 'write'
 
 export interface PortTask {
   id: string
+  displayId: number
   title: string
   mode: PortTaskMode
   status: PortTaskStatus
@@ -90,9 +91,17 @@ export interface PortTaskEvent {
 }
 
 interface TaskIndex {
-  version: 2
+  version: 3
+  nextDisplayId: number
   tasks: PortTask[]
 }
+
+interface ReadTaskIndexResult {
+  index: TaskIndex
+  migrated: boolean
+}
+
+type MigratingTask = Omit<PortTask, 'displayId'> & { displayId?: number }
 
 const ACTIVE_TASK_STATUSES = new Set<PortTaskStatus>([
   'queued',
@@ -120,6 +129,189 @@ const INDEX_LOCK_FILE = 'index.lock'
 
 function nowIso(): string {
   return new Date().toISOString()
+}
+
+function isValidDisplayId(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0
+}
+
+function normalizeTaskRecord(raw: unknown): { task: MigratingTask; migrated: boolean } {
+  const source = (raw ?? {}) as Partial<PortTask>
+  let migrated = false
+
+  const id = typeof source.id === 'string' ? source.id : `task-${randomUUID().slice(0, 8)}`
+  if (typeof source.id !== 'string') {
+    migrated = true
+  }
+
+  const title = typeof source.title === 'string' ? source.title : 'Untitled task'
+  if (typeof source.title !== 'string') {
+    migrated = true
+  }
+
+  const mode: PortTaskMode =
+    source.mode === 'read' || source.mode === 'write' ? source.mode : 'write'
+  if (source.mode !== mode) {
+    migrated = true
+  }
+
+  const status = source.status
+  const normalizedStatus: PortTaskStatus =
+    status &&
+    [
+      'queued',
+      'preparing',
+      'running',
+      'resuming',
+      'reviving_for_attach',
+      'paused_for_attach',
+      'resume_failed',
+      'completed',
+      'failed',
+      'timeout',
+      'cancelled',
+      'cleaned',
+    ].includes(status)
+      ? (status as PortTaskStatus)
+      : 'queued'
+  if (status !== normalizedStatus) {
+    migrated = true
+  }
+
+  const createdAt = typeof source.createdAt === 'string' ? source.createdAt : nowIso()
+  if (typeof source.createdAt !== 'string') {
+    migrated = true
+  }
+
+  const updatedAt = typeof source.updatedAt === 'string' ? source.updatedAt : createdAt
+  if (typeof source.updatedAt !== 'string') {
+    migrated = true
+  }
+
+  const branch = typeof source.branch === 'string' ? source.branch : undefined
+  if (source.branch !== undefined && typeof source.branch !== 'string') {
+    migrated = true
+  }
+
+  const adapter = typeof source.adapter === 'string' ? source.adapter : 'local'
+  if (typeof source.adapter !== 'string') {
+    migrated = true
+  }
+
+  const caps = source.capabilities
+  const capabilities = {
+    supportsCheckpoint: caps?.supportsCheckpoint ?? false,
+    supportsRestore: caps?.supportsRestore ?? false,
+    supportsAttachHandoff: caps?.supportsAttachHandoff ?? false,
+    supportsResumeToken: caps?.supportsResumeToken ?? false,
+    supportsTranscript: caps?.supportsTranscript ?? false,
+    supportsFailedSnapshot: caps?.supportsFailedSnapshot ?? false,
+  }
+  if (
+    !caps ||
+    caps.supportsCheckpoint === undefined ||
+    caps.supportsRestore === undefined ||
+    caps.supportsAttachHandoff === undefined ||
+    caps.supportsResumeToken === undefined ||
+    caps.supportsTranscript === undefined ||
+    caps.supportsFailedSnapshot === undefined
+  ) {
+    migrated = true
+  }
+
+  const task: MigratingTask = {
+    id,
+    displayId: isValidDisplayId(source.displayId) ? source.displayId : undefined,
+    title,
+    mode,
+    status: normalizedStatus,
+    branch,
+    adapter,
+    capabilities,
+    attach: source.attach,
+    queue: source.queue,
+    runtime: source.runtime,
+    createdAt,
+    updatedAt,
+  }
+
+  if (source.displayId !== undefined && !isValidDisplayId(source.displayId)) {
+    migrated = true
+  }
+
+  return { task, migrated }
+}
+
+function normalizeTaskIndex(raw: unknown): ReadTaskIndexResult {
+  const parsed = (raw ?? {}) as {
+    version?: number
+    nextDisplayId?: unknown
+    tasks?: unknown
+  }
+
+  if (!Array.isArray(parsed.tasks)) {
+    return {
+      index: {
+        version: 3,
+        nextDisplayId: 1,
+        tasks: [],
+      },
+      migrated: parsed.version !== undefined,
+    }
+  }
+
+  const normalized = parsed.tasks.map(record => normalizeTaskRecord(record))
+  const tasks: MigratingTask[] = normalized.map(entry => entry.task)
+  let migrated = parsed.version !== 3 || normalized.some(entry => entry.migrated)
+
+  let maxDisplayId = 0
+  for (const task of tasks) {
+    if (isValidDisplayId(task.displayId)) {
+      maxDisplayId = Math.max(maxDisplayId, task.displayId)
+    }
+  }
+
+  let nextAssignedDisplayId = maxDisplayId + 1
+  const missingDisplayIds = tasks
+    .filter(task => !isValidDisplayId(task.displayId))
+    .sort((left, right) => {
+      const byCreatedAt = left.createdAt.localeCompare(right.createdAt)
+      if (byCreatedAt !== 0) {
+        return byCreatedAt
+      }
+      return left.id.localeCompare(right.id)
+    })
+
+  for (const task of missingDisplayIds) {
+    task.displayId = nextAssignedDisplayId
+    nextAssignedDisplayId += 1
+    migrated = true
+  }
+
+  const finalizedTasks: PortTask[] = tasks.map(task => ({
+    ...task,
+    displayId: task.displayId ?? 1,
+  }))
+
+  maxDisplayId = finalizedTasks.reduce((maxId, task) => Math.max(maxId, task.displayId), 0)
+  const parsedNextDisplayId = isValidDisplayId(parsed.nextDisplayId)
+    ? parsed.nextDisplayId
+    : maxDisplayId + 1
+  const nextDisplayId = Math.max(parsedNextDisplayId, maxDisplayId + 1)
+  if (!isValidDisplayId(parsed.nextDisplayId) || nextDisplayId !== parsed.nextDisplayId) {
+    migrated = true
+  }
+
+  reconcileBranchQueue(finalizedTasks)
+
+  return {
+    index: {
+      version: 3,
+      nextDisplayId,
+      tasks: finalizedTasks,
+    },
+    migrated,
+  }
 }
 
 function isTaskActive(task: PortTask): boolean {
@@ -199,45 +391,37 @@ function getTaskEventPath(repoRoot: string, taskId: string): string {
 }
 
 async function readTaskIndex(repoRoot: string): Promise<TaskIndex> {
+  const { index } = await readTaskIndexWithMeta(repoRoot)
+  return index
+}
+
+async function readTaskIndexWithMeta(repoRoot: string): Promise<ReadTaskIndexResult> {
   const indexPath = getTaskIndexPath(repoRoot)
 
   if (!existsSync(indexPath)) {
-    return { version: 2, tasks: [] }
+    return {
+      index: {
+        version: 3,
+        nextDisplayId: 1,
+        tasks: [],
+      },
+      migrated: false,
+    }
   }
 
   try {
     const content = await readFile(indexPath, 'utf-8')
-    const parsed = JSON.parse(content) as {
-      version?: number
-      tasks?: PortTask[]
-    }
-
-    if (!Array.isArray(parsed.tasks)) {
-      return { version: 2, tasks: [] }
-    }
-
-    if (parsed.version !== 1 && parsed.version !== 2) {
-      return { version: 2, tasks: [] }
-    }
-
-    const migratedTasks = parsed.tasks.map(task => ({
-      ...task,
-      adapter: task.adapter ?? 'local',
-      capabilities: {
-        supportsCheckpoint: task.capabilities?.supportsCheckpoint ?? false,
-        supportsRestore: task.capabilities?.supportsRestore ?? false,
-        supportsAttachHandoff: task.capabilities?.supportsAttachHandoff ?? false,
-        supportsResumeToken: task.capabilities?.supportsResumeToken ?? false,
-        supportsTranscript: task.capabilities?.supportsTranscript ?? false,
-        supportsFailedSnapshot: task.capabilities?.supportsFailedSnapshot ?? false,
-      },
-    }))
-
-    reconcileBranchQueue(migratedTasks)
-
-    return { version: 2, tasks: migratedTasks }
+    const parsed = JSON.parse(content) as unknown
+    return normalizeTaskIndex(parsed)
   } catch {
-    return { version: 2, tasks: [] }
+    return {
+      index: {
+        version: 3,
+        nextDisplayId: 1,
+        tasks: [],
+      },
+      migrated: false,
+    }
   }
 }
 
@@ -266,10 +450,11 @@ export async function createTask(
   const lockPath = getTaskIndexLockPath(repoRoot)
 
   return withFileLock(lockPath, async () => {
-    const index = await readTaskIndex(repoRoot)
+    const { index } = await readTaskIndexWithMeta(repoRoot)
     const timestamp = nowIso()
     const task: PortTask = {
       id: `task-${randomUUID().slice(0, 8)}`,
+      displayId: index.nextDisplayId,
       title: input.title,
       mode: input.mode ?? 'write',
       status: 'queued',
@@ -294,6 +479,7 @@ export async function createTask(
     }
 
     index.tasks.push(task)
+    index.nextDisplayId += 1
     reconcileBranchQueue(index.tasks)
     await writeTaskIndex(repoRoot, index)
     await appendTaskEvent(repoRoot, {
@@ -310,8 +496,15 @@ export async function createTask(
 
 export async function listTasks(repoRoot: string): Promise<PortTask[]> {
   await ensureTaskStorage(repoRoot)
-  const index = await readTaskIndex(repoRoot)
-  return [...index.tasks].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const lockPath = getTaskIndexLockPath(repoRoot)
+
+  return withFileLock(lockPath, async () => {
+    const { index, migrated } = await readTaskIndexWithMeta(repoRoot)
+    if (migrated) {
+      await writeTaskIndex(repoRoot, index)
+    }
+    return [...index.tasks].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  })
 }
 
 export async function getTask(repoRoot: string, taskId: string): Promise<PortTask | null> {
@@ -329,10 +522,13 @@ export async function updateTaskStatus(
   const lockPath = getTaskIndexLockPath(repoRoot)
 
   return withFileLock(lockPath, async () => {
-    const index = await readTaskIndex(repoRoot)
+    const { index, migrated } = await readTaskIndexWithMeta(repoRoot)
     const task = index.tasks.find(item => item.id === taskId)
 
     if (!task) {
+      if (migrated) {
+        await writeTaskIndex(repoRoot, index)
+      }
       return null
     }
 
@@ -363,10 +559,13 @@ export async function patchTask(
   const lockPath = getTaskIndexLockPath(repoRoot)
 
   return withFileLock(lockPath, async () => {
-    const index = await readTaskIndex(repoRoot)
+    const { index, migrated } = await readTaskIndexWithMeta(repoRoot)
     const task = index.tasks.find(item => item.id === taskId)
 
     if (!task) {
+      if (migrated) {
+        await writeTaskIndex(repoRoot, index)
+      }
       return null
     }
 
@@ -418,7 +617,7 @@ export async function reconcileTaskQueue(repoRoot: string): Promise<void> {
   const lockPath = getTaskIndexLockPath(repoRoot)
 
   await withFileLock(lockPath, async () => {
-    const index = await readTaskIndex(repoRoot)
+    const { index } = await readTaskIndexWithMeta(repoRoot)
     reconcileBranchQueue(index.tasks)
     await writeTaskIndex(repoRoot, index)
   })

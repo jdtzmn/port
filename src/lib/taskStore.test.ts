@@ -1,5 +1,5 @@
 import { mkdtempSync } from 'fs'
-import { rm } from 'fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { afterEach, describe, expect, test } from 'vitest'
@@ -30,6 +30,63 @@ describe('taskStore', () => {
     expect(tasks[0]?.id).toBe(second.id)
     expect(tasks[1]?.id).toBe(first.id)
     expect(tasks[0]?.mode).toBe('read')
+    expect(first.displayId).toBe(1)
+    expect(second.displayId).toBe(2)
+  })
+
+  test('migrates legacy index data to v3 display ids and nextDisplayId', async () => {
+    const repoRoot = makeRepoRoot()
+    const jobsDir = join(repoRoot, '.port', 'jobs')
+    const indexPath = join(jobsDir, 'index.json')
+
+    await mkdir(jobsDir, { recursive: true })
+    await writeFile(
+      indexPath,
+      `${JSON.stringify(
+        {
+          version: 2,
+          tasks: [
+            {
+              id: 'task-later',
+              title: 'later task',
+              mode: 'write',
+              status: 'queued',
+              createdAt: '2026-01-02T00:00:00.000Z',
+              updatedAt: '2026-01-02T00:00:00.000Z',
+            },
+            {
+              id: 'task-earlier',
+              title: 'earlier task',
+              mode: 'write',
+              status: 'queued',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+            },
+          ],
+        },
+        null,
+        2
+      )}\n`
+    )
+
+    const tasks = await listTasks(repoRoot)
+    const earlier = tasks.find(task => task.id === 'task-earlier')
+    const later = tasks.find(task => task.id === 'task-later')
+
+    expect(earlier?.displayId).toBe(1)
+    expect(later?.displayId).toBe(2)
+
+    const raw = await readFile(indexPath, 'utf-8')
+    const parsed = JSON.parse(raw) as {
+      version: number
+      nextDisplayId: number
+      tasks: Array<{ id: string; displayId: number }>
+    }
+
+    expect(parsed.version).toBe(3)
+    expect(parsed.nextDisplayId).toBe(3)
+    expect(parsed.tasks.find(task => task.id === 'task-earlier')?.displayId).toBe(1)
+    expect(parsed.tasks.find(task => task.id === 'task-later')?.displayId).toBe(2)
   })
 
   test('updates status and can fetch by id', async () => {

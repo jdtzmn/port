@@ -38,6 +38,7 @@ import {
 } from '../lib/taskArtifacts.ts'
 import { consumeGlobalTaskEvents, readGlobalTaskEvents } from '../lib/taskEventStream.ts'
 import { resolveTaskAdapter } from '../lib/taskAdapterRegistry.ts'
+import { resolveTaskRef } from '../lib/taskId.ts'
 
 function getRepoRootOrFail(): string {
   try {
@@ -45,6 +46,46 @@ function getRepoRootOrFail(): string {
   } catch {
     failWithError('Not in a git repository')
   }
+}
+
+function taskDisplayLabel(task: Pick<PortTask, 'displayId'>): string {
+  return `#${task.displayId}`
+}
+
+function taskReferenceLabel(task: Pick<PortTask, 'displayId' | 'id'>): string {
+  return `${taskDisplayLabel(task)} (${task.id})`
+}
+
+function formatBlockedByReference(
+  displayIdByTaskId: Map<string, number>,
+  blockedByTaskId: string
+): string {
+  const displayId = displayIdByTaskId.get(blockedByTaskId)
+  if (!displayId) {
+    return blockedByTaskId
+  }
+
+  return `#${displayId}`
+}
+
+async function resolveTaskOrFail(repoRoot: string, taskRef: string): Promise<PortTask> {
+  const resolution = await resolveTaskRef(repoRoot, taskRef)
+
+  if (resolution.ok) {
+    return resolution.task
+  }
+
+  if (resolution.kind === 'ambiguous') {
+    const candidates = [...resolution.candidates]
+      .sort((left, right) => left.displayId - right.displayId)
+      .map(candidate => taskReferenceLabel(candidate))
+      .join(', ')
+    failWithError(
+      `Task id "${taskRef}" is ambiguous: ${candidates}; use a longer prefix or numeric id`
+    )
+  }
+
+  failWithError(`Task not found: ${taskRef}`)
 }
 
 export async function taskStart(
@@ -64,7 +105,8 @@ export async function taskStart(
 
   await ensureTaskDaemon(repoRoot)
 
-  output.success(`Queued ${output.branch(task.id)} (${task.mode})`)
+  output.success(`Queued ${output.branch(taskDisplayLabel(task))} (${task.mode})`)
+  output.dim(task.id)
   output.dim(task.title)
 }
 
@@ -80,27 +122,27 @@ export async function taskList(): Promise<void> {
   output.header('Tasks:')
   output.newline()
 
+  const displayIdByTaskId = new Map(tasks.map(task => [task.id, task.displayId]))
+
   for (const task of tasks) {
     const attachState = task.attach?.state ? ` (${task.attach.state})` : ''
     const queueState = task.queue?.blockedByTaskId
-      ? ` blocked-by=${task.queue.blockedByTaskId}`
+      ? ` blocked-by=${formatBlockedByReference(displayIdByTaskId, task.queue.blockedByTaskId)}`
       : ''
     output.info(
-      `${output.branch(task.id)}  ${task.status}${attachState}  ${task.mode}${queueState}  ${task.title}`
+      `${output.branch(taskDisplayLabel(task))} (${task.id})  ${task.status}${attachState}  ${task.mode}${queueState}  ${task.title}`
     )
   }
 }
 
-export async function taskRead(taskId: string): Promise<void> {
+export async function taskRead(taskRef: string): Promise<void> {
   const repoRoot = getRepoRootOrFail()
-  const task = await getTask(repoRoot, taskId)
+  const task = await resolveTaskOrFail(repoRoot, taskRef)
 
-  if (!task) {
-    failWithError(`Task not found: ${taskId}`)
-  }
-
-  output.header(`${output.branch(task.id)} (${task.status})`)
+  output.header(`${output.branch(taskDisplayLabel(task))} (${task.status})`)
   output.newline()
+  output.info(`Task: ${taskDisplayLabel(task)}`)
+  output.info(`Internal ID: ${task.id}`)
   output.info(`Title: ${task.title}`)
   output.info(`Mode: ${task.mode}`)
   if (task.branch) {
@@ -114,7 +156,9 @@ export async function taskRead(taskId: string): Promise<void> {
     output.info(`Queue lock: ${task.queue.lockKey}`)
   }
   if (task.queue?.blockedByTaskId) {
-    output.info(`Blocked by: ${task.queue.blockedByTaskId}`)
+    const allTasks = await listTasks(repoRoot)
+    const blocker = allTasks.find(candidate => candidate.id === task.queue?.blockedByTaskId)
+    output.info(`Blocked by: ${blocker ? taskReferenceLabel(blocker) : task.queue.blockedByTaskId}`)
   }
   if (task.attach?.state) {
     output.info(`Attach state: ${task.attach.state}`)
@@ -142,7 +186,7 @@ export async function taskRead(taskId: string): Promise<void> {
   output.dim(`Created: ${task.createdAt}`)
   output.dim(`Updated: ${task.updatedAt}`)
 
-  const events = await readTaskEvents(repoRoot, taskId, 10)
+  const events = await readTaskEvents(repoRoot, task.id, 10)
   if (events.length > 0) {
     output.newline()
     output.info('Recent events:')
@@ -154,13 +198,10 @@ export async function taskRead(taskId: string): Promise<void> {
 
 export async function taskArtifacts(taskId: string): Promise<void> {
   const repoRoot = getRepoRootOrFail()
-  const task = await getTask(repoRoot, taskId)
-  if (!task) {
-    failWithError(`Task not found: ${taskId}`)
-  }
+  const task = await resolveTaskOrFail(repoRoot, taskId)
 
-  const paths = listTaskArtifactPaths(repoRoot, taskId)
-  output.header(`Artifacts for ${output.branch(taskId)}:`)
+  const paths = listTaskArtifactPaths(repoRoot, task.id)
+  output.header(`Artifacts for ${output.branch(taskReferenceLabel(task))}:`)
   output.newline()
   for (const path of paths) {
     const status = existsSync(path) ? 'present' : 'missing'
@@ -187,18 +228,15 @@ async function printTaskLogLines(path: string): Promise<void> {
 }
 
 export async function taskLogs(
-  taskId: string,
+  taskRef: string,
   options: { stderr?: boolean; follow?: boolean } = {}
 ): Promise<void> {
   const repoRoot = getRepoRootOrFail()
-  const task = await getTask(repoRoot, taskId)
-  if (!task) {
-    failWithError(`Task not found: ${taskId}`)
-  }
+  const task = await resolveTaskOrFail(repoRoot, taskRef)
 
   const path = options.stderr
-    ? getTaskStderrPath(repoRoot, taskId)
-    : getTaskStdoutPath(repoRoot, taskId)
+    ? getTaskStderrPath(repoRoot, task.id)
+    : getTaskStdoutPath(repoRoot, task.id)
   await printTaskLogLines(path)
 
   if (!options.follow) {
@@ -227,42 +265,40 @@ export async function taskLogs(
 }
 
 export async function taskWait(
-  taskId: string,
+  taskRef: string,
   options: { timeoutSeconds?: number } = {}
 ): Promise<void> {
   const repoRoot = getRepoRootOrFail()
+  const initialTask = await resolveTaskOrFail(repoRoot, taskRef)
   const timeoutMs = (options.timeoutSeconds ?? 0) > 0 ? options.timeoutSeconds! * 1000 : null
   const startedAt = Date.now()
 
   while (true) {
-    const task = await getTask(repoRoot, taskId)
+    const task = await getTask(repoRoot, initialTask.id)
     if (!task) {
-      failWithError(`Task not found: ${taskId}`)
+      failWithError(`Task not found: ${taskRef}`)
     }
 
     if (isTerminalTaskStatus(task.status)) {
-      output.success(`Task ${output.branch(task.id)} is ${task.status}`)
+      output.success(`Task ${output.branch(taskReferenceLabel(task))} is ${task.status}`)
       return
     }
 
     if (timeoutMs !== null && Date.now() - startedAt >= timeoutMs) {
-      failWithError(`Timed out waiting for task ${taskId}`)
+      failWithError(`Timed out waiting for task ${taskReferenceLabel(initialTask)}`)
     }
 
     await new Promise(resolve => setTimeout(resolve, 1000))
   }
 }
 
-export async function taskResume(taskId: string): Promise<void> {
+export async function taskResume(taskRef: string): Promise<void> {
   const repoRoot = getRepoRootOrFail()
-  const task = await getTask(repoRoot, taskId)
-  if (!task) {
-    failWithError(`Task not found: ${taskId}`)
-  }
+  const task = await resolveTaskOrFail(repoRoot, taskRef)
 
   if (isTerminalTaskStatus(task.status)) {
     output.info(
-      `Task ${output.branch(task.id)} is terminal (${task.status}); use attach to revive it.`
+      `Task ${output.branch(taskReferenceLabel(task))} is terminal (${task.status}); use attach to revive it.`
     )
     return
   }
@@ -272,18 +308,15 @@ export async function taskResume(taskId: string): Promise<void> {
   }
 
   await ensureTaskDaemon(repoRoot)
-  output.success(`Resume requested for ${output.branch(task.id)}`)
+  output.success(`Resume requested for ${output.branch(taskReferenceLabel(task))}`)
 }
 
-export async function taskCancel(taskId: string): Promise<void> {
+export async function taskCancel(taskRef: string): Promise<void> {
   const repoRoot = getRepoRootOrFail()
-  const task = await getTask(repoRoot, taskId)
-  if (!task) {
-    failWithError(`Task not found: ${taskId}`)
-  }
+  const task = await resolveTaskOrFail(repoRoot, taskRef)
 
   if (isTerminalTaskStatus(task.status)) {
-    output.info(`Task ${output.branch(task.id)} is already ${task.status}`)
+    output.info(`Task ${output.branch(taskReferenceLabel(task))} is already ${task.status}`)
     return
   }
 
@@ -310,7 +343,7 @@ export async function taskCancel(taskId: string): Promise<void> {
     }
   )
   await updateTaskStatus(repoRoot, task.id, 'cancelled', 'Cancelled by user command')
-  output.success(`Cancelled ${output.branch(task.id)}`)
+  output.success(`Cancelled ${output.branch(taskReferenceLabel(task))}`)
 }
 
 export async function taskWatch(options: { logs?: string; once?: boolean } = {}): Promise<void> {
@@ -323,6 +356,7 @@ export async function taskWatch(options: { logs?: string; once?: boolean } = {})
 
   while (true) {
     const tasks = await listTasks(repoRoot)
+    const displayIdByTaskId = new Map(tasks.map(task => [task.id, task.displayId]))
     output.header('Task watch:')
     output.newline()
     if (tasks.length === 0) {
@@ -330,10 +364,10 @@ export async function taskWatch(options: { logs?: string; once?: boolean } = {})
     } else {
       for (const task of tasks) {
         const queueState = task.queue?.blockedByTaskId
-          ? ` blocked-by=${task.queue.blockedByTaskId}`
+          ? ` blocked-by=${formatBlockedByReference(displayIdByTaskId, task.queue.blockedByTaskId)}`
           : ''
         output.info(
-          `${output.branch(task.id)}  ${task.status}  ${task.mode}${queueState}  ${task.title}`
+          `${output.branch(taskDisplayLabel(task))} (${task.id})  ${task.status}  ${task.mode}${queueState}  ${task.title}`
         )
       }
     }
@@ -521,14 +555,12 @@ async function applyByPatch(repoRoot: string, taskId: string): Promise<boolean> 
 }
 
 export async function taskApply(
-  taskId: string,
+  taskRef: string,
   options: { method?: 'auto' | 'cherry-pick' | 'bundle' | 'patch'; squash?: boolean } = {}
 ): Promise<void> {
   const repoRoot = getRepoRootOrFail()
-  const task = await getTask(repoRoot, taskId)
-  if (!task) {
-    failWithError(`Task not found: ${taskId}`)
-  }
+  const task = await resolveTaskOrFail(repoRoot, taskRef)
+  const taskId = task.id
 
   await ensureCleanWorkingTree(repoRoot)
 
@@ -540,7 +572,7 @@ export async function taskApply(
     if (!applied) {
       failWithError(`No commit refs available for task ${taskId}`)
     }
-    output.success(`Applied task ${output.branch(taskId)} via cherry-pick`)
+    output.success(`Applied task ${output.branch(taskReferenceLabel(task))} via cherry-pick`)
     return
   }
 
@@ -549,28 +581,28 @@ export async function taskApply(
     if (!applied) {
       failWithError(`No bundle-backed commit refs available for task ${taskId}`)
     }
-    output.success(`Applied task ${output.branch(taskId)} via bundle`)
+    output.success(`Applied task ${output.branch(taskReferenceLabel(task))} via bundle`)
     return
   }
 
   if (method === 'patch') {
     await applyByPatch(repoRoot, taskId)
-    output.success(`Applied task ${output.branch(taskId)} via patch`)
+    output.success(`Applied task ${output.branch(taskReferenceLabel(task))} via patch`)
     return
   }
 
   if (await applyByCherryPick(repoRoot, taskId, { squash })) {
-    output.success(`Applied task ${output.branch(taskId)} via cherry-pick`)
+    output.success(`Applied task ${output.branch(taskReferenceLabel(task))} via cherry-pick`)
     return
   }
 
   if (await applyByBundle(repoRoot, taskId, { squash })) {
-    output.success(`Applied task ${output.branch(taskId)} via bundle`)
+    output.success(`Applied task ${output.branch(taskReferenceLabel(task))} via bundle`)
     return
   }
 
   await applyByPatch(repoRoot, taskId)
-  output.success(`Applied task ${output.branch(taskId)} via patch`)
+  output.success(`Applied task ${output.branch(taskReferenceLabel(task))} via patch`)
 }
 
 function parseSleepHint(title: string): number {
@@ -645,15 +677,14 @@ function appendContinuationRunRuntime(
   }
 }
 
-export async function taskAttach(taskId: string): Promise<void> {
+export async function taskAttach(taskRef: string): Promise<void> {
   const repoRoot = getRepoRootOrFail()
-  const task = await getTask(repoRoot, taskId)
-  if (!task) {
-    failWithError(`Task not found: ${taskId}`)
-  }
+  const task = await resolveTaskOrFail(repoRoot, taskRef)
 
   if (!task.runtime?.checkpoint) {
-    failWithError(`Task ${taskId} does not have checkpoint data required for attach revival`)
+    failWithError(
+      `Task ${taskReferenceLabel(task)} does not have checkpoint data required for attach revival`
+    )
   }
 
   const scriptPath = process.argv[1]
@@ -726,7 +757,7 @@ export async function taskAttach(taskId: string): Promise<void> {
 
     await updateTaskStatus(repoRoot, task.id, 'running', 'Revived for attach')
     output.success(
-      `Revived ${output.branch(task.id)} and attached continuation run ${checkpoint.runId}`
+      `Revived ${output.branch(taskReferenceLabel(task))} and attached continuation run ${checkpoint.runId}`
     )
     output.info(
       'Interactive attach handoff UI is not implemented yet; task continues in background.'
@@ -747,7 +778,7 @@ export async function taskAttach(taskId: string): Promise<void> {
       }
     )
     await updateTaskStatus(repoRoot, task.id, 'resume_failed', `Attach revive failed: ${error}`)
-    failWithError(`Failed to revive task ${taskId} for attach: ${error}`)
+    failWithError(`Failed to revive task ${taskReferenceLabel(task)} for attach: ${error}`)
   }
 }
 

@@ -33,7 +33,10 @@ describe('task apply integration', () => {
 
         await runPortCommand(['task', 'start', 'apply-clean'], sample.dir)
         const task = await waitForTaskByTitle(sample.dir, 'apply-clean')
-        await runPortCommand(['task', 'wait', task.id, '--timeout-seconds', '30'], sample.dir)
+        await runPortCommand(
+          ['task', 'wait', String(task.displayId), '--timeout-seconds', '30'],
+          sample.dir
+        )
 
         await seedPatchArtifactForTask(sample.dir, task.id)
 
@@ -43,7 +46,7 @@ describe('task apply integration', () => {
         expect(cleanStatus.trim()).toBe('')
 
         const apply = await runPortCommand(
-          ['task', 'apply', task.id, '--method', 'patch'],
+          ['task', 'apply', String(task.displayId), '--method', 'patch'],
           sample.dir
         )
         expect(apply.stdout).toContain('Applied task')
@@ -68,13 +71,16 @@ describe('task apply integration', () => {
 
         await runPortCommand(['task', 'start', 'apply-dirty'], sample.dir)
         const task = await waitForTaskByTitle(sample.dir, 'apply-dirty')
-        await runPortCommand(['task', 'wait', task.id, '--timeout-seconds', '30'], sample.dir)
+        await runPortCommand(
+          ['task', 'wait', String(task.displayId), '--timeout-seconds', '30'],
+          sample.dir
+        )
 
         await seedPatchArtifactForTask(sample.dir, task.id)
         await writeFile(join(sample.dir, 'UNCOMMITTED.txt'), 'dirty\n')
 
         const apply = await runPortCommand(
-          ['task', 'apply', task.id, '--method', 'patch'],
+          ['task', 'apply', String(task.displayId), '--method', 'patch'],
           sample.dir,
           { allowFailure: true }
         )

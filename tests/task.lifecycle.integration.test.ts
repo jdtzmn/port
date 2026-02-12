@@ -23,13 +23,17 @@ describe('task lifecycle integration', () => {
         await runPortCommand(['task', 'start', 'story-start'], sample.dir)
         const task = await waitForTaskByTitle(sample.dir, 'story-start')
 
-        await runPortCommand(['task', 'wait', task.id, '--timeout-seconds', '30'], sample.dir)
+        await runPortCommand(
+          ['task', 'wait', String(task.displayId), '--timeout-seconds', '30'],
+          sample.dir
+        )
         const finalTask = await waitForTaskStatus(sample.dir, task.id, TERMINAL)
 
         expect(TERMINAL).toContain(finalTask.status)
 
-        const read = await runPortCommand(['task', 'read', task.id], sample.dir)
+        const read = await runPortCommand(['task', 'read', String(task.displayId)], sample.dir)
         expect(read.stdout).toContain(task.id)
+        expect(read.stdout).toContain(`#${task.displayId}`)
         expect(read.stdout).toContain('Recent events:')
       } finally {
         await cleanupTaskRuntime(sample.dir)
@@ -65,7 +69,10 @@ describe('task lifecycle integration', () => {
         )
         expect(blockedSecond.queue?.blockedByTaskId).toBe(first.id)
 
-        await runPortCommand(['task', 'wait', first.id, '--timeout-seconds', '45'], sample.dir)
+        await runPortCommand(
+          ['task', 'wait', String(first.displayId), '--timeout-seconds', '45'],
+          sample.dir
+        )
 
         const unblockedSecond = await waitFor(
           'second task unblocked',
@@ -75,7 +82,10 @@ describe('task lifecycle integration', () => {
         )
         expect(unblockedSecond.queue?.blockedByTaskId).toBeUndefined()
 
-        await runPortCommand(['task', 'wait', second.id, '--timeout-seconds', '45'], sample.dir)
+        await runPortCommand(
+          ['task', 'wait', String(second.displayId), '--timeout-seconds', '45'],
+          sample.dir
+        )
         const finalSecond = await waitForTaskStatus(sample.dir, second.id, TERMINAL)
         expect(TERMINAL).toContain(finalSecond.status)
       } finally {
@@ -125,8 +135,14 @@ describe('task lifecycle integration', () => {
         expect(pair[0].queue?.blockedByTaskId).toBeUndefined()
         expect(pair[1].queue?.blockedByTaskId).toBeUndefined()
 
-        await runPortCommand(['task', 'wait', a.id, '--timeout-seconds', '45'], sample.dir)
-        await runPortCommand(['task', 'wait', b.id, '--timeout-seconds', '45'], sample.dir)
+        await runPortCommand(
+          ['task', 'wait', String(a.displayId), '--timeout-seconds', '45'],
+          sample.dir
+        )
+        await runPortCommand(
+          ['task', 'wait', String(b.displayId), '--timeout-seconds', '45'],
+          sample.dir
+        )
       } finally {
         await cleanupTaskRuntime(sample.dir)
         await sample.cleanup()
@@ -154,7 +170,7 @@ describe('task lifecycle integration', () => {
           { timeoutMs: 15000 }
         )
 
-        await runPortCommand(['task', 'cancel', task.id], sample.dir)
+        await runPortCommand(['task', 'cancel', String(task.displayId)], sample.dir)
         const cancelled = await waitForTaskStatus(sample.dir, task.id, ['cancelled'])
         expect(cancelled.runtime?.retainedForDebug).toBe(true)
       } finally {
@@ -174,14 +190,68 @@ describe('task lifecycle integration', () => {
         await runPortCommand(['task', 'start', 'artifact-story'], sample.dir)
         const task = await waitForTaskByTitle(sample.dir, 'artifact-story')
 
-        await runPortCommand(['task', 'wait', task.id, '--timeout-seconds', '30'], sample.dir)
+        await runPortCommand(
+          ['task', 'wait', String(task.displayId), '--timeout-seconds', '30'],
+          sample.dir
+        )
 
-        const artifacts = await runPortCommand(['task', 'artifacts', task.id], sample.dir)
+        const artifacts = await runPortCommand(
+          ['task', 'artifacts', String(task.displayId)],
+          sample.dir
+        )
         expect(artifacts.stdout).toContain('metadata.json')
         expect(artifacts.stdout).toContain('commit-refs.json')
         expect(artifacts.stdout).toContain('changes.patch')
         expect(artifacts.stdout).toContain('stdout.log')
         expect(artifacts.stdout).toContain('stderr.log')
+      } finally {
+        await cleanupTaskRuntime(sample.dir)
+        await sample.cleanup()
+      }
+    },
+    INTEGRATION_TIMEOUT
+  )
+
+  test(
+    'task commands accept canonical and unique prefix references for compatibility',
+    async () => {
+      const sample = await prepareSample('simple-server', { initWithConfig: true })
+
+      try {
+        await runPortCommand(['task', 'start', 'ref-compat'], sample.dir)
+        const task = await waitForTaskByTitle(sample.dir, 'ref-compat')
+
+        await runPortCommand(['task', 'wait', task.id, '--timeout-seconds', '30'], sample.dir)
+
+        const canonicalRead = await runPortCommand(['task', 'read', task.id], sample.dir)
+        expect(canonicalRead.stdout).toContain(task.id)
+
+        const barePrefix = task.id.replace('task-', '').slice(0, 6)
+        const prefixRead = await runPortCommand(['task', 'read', barePrefix], sample.dir)
+        expect(prefixRead.stdout).toContain(task.id)
+      } finally {
+        await cleanupTaskRuntime(sample.dir)
+        await sample.cleanup()
+      }
+    },
+    INTEGRATION_TIMEOUT
+  )
+
+  test(
+    'ambiguous task prefix returns candidate guidance',
+    async () => {
+      const sample = await prepareSample('simple-server', { initWithConfig: true })
+
+      try {
+        await runPortCommand(['task', 'start', 'ambiguous-one'], sample.dir)
+        await runPortCommand(['task', 'start', 'ambiguous-two'], sample.dir)
+
+        const ambiguous = await runPortCommand(['task', 'read', 'task-'], sample.dir, {
+          allowFailure: true,
+        })
+        expect(ambiguous.code).not.toBe(0)
+        expect(ambiguous.stderr).toContain('is ambiguous')
+        expect(ambiguous.stderr).toContain('use a longer prefix or numeric id')
       } finally {
         await cleanupTaskRuntime(sample.dir)
         await sample.cleanup()

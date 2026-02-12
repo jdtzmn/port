@@ -109,47 +109,52 @@ taskCommand
 
 taskCommand.command('list').description('List persisted tasks').action(taskList)
 
-taskCommand.command('read <id>').description('Show details for a task').action(taskRead)
+taskCommand.command('read <task-ref>').description('Show details for a task').action(taskRead)
 
 taskCommand
-  .command('attach <id>')
+  .command('attach <task-ref>')
   .description('Revive task from checkpoint and attach continuation run')
   .action(taskAttach)
 
 taskCommand
-  .command('artifacts <id>')
+  .command('artifacts <task-ref>')
   .description('List task artifact paths and presence')
   .action(taskArtifacts)
 
 taskCommand
-  .command('logs <id>')
+  .command('logs <task-ref>')
   .description('Show task logs (stdout by default)')
   .option('--stderr', 'Show stderr log stream', false)
   .option('--follow', 'Follow log output continuously', false)
-  .action((id: string, options: { stderr?: boolean; follow?: boolean }) => taskLogs(id, options))
+  .action((taskRef: string, options: { stderr?: boolean; follow?: boolean }) =>
+    taskLogs(taskRef, options)
+  )
 
 taskCommand
-  .command('wait <id>')
+  .command('wait <task-ref>')
   .description('Wait until task reaches a terminal state')
   .option('--timeout-seconds <seconds>', 'Fail if task does not finish in time')
-  .action((id: string, options: { timeoutSeconds?: string }) => {
+  .action((taskRef: string, options: { timeoutSeconds?: string }) => {
     const timeoutSeconds = options.timeoutSeconds
       ? Number.parseInt(options.timeoutSeconds, 10)
       : undefined
-    return taskWait(id, { timeoutSeconds })
+    return taskWait(taskRef, { timeoutSeconds })
   })
 
 taskCommand
-  .command('resume <id>')
+  .command('resume <task-ref>')
   .description('Resume a non-terminal task from checkpoints')
   .action(taskResume)
 
-taskCommand.command('cancel <id>').description('Cancel a running or queued task').action(taskCancel)
+taskCommand
+  .command('cancel <task-ref>')
+  .description('Cancel a running or queued task')
+  .action(taskCancel)
 
 taskCommand
   .command('watch')
   .description('Live task table view with optional log tail mode')
-  .option('--logs <id>', 'Tail logs for a single task instead of table mode')
+  .option('--logs <task-ref>', 'Tail logs for a single task instead of table mode')
   .option('--once', 'Print one snapshot and exit', false)
   .action((options: { logs?: string; once?: boolean }) => taskWatch(options))
 
@@ -179,16 +184,16 @@ remoteCommand
   .action(remoteDoctor)
 
 taskCommand
-  .command('apply <id>')
+  .command('apply <task-ref>')
   .description('Apply task output to current branch (cherry-pick -> bundle -> patch)')
   .option('--method <method>', 'Apply method: auto, cherry-pick, bundle, patch', 'auto')
   .option('--squash', 'Squash multiple commits into one commit', false)
   .action(
     async (
-      id: string,
+      taskRef: string,
       options: { method: 'auto' | 'cherry-pick' | 'bundle' | 'patch'; squash: boolean }
     ) => {
-      await taskApply(id, options)
+      await taskApply(taskRef, options)
     }
   )
 

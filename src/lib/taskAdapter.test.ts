@@ -49,6 +49,7 @@ describe('LocalTaskExecutionAdapter', () => {
 
     const prepared = await adapter.prepare('/repo', {
       id: 'task-1234',
+      displayId: 1,
       title: 'demo',
       mode: 'write',
       status: 'queued',
@@ -75,6 +76,7 @@ describe('LocalTaskExecutionAdapter', () => {
       '/repo',
       {
         id: 'task-1234',
+        displayId: 1,
         title: 'demo',
         mode: 'write',
         status: 'queued',
@@ -122,6 +124,7 @@ describe('LocalTaskExecutionAdapter', () => {
       '/repo',
       {
         id: 'task-1234',
+        displayId: 1,
         title: 'demo',
         mode: 'write',
         status: 'resuming',

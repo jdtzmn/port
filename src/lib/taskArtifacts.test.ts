@@ -29,6 +29,7 @@ describe('taskArtifacts', () => {
     const repoRoot = makeRepoRoot()
     await writeTaskMetadata(repoRoot, {
       id: 'task-1',
+      displayId: 1,
       title: 'demo',
       mode: 'write',
       status: 'completed',

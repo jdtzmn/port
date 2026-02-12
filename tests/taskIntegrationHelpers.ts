@@ -11,6 +11,7 @@ export interface PortCommandResult {
 
 export interface IntegrationTaskRecord {
   id: string
+  displayId: number
   title: string
   status: string
   branch?: string

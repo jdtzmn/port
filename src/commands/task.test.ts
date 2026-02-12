@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => ({
   readGlobalTaskEvents: vi.fn(),
   consumeGlobalTaskEvents: vi.fn(),
   resolveTaskAdapter: vi.fn(),
+  resolveTaskRef: vi.fn(),
   success: vi.fn(),
   dim: vi.fn(),
   info: vi.fn(),
@@ -81,6 +82,10 @@ vi.mock('../lib/taskAdapterRegistry.ts', () => ({
   resolveTaskAdapter: mocks.resolveTaskAdapter,
 }))
 
+vi.mock('../lib/taskId.ts', () => ({
+  resolveTaskRef: mocks.resolveTaskRef,
+}))
+
 vi.mock('../lib/taskDaemon.ts', () => ({
   ensureTaskDaemon: mocks.ensureTaskDaemon,
   runTaskDaemon: mocks.runTaskDaemon,
@@ -128,6 +133,41 @@ describe('task command', () => {
     mocks.listTaskArtifactPaths.mockReturnValue(['/repo/.port/jobs/artifacts/task-1/metadata.json'])
     mocks.hasTaskBundle.mockReturnValue(false)
     mocks.isTerminalTaskStatus.mockReturnValue(false)
+    mocks.resolveTaskRef.mockImplementation(async (_repo: string, ref: string) => {
+      const tasks = [
+        {
+          id: 'task-1',
+          displayId: 1,
+          title: 'demo',
+          mode: 'write',
+          status: 'queued',
+          adapter: 'local',
+          capabilities: {
+            supportsCheckpoint: false,
+            supportsRestore: false,
+            supportsAttachHandoff: false,
+            supportsResumeToken: false,
+            supportsTranscript: false,
+            supportsFailedSnapshot: false,
+          },
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ]
+
+      const task =
+        ref === '1'
+          ? tasks[0]
+          : tasks.find(
+              item => item.id === ref || item.id.startsWith(ref) || item.id === `task-${ref}`
+            )
+
+      if (!task) {
+        return { ok: false, kind: 'not_found', ref }
+      }
+
+      return { ok: true, task, matchedBy: ref === '1' ? 'display_id' : 'canonical_id' }
+    })
     mocks.readTaskEvents.mockResolvedValue([])
     mocks.readGlobalTaskEvents.mockResolvedValue({ events: [], nextLine: 0 })
     mocks.consumeGlobalTaskEvents.mockResolvedValue(0)
@@ -165,7 +205,12 @@ describe('task command', () => {
   })
 
   test('task start queues a task and ensures daemon', async () => {
-    mocks.createTask.mockResolvedValue({ id: 'task-abc12345', mode: 'write', title: 'hello' })
+    mocks.createTask.mockResolvedValue({
+      id: 'task-abc12345',
+      displayId: 12,
+      mode: 'write',
+      title: 'hello',
+    })
 
     await taskStart('hello')
 
@@ -175,7 +220,8 @@ describe('task command', () => {
       branch: undefined,
     })
     expect(mocks.ensureTaskDaemon).toHaveBeenCalledWith('/repo')
-    expect(mocks.success).toHaveBeenCalledWith('Queued task-abc12345 (write)')
+    expect(mocks.success).toHaveBeenCalledWith('Queued #12 (write)')
+    expect(mocks.dim).toHaveBeenCalledWith('task-abc12345')
   })
 
   test('task list prints no tasks message when empty', async () => {
@@ -187,7 +233,7 @@ describe('task command', () => {
   })
 
   test('task read throws cli error when task is missing', async () => {
-    mocks.getTask.mockResolvedValue(null)
+    mocks.resolveTaskRef.mockResolvedValue({ ok: false, kind: 'not_found', ref: 'task-missing' })
 
     await expect(taskRead('task-missing')).rejects.toBeInstanceOf(CliError)
     expect(mocks.error).toHaveBeenCalledWith('Task not found: task-missing')
@@ -210,36 +256,61 @@ describe('task command', () => {
   })
 
   test('task artifacts lists artifact paths', async () => {
-    mocks.getTask.mockResolvedValue({ id: 'task-1', title: 'done' })
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: {
+        id: 'task-1',
+        displayId: 1,
+        title: 'done',
+      },
+    })
 
-    await taskArtifacts('task-1')
+    await taskArtifacts('1')
 
-    expect(mocks.header).toHaveBeenCalledWith('Artifacts for task-1:')
+    expect(mocks.header).toHaveBeenCalledWith('Artifacts for #1 (task-1):')
   })
 
   test('task logs prints log content', async () => {
-    mocks.getTask.mockResolvedValue({ id: 'task-1', title: 'done' })
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: {
+        id: 'task-1',
+        displayId: 1,
+        title: 'done',
+      },
+    })
     mocks.execFileAsync.mockResolvedValue({ stdout: '', stderr: '' })
 
-    await taskLogs('task-1')
+    await taskLogs('1')
 
     expect(mocks.getTaskStdoutPath).toHaveBeenCalledWith('/repo', 'task-1')
   })
 
   test('task wait exits when task is terminal', async () => {
-    mocks.getTask.mockResolvedValue({ id: 'task-1', status: 'completed' })
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: { id: 'task-1', displayId: 1, status: 'completed' },
+    })
+    mocks.getTask.mockResolvedValue({ id: 'task-1', displayId: 1, status: 'completed' })
     mocks.isTerminalTaskStatus.mockReturnValue(true)
 
-    await taskWait('task-1')
+    await taskWait('1')
 
-    expect(mocks.success).toHaveBeenCalledWith('Task task-1 is completed')
+    expect(mocks.success).toHaveBeenCalledWith('Task #1 (task-1) is completed')
   })
 
   test('task resume sets resuming status for non-terminal tasks', async () => {
-    mocks.getTask.mockResolvedValue({ id: 'task-1', status: 'running' })
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: { id: 'task-1', displayId: 1, status: 'running' },
+    })
     mocks.isTerminalTaskStatus.mockReturnValue(false)
 
-    await taskResume('task-1')
+    await taskResume('1')
 
     expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
       '/repo',
@@ -251,10 +322,14 @@ describe('task command', () => {
   })
 
   test('task resume keeps terminal tasks ended', async () => {
-    mocks.getTask.mockResolvedValue({ id: 'task-1', status: 'completed' })
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: { id: 'task-1', displayId: 1, status: 'completed' },
+    })
     mocks.isTerminalTaskStatus.mockReturnValue(true)
 
-    await taskResume('task-1')
+    await taskResume('1')
 
     expect(mocks.updateTaskStatus).not.toHaveBeenCalledWith(
       '/repo',
@@ -263,20 +338,25 @@ describe('task command', () => {
       expect.anything()
     )
     expect(mocks.info).toHaveBeenCalledWith(
-      'Task task-1 is terminal (completed); use attach to revive it.'
+      'Task #1 (task-1) is terminal (completed); use attach to revive it.'
     )
   })
 
   test('task cancel marks task cancelled', async () => {
-    mocks.getTask.mockResolvedValue({
-      id: 'task-1',
-      status: 'running',
-      runtime: { workerPid: 123 },
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: {
+        id: 'task-1',
+        displayId: 1,
+        status: 'running',
+        runtime: { workerPid: 123 },
+      },
     })
     mocks.patchTask.mockResolvedValue(undefined)
     mocks.updateTaskStatus.mockResolvedValue(undefined)
 
-    await taskCancel('task-1')
+    await taskCancel('1')
 
     expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
       '/repo',
@@ -374,11 +454,15 @@ describe('task command', () => {
   })
 
   test('task apply uses cherry-pick refs in auto mode', async () => {
-    mocks.getTask.mockResolvedValue({ id: 'task-1', title: 'done', mode: 'write' })
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: { id: 'task-1', displayId: 1, title: 'done', mode: 'write' },
+    })
     mocks.execFileAsync.mockResolvedValue({ stdout: '', stderr: '' })
     mocks.readTaskCommitRefs.mockResolvedValue(['abc123'])
 
-    await taskApply('task-1', { method: 'auto', squash: false })
+    await taskApply('1', { method: 'auto', squash: false })
 
     expect(mocks.execFileAsync).toHaveBeenCalledWith('git', ['cherry-pick', 'abc123'], {
       cwd: '/repo',
@@ -386,11 +470,15 @@ describe('task command', () => {
   })
 
   test('task apply falls back to patch when no refs', async () => {
-    mocks.getTask.mockResolvedValue({ id: 'task-1', title: 'done', mode: 'write' })
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: { id: 'task-1', displayId: 1, title: 'done', mode: 'write' },
+    })
     mocks.execFileAsync.mockResolvedValue({ stdout: '', stderr: '' })
     mocks.readTaskCommitRefs.mockResolvedValue([])
 
-    await taskApply('task-1', { method: 'auto', squash: false })
+    await taskApply('1', { method: 'auto', squash: false })
 
     expect(mocks.execFileAsync).toHaveBeenCalledWith(
       'git',
@@ -400,9 +488,43 @@ describe('task command', () => {
   })
 
   test('task attach revives terminal task with continuation run', async () => {
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: {
+        id: 'task-1',
+        displayId: 1,
+        status: 'completed',
+        attach: {},
+        runtime: {
+          runAttempt: 1,
+          checkpoint: {
+            adapterId: 'local',
+            taskId: 'task-1',
+            runId: 'run-1',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            payload: {
+              workerPid: 123,
+              worktreePath: '/repo/.port/trees/port-task-task-1',
+              branch: 'port-task-task-1',
+            },
+          },
+          runs: [
+            {
+              attempt: 1,
+              runId: 'run-1',
+              status: 'completed',
+              startedAt: '2026-01-01T00:00:00.000Z',
+              finishedAt: '2026-01-01T00:00:01.000Z',
+            },
+          ],
+        },
+      },
+    })
     mocks.getTask
       .mockResolvedValueOnce({
         id: 'task-1',
+        displayId: 1,
         status: 'completed',
         attach: {},
         runtime: {
@@ -431,6 +553,7 @@ describe('task command', () => {
       })
       .mockResolvedValueOnce({
         id: 'task-1',
+        displayId: 1,
         attach: {},
         runtime: {
           runAttempt: 1,
@@ -457,7 +580,7 @@ describe('task command', () => {
         },
       })
 
-    await taskAttach('task-1')
+    await taskAttach('1')
 
     expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
       '/repo',
@@ -480,11 +603,32 @@ describe('task command', () => {
   })
 
   test('task attach fails without checkpoint', async () => {
-    mocks.getTask.mockResolvedValue({ id: 'task-1', status: 'completed', runtime: {} })
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: { id: 'task-1', displayId: 1, status: 'completed', runtime: {} },
+    })
 
-    await expect(taskAttach('task-1')).rejects.toBeInstanceOf(CliError)
+    await expect(taskAttach('1')).rejects.toBeInstanceOf(CliError)
     expect(mocks.error).toHaveBeenCalledWith(
-      'Task task-1 does not have checkpoint data required for attach revival'
+      'Task #1 (task-1) does not have checkpoint data required for attach revival'
+    )
+  })
+
+  test('task read reports ambiguity candidates', async () => {
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: false,
+      kind: 'ambiguous',
+      ref: 'a',
+      candidates: [
+        { id: 'task-a1111111', displayId: 1 },
+        { id: 'task-a2222222', displayId: 2 },
+      ],
+    })
+
+    await expect(taskRead('a')).rejects.toBeInstanceOf(CliError)
+    expect(mocks.error).toHaveBeenCalledWith(
+      'Task id "a" is ambiguous: #1 (task-a1111111), #2 (task-a2222222); use a longer prefix or numeric id'
     )
   })
 })

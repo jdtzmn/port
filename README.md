@@ -209,16 +209,16 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port urls [service]`                            | Show service URLs for current worktree                  |
 | `port task start <title>`                        | Queue a background task                                 |
 | `port task list`                                 | List persisted background tasks                         |
-| `port task read <id>`                            | Show task details                                       |
-| `port task attach <id>`                          | Revive task from checkpoint and attach continuation run |
-| `port task logs <id>`                            | Show task logs (stdout by default)                      |
-| `port task watch [--logs <id>]`                  | Watch live task table or tail task logs                 |
+| `port task read <task-ref>`                      | Show task details                                       |
+| `port task attach <task-ref>`                    | Revive task from checkpoint and attach continuation run |
+| `port task logs <task-ref>`                      | Show task logs (stdout by default)                      |
+| `port task watch [--logs <task-ref>]`            | Watch live task table or tail task logs                 |
 | `port task events [--consumer ID]`               | Stream adapter-agnostic task events                     |
-| `port task wait <id>`                            | Wait for task to finish                                 |
-| `port task resume <id>`                          | Resume non-terminal task execution from checkpoints     |
-| `port task cancel <id>`                          | Cancel a running or queued task                         |
-| `port task artifacts <id>`                       | Show required artifact paths and presence               |
-| `port task apply <id>`                           | Apply task output with CP->bundle->patch fallback       |
+| `port task wait <task-ref>`                      | Wait for task to finish                                 |
+| `port task resume <task-ref>`                    | Resume non-terminal task execution from checkpoints     |
+| `port task cancel <task-ref>`                    | Cancel a running or queued task                         |
+| `port task artifacts <task-ref>`                 | Show required artifact paths and presence               |
+| `port task apply <task-ref>`                     | Apply task output with CP->bundle->patch fallback       |
 | `port task cleanup`                              | Clean task runtime and stop idle daemon                 |
 | `port remote adapters`                           | List available task execution adapters                  |
 | `port remote status`                             | Show configured and resolved adapter                    |
@@ -227,6 +227,8 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port uninstall [--yes] [--domain DOMAIN]`       | Remove DNS configuration for wildcard domain            |
 
 ### Task Event Stream Notes
+
+Task commands accept a `<task-ref>` value. The preferred format is numeric display ID shown by `port task list` (for example `port task read 12`). Canonical task IDs (`task-abc12345`) and unique canonical prefixes remain supported for backward compatibility.
 
 `port task events` reads an append-only, adapter-agnostic event log at `.port/jobs/events/all.jsonl`.
 
