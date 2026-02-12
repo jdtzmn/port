@@ -176,6 +176,30 @@ OpenCode-specific guidance:
 
 ---
 
+## Event-Driven Integration
+
+Attach/handoff lifecycle is published through the same adapter-agnostic task event stream defined in v2.
+
+Required attach events (illustrative):
+
+- `task.attach.requested`
+- `task.attach.revive_started`
+- `task.attach.revive_succeeded`
+- `task.attach.revive_failed`
+- `task.attach.pending_handoff`
+- `task.attach.handoff_ready`
+- `task.attach.client_attached`
+- `task.attach.detached`
+- `task.attach.resume_failed`
+
+Consumer behavior:
+
+- OpenCode and other clients subscribe to task events using replay cursors.
+- Scheduler never hardcodes OpenCode notification logic.
+- If a subscriber disconnects, it replays from last acknowledged cursor.
+
+---
+
 ## Persistence and Metadata
 
 Minimum continuation metadata (locked):
@@ -253,6 +277,7 @@ Attach details should appear in:
 8. Local and remote adapters pass parity tests for attach/handoff contract.
 9. Reconnect and resume token behavior satisfies configured grace/TTL settings.
 10. Attach path adds negligible overhead to tasks that are never attached.
+11. Attach lifecycle is observable through adapter-agnostic events and replayable subscriber cursors.
 
 ---
 

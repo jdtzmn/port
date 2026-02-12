@@ -257,11 +257,26 @@ Rules:
 
 ---
 
-## Notifications and OpenCode Integration
+## Event Subscriptions and OpenCode Integration
 
-- Per-task immediate notifications for progress/completion/error.
-- Integration is an optional adapter/plugin layer, not hard-coupled into scheduler core.
-- Core scheduler remains usable from pure CLI.
+- Scheduler emits adapter-agnostic task events (append-only event log as source of truth).
+- Consumers subscribe to the same event stream with replay cursors (CLI watch, OpenCode, future UIs/webhooks).
+- Per-task immediate notifications for progress/completion/error are implemented by subscribers.
+- OpenCode is a first subscriber, not a scheduler-specific code path.
+
+Illustrative event set:
+
+- `task.created`
+- `task.preparing`
+- `task.running`
+- `task.waiting_on_children`
+- `task.resumable`
+- `task.resuming`
+- `task.completed`
+- `task.failed`
+- `task.timeout`
+- `task.cancelled`
+- `task.attach.revive_started|succeeded|failed`
 
 ---
 
@@ -335,8 +350,9 @@ Security default:
 ### Phase 3: UX + Notifications
 
 - `task watch` live table + `--logs` mode.
-- Per-task immediate notifications.
-- Optional OpenCode notification adapter.
+- Event bus subscription surface with replay cursor support.
+- Per-task immediate notifications implemented as subscriber behavior.
+- OpenCode subscriber implementation.
 - `task resume` command wired to checkpoint/restore flow.
 - `task attach` revive path supports dead and terminal tasks via continuation run.
 
