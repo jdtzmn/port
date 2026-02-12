@@ -20,6 +20,7 @@ import { onboard } from './commands/onboard.ts'
 import {
   taskCleanup,
   taskDaemon,
+  taskApply,
   taskList,
   taskRead,
   taskStart,
@@ -100,6 +101,20 @@ taskCommand
 taskCommand.command('list').description('List persisted tasks').action(taskList)
 
 taskCommand.command('read <id>').description('Show details for a task').action(taskRead)
+
+taskCommand
+  .command('apply <id>')
+  .description('Apply task output to current branch (cherry-pick -> bundle -> patch)')
+  .option('--method <method>', 'Apply method: auto, cherry-pick, bundle, patch', 'auto')
+  .option('--squash', 'Squash multiple commits into one commit', false)
+  .action(
+    async (
+      id: string,
+      options: { method: 'auto' | 'cherry-pick' | 'bundle' | 'patch'; squash: boolean }
+    ) => {
+      await taskApply(id, options)
+    }
+  )
 
 taskCommand
   .command('cleanup')

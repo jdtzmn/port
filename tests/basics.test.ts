@@ -65,6 +65,13 @@ test('Help includes the task command', async () => {
   expect(instance).toBeInTheConsole()
 })
 
+test('Task help includes apply command', async () => {
+  const { findByText } = await renderCLI(['task', '--help'])
+
+  const instance = await findByText('apply [options] <id>')
+  expect(instance).toBeInTheConsole()
+})
+
 test('Shows a hint when command name collides with a branch', async () => {
   const sample = await prepareSample('simple-server', { initWithConfig: true })
 

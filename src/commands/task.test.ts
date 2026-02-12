@@ -13,6 +13,15 @@ const mocks = vi.hoisted(() => ({
   stopTaskDaemon: vi.fn(),
   cleanupTaskRuntime: vi.fn(),
   execFileAsync: vi.fn(),
+  appendTaskStdout: vi.fn(),
+  appendTaskStderr: vi.fn(),
+  writeTaskCommitRefs: vi.fn(),
+  writeTaskPatchFromWorktree: vi.fn(),
+  writeTaskMetadata: vi.fn(),
+  readTaskCommitRefs: vi.fn(),
+  hasTaskBundle: vi.fn(),
+  getTaskBundlePath: vi.fn(),
+  getTaskPatchPath: vi.fn(),
   success: vi.fn(),
   dim: vi.fn(),
   info: vi.fn(),
@@ -38,6 +47,18 @@ vi.mock('../lib/exec.ts', () => ({
   execFileAsync: mocks.execFileAsync,
 }))
 
+vi.mock('../lib/taskArtifacts.ts', () => ({
+  appendTaskStdout: mocks.appendTaskStdout,
+  appendTaskStderr: mocks.appendTaskStderr,
+  writeTaskCommitRefs: mocks.writeTaskCommitRefs,
+  writeTaskPatchFromWorktree: mocks.writeTaskPatchFromWorktree,
+  writeTaskMetadata: mocks.writeTaskMetadata,
+  readTaskCommitRefs: mocks.readTaskCommitRefs,
+  hasTaskBundle: mocks.hasTaskBundle,
+  getTaskBundlePath: mocks.getTaskBundlePath,
+  getTaskPatchPath: mocks.getTaskPatchPath,
+}))
+
 vi.mock('../lib/taskDaemon.ts', () => ({
   ensureTaskDaemon: mocks.ensureTaskDaemon,
   runTaskDaemon: mocks.runTaskDaemon,
@@ -55,13 +76,24 @@ vi.mock('../lib/output.ts', () => ({
   branch: mocks.branch,
 }))
 
-import { taskCleanup, taskDaemon, taskList, taskRead, taskStart, taskWorker } from './task.ts'
+import {
+  taskApply,
+  taskCleanup,
+  taskDaemon,
+  taskList,
+  taskRead,
+  taskStart,
+  taskWorker,
+} from './task.ts'
 
 describe('task command', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.detectWorktree.mockReturnValue({ repoRoot: '/repo' })
     mocks.branch.mockImplementation((value: string) => value)
+    mocks.getTaskPatchPath.mockReturnValue('/repo/.port/jobs/artifacts/task-1/changes.patch')
+    mocks.getTaskBundlePath.mockReturnValue('/repo/.port/jobs/artifacts/task-1/changes.bundle')
+    mocks.hasTaskBundle.mockReturnValue(false)
   })
 
   test('task start queues a task and ensures daemon', async () => {
@@ -110,7 +142,7 @@ describe('task command', () => {
   })
 
   test('task worker marks completed when execution succeeds', async () => {
-    mocks.getTask.mockResolvedValue({ id: 'task-1', title: 'hello', runtime: {} })
+    mocks.getTask.mockResolvedValue({ id: 'task-1', title: 'hello', mode: 'write', runtime: {} })
     mocks.updateTaskStatus.mockResolvedValue(undefined)
     mocks.patchTask.mockResolvedValue(undefined)
     mocks.execFileAsync.mockResolvedValue({ stdout: '', stderr: '' })
@@ -129,10 +161,22 @@ describe('task command', () => {
       'completed',
       'Worker completed successfully'
     )
+    expect(mocks.writeTaskCommitRefs).toHaveBeenCalledWith('/repo', 'task-1', [])
+    expect(mocks.writeTaskPatchFromWorktree).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      '/repo/.port/trees/task-1'
+    )
+    expect(mocks.writeTaskMetadata).toHaveBeenCalled()
   })
 
   test('task worker marks failed when execution throws', async () => {
-    mocks.getTask.mockResolvedValue({ id: 'task-2', title: 'boom [fail]', runtime: {} })
+    mocks.getTask.mockResolvedValue({
+      id: 'task-2',
+      title: 'boom [fail]',
+      mode: 'write',
+      runtime: {},
+    })
     mocks.execFileAsync.mockResolvedValue({ stdout: '', stderr: '' })
 
     await expect(
@@ -144,6 +188,32 @@ describe('task command', () => {
       'task-2',
       'failed',
       expect.stringContaining('Task requested failure')
+    )
+  })
+
+  test('task apply uses cherry-pick refs in auto mode', async () => {
+    mocks.getTask.mockResolvedValue({ id: 'task-1', title: 'done', mode: 'write' })
+    mocks.execFileAsync.mockResolvedValue({ stdout: '', stderr: '' })
+    mocks.readTaskCommitRefs.mockResolvedValue(['abc123'])
+
+    await taskApply('task-1', { method: 'auto', squash: false })
+
+    expect(mocks.execFileAsync).toHaveBeenCalledWith('git', ['cherry-pick', 'abc123'], {
+      cwd: '/repo',
+    })
+  })
+
+  test('task apply falls back to patch when no refs', async () => {
+    mocks.getTask.mockResolvedValue({ id: 'task-1', title: 'done', mode: 'write' })
+    mocks.execFileAsync.mockResolvedValue({ stdout: '', stderr: '' })
+    mocks.readTaskCommitRefs.mockResolvedValue([])
+
+    await taskApply('task-1', { method: 'auto', squash: false })
+
+    expect(mocks.execFileAsync).toHaveBeenCalledWith(
+      'git',
+      ['apply', '--3way', '/repo/.port/jobs/artifacts/task-1/changes.patch'],
+      { cwd: '/repo' }
     )
   })
 })

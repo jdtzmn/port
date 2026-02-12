@@ -16,6 +16,17 @@ import {
   stopTaskDaemon,
 } from '../lib/taskDaemon.ts'
 import { execFileAsync } from '../lib/exec.ts'
+import {
+  appendTaskStderr,
+  appendTaskStdout,
+  getTaskBundlePath,
+  getTaskPatchPath,
+  hasTaskBundle,
+  readTaskCommitRefs,
+  writeTaskCommitRefs,
+  writeTaskMetadata,
+  writeTaskPatchFromWorktree,
+} from '../lib/taskArtifacts.ts'
 
 function getRepoRootOrFail(): string {
   try {
@@ -139,6 +150,129 @@ export async function taskDaemon(options: { serve?: boolean; repo?: string }): P
   await runTaskDaemon(repoRoot)
 }
 
+async function ensureCleanWorkingTree(repoRoot: string): Promise<void> {
+  const { stdout } = await execFileAsync('git', ['status', '--porcelain'], { cwd: repoRoot })
+  if (stdout.trim().length > 0) {
+    failWithError('Working tree is not clean. Commit or stash changes before applying task output.')
+  }
+}
+
+async function applyByCherryPick(
+  repoRoot: string,
+  taskId: string,
+  options: { squash: boolean }
+): Promise<boolean> {
+  const commits = await readTaskCommitRefs(repoRoot, taskId)
+  if (commits.length === 0) {
+    return false
+  }
+
+  if (options.squash) {
+    for (const commit of commits) {
+      await execFileAsync('git', ['cherry-pick', '--no-commit', commit], { cwd: repoRoot })
+    }
+    await execFileAsync('git', ['commit', '-m', `Apply task ${taskId}`], { cwd: repoRoot })
+    return true
+  }
+
+  for (const commit of commits) {
+    await execFileAsync('git', ['cherry-pick', commit], { cwd: repoRoot })
+  }
+
+  return true
+}
+
+async function applyByBundle(
+  repoRoot: string,
+  taskId: string,
+  options: { squash: boolean }
+): Promise<boolean> {
+  if (!hasTaskBundle(repoRoot, taskId)) {
+    return false
+  }
+
+  const bundlePath = getTaskBundlePath(repoRoot, taskId)
+  await execFileAsync('git', ['bundle', 'verify', bundlePath], { cwd: repoRoot })
+
+  // Current worker path does not emit bundle refs yet, but this keeps the fallback chain intact.
+  const commits = await readTaskCommitRefs(repoRoot, taskId)
+  if (commits.length === 0) {
+    return false
+  }
+
+  if (options.squash) {
+    for (const commit of commits) {
+      await execFileAsync('git', ['cherry-pick', '--no-commit', commit], { cwd: repoRoot })
+    }
+    await execFileAsync('git', ['commit', '-m', `Apply task ${taskId}`], { cwd: repoRoot })
+    return true
+  }
+
+  for (const commit of commits) {
+    await execFileAsync('git', ['cherry-pick', commit], { cwd: repoRoot })
+  }
+  return true
+}
+
+async function applyByPatch(repoRoot: string, taskId: string): Promise<boolean> {
+  const patchPath = getTaskPatchPath(repoRoot, taskId)
+  await execFileAsync('git', ['apply', '--3way', patchPath], { cwd: repoRoot })
+  return true
+}
+
+export async function taskApply(
+  taskId: string,
+  options: { method?: 'auto' | 'cherry-pick' | 'bundle' | 'patch'; squash?: boolean } = {}
+): Promise<void> {
+  const repoRoot = getRepoRootOrFail()
+  const task = await getTask(repoRoot, taskId)
+  if (!task) {
+    failWithError(`Task not found: ${taskId}`)
+  }
+
+  await ensureCleanWorkingTree(repoRoot)
+
+  const method = options.method ?? 'auto'
+  const squash = options.squash ?? false
+
+  if (method === 'cherry-pick') {
+    const applied = await applyByCherryPick(repoRoot, taskId, { squash })
+    if (!applied) {
+      failWithError(`No commit refs available for task ${taskId}`)
+    }
+    output.success(`Applied task ${output.branch(taskId)} via cherry-pick`)
+    return
+  }
+
+  if (method === 'bundle') {
+    const applied = await applyByBundle(repoRoot, taskId, { squash })
+    if (!applied) {
+      failWithError(`No bundle-backed commit refs available for task ${taskId}`)
+    }
+    output.success(`Applied task ${output.branch(taskId)} via bundle`)
+    return
+  }
+
+  if (method === 'patch') {
+    await applyByPatch(repoRoot, taskId)
+    output.success(`Applied task ${output.branch(taskId)} via patch`)
+    return
+  }
+
+  if (await applyByCherryPick(repoRoot, taskId, { squash })) {
+    output.success(`Applied task ${output.branch(taskId)} via cherry-pick`)
+    return
+  }
+
+  if (await applyByBundle(repoRoot, taskId, { squash })) {
+    output.success(`Applied task ${output.branch(taskId)} via bundle`)
+    return
+  }
+
+  await applyByPatch(repoRoot, taskId)
+  output.success(`Applied task ${output.branch(taskId)} via patch`)
+}
+
 function parseSleepHint(title: string): number {
   const match = title.match(/\[sleep=(\d+)\]/)
   if (!match?.[1]) {
@@ -164,6 +298,7 @@ export async function taskWorker(options: {
   }
 
   await updateTaskStatus(options.repo, options.taskId, 'running', 'Worker started')
+  await appendTaskStdout(options.repo, options.taskId, 'worker:started')
 
   try {
     const sleepMs = parseSleepHint(task.title)
@@ -174,6 +309,10 @@ export async function taskWorker(options: {
 
     if (task.title.includes('[fail]')) {
       throw new Error('Task requested failure via [fail] marker')
+    }
+
+    if (task.mode === 'write' && task.title.includes('[edit]')) {
+      await execFileAsync('git', ['status', '--short'], { cwd: options.worktree })
     }
 
     await patchTask(
@@ -197,7 +336,9 @@ export async function taskWorker(options: {
       'completed',
       'Worker completed successfully'
     )
+    await appendTaskStdout(options.repo, options.taskId, 'worker:completed')
   } catch (error) {
+    await appendTaskStderr(options.repo, options.taskId, `worker:error ${error}`)
     await patchTask(
       options.repo,
       options.taskId,
@@ -216,5 +357,12 @@ export async function taskWorker(options: {
     )
     await updateTaskStatus(options.repo, options.taskId, 'failed', `Worker failed: ${error}`)
     throw error
+  } finally {
+    const finalTask = await getTask(options.repo, options.taskId)
+    if (finalTask?.mode === 'write') {
+      await writeTaskCommitRefs(options.repo, options.taskId, [])
+      await writeTaskPatchFromWorktree(options.repo, options.taskId, options.worktree)
+      await writeTaskMetadata(options.repo, finalTask)
+    }
   }
 }
