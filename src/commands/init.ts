@@ -28,7 +28,13 @@ const CONFIG_TEMPLATE = `{
   // Background task runtime settings (v2)
   "task": {
     // Daemon auto-stop timeout when idle
-    "daemonIdleStopMinutes": 10
+    "daemonIdleStopMinutes": 10,
+
+    // Optional event subscribers (adapter-agnostic)
+    "subscriptions": {
+      "enabled": false,
+      "consumers": ["opencode"]
+    }
   },
 
   // Execution adapter settings (v2, remote-ready)

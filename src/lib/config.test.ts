@@ -83,7 +83,8 @@ describe('loadConfig', () => {
         '  "task": {',
         '    "daemonIdleStopMinutes": 10,',
         '    "lockMode": "branch",',
-        '    "attach": { "enabled": true, "client": "configured" }',
+        '    "attach": { "enabled": true, "client": "configured" },',
+        '    "subscriptions": { "enabled": true, "consumers": ["opencode"] }',
         '  },',
         '  "remote": {',
         '    "adapter": "local"',
@@ -95,6 +96,7 @@ describe('loadConfig', () => {
     const config = await loadConfig(repoRoot)
     expect(config.task?.daemonIdleStopMinutes).toBe(10)
     expect(config.task?.attach?.enabled).toBe(true)
+    expect(config.task?.subscriptions?.enabled).toBe(true)
     expect(config.remote?.adapter).toBe('local')
   })
 

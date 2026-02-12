@@ -80,6 +80,7 @@ test('Task help includes logs/watch/wait/cancel/artifacts commands', async () =>
   expect(await findByText('wait [options] <id>')).toBeInTheConsole()
   expect(await findByText('cancel <id>')).toBeInTheConsole()
   expect(await findByText('artifacts <id>')).toBeInTheConsole()
+  expect(await findByText('events [options]')).toBeInTheConsole()
 })
 
 test('Shows a hint when command name collides with a branch', async () => {

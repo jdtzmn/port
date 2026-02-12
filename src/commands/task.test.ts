@@ -27,6 +27,8 @@ const mocks = vi.hoisted(() => ({
   getTaskStdoutPath: vi.fn(),
   getTaskStderrPath: vi.fn(),
   listTaskArtifactPaths: vi.fn(),
+  readGlobalTaskEvents: vi.fn(),
+  consumeGlobalTaskEvents: vi.fn(),
   success: vi.fn(),
   dim: vi.fn(),
   info: vi.fn(),
@@ -69,6 +71,11 @@ vi.mock('../lib/taskArtifacts.ts', () => ({
   listTaskArtifactPaths: mocks.listTaskArtifactPaths,
 }))
 
+vi.mock('../lib/taskEventStream.ts', () => ({
+  readGlobalTaskEvents: mocks.readGlobalTaskEvents,
+  consumeGlobalTaskEvents: mocks.consumeGlobalTaskEvents,
+}))
+
 vi.mock('../lib/taskDaemon.ts', () => ({
   ensureTaskDaemon: mocks.ensureTaskDaemon,
   runTaskDaemon: mocks.runTaskDaemon,
@@ -98,6 +105,7 @@ import {
   taskStart,
   taskWait,
   taskWatch,
+  taskEvents,
   taskWorker,
 } from './task.ts'
 
@@ -114,6 +122,8 @@ describe('task command', () => {
     mocks.hasTaskBundle.mockReturnValue(false)
     mocks.isTerminalTaskStatus.mockReturnValue(false)
     mocks.readTaskEvents.mockResolvedValue([])
+    mocks.readGlobalTaskEvents.mockResolvedValue({ events: [], nextLine: 0 })
+    mocks.consumeGlobalTaskEvents.mockResolvedValue(0)
   })
 
   test('task start queues a task and ensures daemon', async () => {
@@ -214,6 +224,33 @@ describe('task command', () => {
     await taskWatch({ once: true })
 
     expect(mocks.header).toHaveBeenCalledWith('Task watch:')
+  })
+
+  test('task events prints global stream entries', async () => {
+    mocks.readGlobalTaskEvents.mockResolvedValue({
+      events: [{ at: '2026-01-01', taskId: 'task-1', type: 'task.created', message: 'hello' }],
+      nextLine: 1,
+    })
+
+    await taskEvents({ follow: false })
+
+    expect(mocks.info).toHaveBeenCalledWith('2026-01-01 task-1 task.created - hello')
+  })
+
+  test('task events consumes consumer cursor stream', async () => {
+    mocks.consumeGlobalTaskEvents.mockImplementation(async (_repo, _consumer, handler) => {
+      await handler({ at: '2026-01-01', taskId: 'task-1', type: 'task.completed', message: 'done' })
+      return 1
+    })
+
+    await taskEvents({ consumer: 'opencode', follow: false })
+
+    expect(mocks.consumeGlobalTaskEvents).toHaveBeenCalledWith(
+      '/repo',
+      'opencode',
+      expect.any(Function),
+      { limit: 500 }
+    )
   })
 
   test('task worker marks completed when execution succeeds', async () => {

@@ -7,6 +7,7 @@ import type {
   PortTaskConfig,
   PortRemoteConfig,
   PortTaskAttachConfig,
+  PortTaskSubscriptionsConfig,
 } from '../types.ts'
 
 const JSONC_PARSE_OPTIONS = {
@@ -217,6 +218,45 @@ function validateTaskConfig(value: unknown): PortTaskConfig | undefined {
   }
 
   out.attach = validateTaskAttachConfig(task.attach)
+  out.subscriptions = validateTaskSubscriptionsConfig(task.subscriptions)
+  return out
+}
+
+function validateTaskSubscriptionsConfig(value: unknown): PortTaskSubscriptionsConfig | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    throw new ConfigError('task.subscriptions must be an object')
+  }
+
+  const subscriptions = value as Record<string, unknown>
+  const out: PortTaskSubscriptionsConfig = {}
+
+  if (subscriptions.enabled !== undefined) {
+    if (typeof subscriptions.enabled !== 'boolean') {
+      throw new ConfigError('task.subscriptions.enabled must be a boolean')
+    }
+    out.enabled = subscriptions.enabled
+  }
+
+  if (subscriptions.consumers !== undefined) {
+    if (!Array.isArray(subscriptions.consumers)) {
+      throw new ConfigError('task.subscriptions.consumers must be an array of strings')
+    }
+
+    const consumers: string[] = []
+    for (const value of subscriptions.consumers) {
+      if (typeof value !== 'string' || value.trim() === '') {
+        throw new ConfigError('task.subscriptions.consumers must contain non-empty strings')
+      }
+      consumers.push(value.trim())
+    }
+
+    out.consumers = consumers
+  }
+
   return out
 }
 

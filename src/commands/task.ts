@@ -35,6 +35,7 @@ import {
   writeTaskMetadata,
   writeTaskPatchFromWorktree,
 } from '../lib/taskArtifacts.ts'
+import { consumeGlobalTaskEvents, readGlobalTaskEvents } from '../lib/taskEventStream.ts'
 
 function getRepoRootOrFail(): string {
   try {
@@ -312,6 +313,68 @@ export async function taskWatch(options: { logs?: string; once?: boolean } = {})
 
     await new Promise(resolve => setTimeout(resolve, 1000))
     output.newline()
+  }
+}
+
+export async function taskEvents(
+  options: { follow?: boolean; consumer?: string; once?: boolean } = {}
+): Promise<void> {
+  const repoRoot = getRepoRootOrFail()
+  let fromLine = 0
+
+  const printEvents = async (
+    events: Awaited<ReturnType<typeof readGlobalTaskEvents>>['events']
+  ) => {
+    for (const event of events) {
+      output.info(
+        `${event.at} ${event.taskId} ${event.type}${event.message ? ` - ${event.message}` : ''}`
+      )
+    }
+  }
+
+  if (options.consumer) {
+    await consumeGlobalTaskEvents(
+      repoRoot,
+      options.consumer,
+      async event => {
+        output.info(
+          `${event.at} ${event.taskId} ${event.type}${event.message ? ` - ${event.message}` : ''}`
+        )
+      },
+      { limit: 500 }
+    )
+  } else {
+    const batch = await readGlobalTaskEvents(repoRoot, { fromLine, limit: 500 })
+    await printEvents(batch.events)
+    fromLine = batch.nextLine
+  }
+
+  if (!options.follow) {
+    return
+  }
+
+  while (true) {
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    if (options.consumer) {
+      await consumeGlobalTaskEvents(
+        repoRoot,
+        options.consumer,
+        async event => {
+          output.info(
+            `${event.at} ${event.taskId} ${event.type}${event.message ? ` - ${event.message}` : ''}`
+          )
+        },
+        { limit: 500 }
+      )
+    } else {
+      const batch = await readGlobalTaskEvents(repoRoot, { fromLine, limit: 500 })
+      await printEvents(batch.events)
+      fromLine = batch.nextLine
+    }
+
+    if (options.once) {
+      return
+    }
   }
 }
 

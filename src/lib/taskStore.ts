@@ -3,6 +3,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { withFileLock, writeFileAtomic } from './state.ts'
+import { appendGlobalTaskEvent } from './taskEventStream.ts'
 
 export type PortTaskStatus =
   | 'queued'
@@ -227,6 +228,7 @@ async function writeTaskIndex(repoRoot: string, index: TaskIndex): Promise<void>
 async function appendTaskEvent(repoRoot: string, event: PortTaskEvent): Promise<void> {
   const eventPath = getTaskEventPath(repoRoot, event.taskId)
   await appendFile(eventPath, `${JSON.stringify(event)}\n`)
+  await appendGlobalTaskEvent(repoRoot, event)
 }
 
 export async function ensureTaskStorage(repoRoot: string): Promise<void> {

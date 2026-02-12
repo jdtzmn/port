@@ -212,6 +212,7 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port task read <id>`                            | Show task details                                     |
 | `port task logs <id>`                            | Show task logs (stdout by default)                    |
 | `port task watch [--logs <id>]`                  | Watch live task table or tail task logs               |
+| `port task events [--consumer ID]`               | Stream adapter-agnostic task events                   |
 | `port task wait <id>`                            | Wait for task to finish                               |
 | `port task cancel <id>`                          | Cancel a running or queued task                       |
 | `port task artifacts <id>`                       | Show required artifact paths and presence             |

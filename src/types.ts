@@ -12,6 +12,13 @@ export interface PortTaskAttachConfig {
   reconnectGraceSeconds?: number
 }
 
+export interface PortTaskSubscriptionsConfig {
+  /** Toggle event subscriber dispatching */
+  enabled?: boolean
+  /** Subscriber ids to dispatch events to */
+  consumers?: string[]
+}
+
 export interface PortTaskConfig {
   /** Default task timeout */
   timeoutMinutes?: number
@@ -25,6 +32,8 @@ export interface PortTaskConfig {
   applyMethod?: 'auto' | 'cherry-pick' | 'bundle' | 'patch'
   /** Forward-compatible attach config */
   attach?: PortTaskAttachConfig
+  /** Event subscription dispatch config */
+  subscriptions?: PortTaskSubscriptionsConfig
 }
 
 export interface PortRemoteConfig {

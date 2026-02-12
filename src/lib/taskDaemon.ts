@@ -15,6 +15,7 @@ import {
 import { withFileLock, writeFileAtomic } from './state.ts'
 import { loadConfig } from './config.ts'
 import { LocalTaskExecutionAdapter, type TaskRunHandle } from './taskAdapter.ts'
+import { dispatchConfiguredTaskSubscribers } from './taskSubscribers.ts'
 
 export interface DaemonState {
   pid: number
@@ -425,6 +426,11 @@ export async function runTaskDaemon(
     await reconcileTaskQueue(repoRoot)
     await handleRunningTasks()
     await startRunnableTasks()
+    try {
+      await dispatchConfiguredTaskSubscribers(repoRoot)
+    } catch {
+      // Subscriber dispatch must not crash scheduler.
+    }
     const activeCount = await countActiveTasks(repoRoot)
     const now = Date.now()
 

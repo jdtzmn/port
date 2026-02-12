@@ -24,6 +24,7 @@ import {
   taskApply,
   taskCancel,
   taskList,
+  taskEvents,
   taskLogs,
   taskRead,
   taskStart,
@@ -138,6 +139,14 @@ taskCommand
   .option('--logs <id>', 'Tail logs for a single task instead of table mode')
   .option('--once', 'Print one snapshot and exit', false)
   .action((options: { logs?: string; once?: boolean }) => taskWatch(options))
+
+taskCommand
+  .command('events')
+  .description('Read task event stream (optionally with subscriber cursor)')
+  .option('--consumer <id>', 'Consume events with stored cursor for this subscriber id')
+  .option('--follow', 'Continue polling for new events', false)
+  .option('--once', 'In follow mode, exit after first poll tick', false)
+  .action((options: { consumer?: string; follow?: boolean; once?: boolean }) => taskEvents(options))
 
 taskCommand
   .command('apply <id>')
