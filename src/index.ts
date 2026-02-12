@@ -114,7 +114,8 @@ taskCommand.command('read <task-ref>').description('Show details for a task').ac
 taskCommand
   .command('attach <task-ref>')
   .description('Revive task from checkpoint and attach continuation run')
-  .action(taskAttach)
+  .option('--force', 'Force takeover when another owner holds attach lock', false)
+  .action((taskRef: string, options: { force?: boolean }) => taskAttach(taskRef, options))
 
 taskCommand
   .command('artifacts <task-ref>')

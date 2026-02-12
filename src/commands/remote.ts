@@ -25,7 +25,7 @@ export async function remoteAdapters(): Promise<void> {
     output.info(`${adapter.id}${marker}`)
     output.dim(`  kind=${adapter.kind} · ${adapter.description}`)
     output.dim(
-      `  caps: checkpoint=${adapter.capabilities.supportsCheckpoint}, restore=${adapter.capabilities.supportsRestore}, attach=${adapter.capabilities.supportsAttachHandoff}`
+      `  caps: checkpoint=${adapter.capabilities.supportsCheckpoint}, restore=${adapter.capabilities.supportsRestore}, attach=${adapter.capabilities.supportsAttachHandoff}, resumeToken=${adapter.capabilities.supportsResumeToken}, transcript=${adapter.capabilities.supportsTranscript}, failedSnapshot=${adapter.capabilities.supportsFailedSnapshot}`
     )
   }
 }

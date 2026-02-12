@@ -68,6 +68,19 @@ function formatBlockedByReference(
   return `#${displayId}`
 }
 
+function resolveAttachOwnerId(): string {
+  return process.env.USER ?? process.env.LOGNAME ?? 'unknown'
+}
+
+function isAttachLockActive(attachState?: PortTask['attach']): boolean {
+  return (
+    attachState?.state === 'pending_handoff' ||
+    attachState?.state === 'handoff_ready' ||
+    attachState?.state === 'client_attached' ||
+    attachState?.state === 'reconnecting'
+  )
+}
+
 async function resolveTaskOrFail(repoRoot: string, taskRef: string): Promise<PortTask> {
   const resolution = await resolveTaskRef(repoRoot, taskRef)
 
@@ -677,9 +690,23 @@ function appendContinuationRunRuntime(
   }
 }
 
-export async function taskAttach(taskRef: string): Promise<void> {
+export async function taskAttach(
+  taskRef: string,
+  options: { force?: boolean } = {}
+): Promise<void> {
   const repoRoot = getRepoRootOrFail()
   const task = await resolveTaskOrFail(repoRoot, taskRef)
+  const ownerId = resolveAttachOwnerId()
+  const currentAttach = task.attach
+  const currentOwner = currentAttach?.lockOwner
+  const lockIsActive = isAttachLockActive(currentAttach)
+
+  if (currentOwner && currentOwner !== ownerId && lockIsActive && !options.force) {
+    const sessionLabel = currentAttach?.sessionHandle ?? 'unknown'
+    failWithError(
+      `Task ${taskReferenceLabel(task)} attach lock is held by ${currentOwner} (session ${sessionLabel}); retry with --force to take over`
+    )
+  }
 
   if (!task.runtime?.checkpoint) {
     failWithError(
@@ -705,6 +732,25 @@ export async function taskAttach(taskRef: string): Promise<void> {
     'reviving_for_attach',
     'Attach requested; reviving task'
   )
+
+  if (currentOwner && currentOwner !== ownerId && lockIsActive && options.force) {
+    await patchTask(
+      repoRoot,
+      task.id,
+      {
+        attach: {
+          ...(task.attach ?? {}),
+          state: 'revoked',
+          lockOwner: ownerId,
+        },
+      },
+      {
+        type: 'task.attach.revoked',
+        message: `previous_owner=${currentOwner};new_owner=${ownerId}`,
+      }
+    )
+  }
+
   await patchTask(
     repoRoot,
     task.id,
@@ -712,6 +758,7 @@ export async function taskAttach(taskRef: string): Promise<void> {
       attach: {
         ...(task.attach ?? {}),
         state: 'pending_handoff',
+        lockOwner: ownerId,
       },
     },
     {
@@ -747,6 +794,7 @@ export async function taskAttach(taskRef: string): Promise<void> {
           ...(latest?.attach ?? task.attach ?? {}),
           state: 'client_attached',
           sessionHandle: checkpoint.runId,
+          lockOwner: ownerId,
         },
       },
       {
@@ -754,6 +802,40 @@ export async function taskAttach(taskRef: string): Promise<void> {
         message: `run=${checkpoint.runId}`,
       }
     )
+
+    if (adapter.capabilities.supportsAttachHandoff) {
+      const handoff = await adapter.requestHandoff(restoredHandle)
+      const context = await adapter.attachContext(restoredHandle)
+
+      await patchTask(
+        repoRoot,
+        task.id,
+        {
+          attach: {
+            ...(latest?.attach ?? task.attach ?? {}),
+            state: 'handoff_ready',
+            sessionHandle: context.sessionHandle,
+            checkpointId: context.checkpointRunId,
+            resumeTokenExpiresAt: context.resumeToken?.expiresAt,
+            lockOwner: ownerId,
+          },
+        },
+        {
+          type: 'task.attach.handoff_ready',
+          message: `session=${context.sessionHandle};boundary=${handoff.boundary}`,
+        }
+      )
+
+      await updateTaskStatus(repoRoot, task.id, 'paused_for_attach', 'Attach handoff ready')
+      output.success(
+        `Attach handoff ready for ${output.branch(taskReferenceLabel(task))} at ${handoff.boundary}`
+      )
+      output.info(`Restore strategy: ${context.restoreStrategy}`)
+      if (context.transcriptPath) {
+        output.dim(`Transcript: ${context.transcriptPath}`)
+      }
+      return
+    }
 
     await updateTaskStatus(repoRoot, task.id, 'running', 'Revived for attach')
     output.success(
@@ -770,6 +852,8 @@ export async function taskAttach(taskRef: string): Promise<void> {
         attach: {
           ...(task.attach ?? {}),
           state: 'detached',
+          lockOwner: undefined,
+          sessionHandle: undefined,
         },
       },
       {

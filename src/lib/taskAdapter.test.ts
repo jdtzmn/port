@@ -193,6 +193,26 @@ describe('LocalTaskExecutionAdapter', () => {
     expect(plan.summary).toContain('.port/jobs/artifacts/task-1234')
   })
 
+  test('local adapter exposes attach methods but reports unsupported handoff', async () => {
+    const adapter = new LocalTaskExecutionAdapter('/repo/src/index.ts')
+    const handle = {
+      taskId: 'task-1234',
+      runId: 'run-1',
+      workerPid: 123,
+      worktreePath: '/repo/.port/trees/port-task-task-1234',
+      branch: 'port-task-task-1234',
+    }
+
+    expect(adapter.capabilities.supportsAttachHandoff).toBe(false)
+    expect(adapter.capabilities.supportsResumeToken).toBe(false)
+    expect(adapter.capabilities.supportsTranscript).toBe(false)
+    expect(adapter.capabilities.supportsFailedSnapshot).toBe(false)
+
+    await expect(adapter.requestHandoff(handle)).rejects.toThrow('attach handoff')
+    await expect(adapter.attachContext(handle)).rejects.toThrow('attach context')
+    await expect(adapter.resumeFromAttach(handle)).rejects.toThrow('attach resume')
+  })
+
   test('cancels running worker and cleans up worktree', async () => {
     const adapter = new LocalTaskExecutionAdapter('/repo/src/index.ts')
 

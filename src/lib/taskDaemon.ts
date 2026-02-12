@@ -550,6 +550,9 @@ export async function runTaskDaemon(
           supportsCheckpoint: adapter.capabilities.supportsCheckpoint,
           supportsRestore: adapter.capabilities.supportsRestore,
           supportsAttachHandoff: adapter.capabilities.supportsAttachHandoff,
+          supportsResumeToken: adapter.capabilities.supportsResumeToken,
+          supportsTranscript: adapter.capabilities.supportsTranscript,
+          supportsFailedSnapshot: adapter.capabilities.supportsFailedSnapshot,
         },
       },
       {

@@ -43,6 +43,28 @@ export interface OpenCodeContinuePlan {
   transcriptPath?: string
 }
 
+export interface AttachResumeToken {
+  token: string
+  expiresAt: string
+}
+
+export interface AttachHandoffReady {
+  boundary: 'tool_return' | 'immediate'
+  sessionHandle: string
+  readyAt: string
+}
+
+export interface AttachContext {
+  sessionHandle: string
+  checkpointRunId: string
+  checkpointCreatedAt: string
+  workspaceRef: string
+  resumeToken?: AttachResumeToken
+  restoreStrategy: 'native_session' | 'fallback_summary'
+  summary: string
+  transcriptPath?: string
+}
+
 export interface PreparedExecution {
   taskId: string
   runId: string
@@ -56,12 +78,18 @@ export interface TaskExecutionAdapter {
     supportsCheckpoint: boolean
     supportsRestore: boolean
     supportsAttachHandoff: boolean
+    supportsResumeToken: boolean
+    supportsTranscript: boolean
+    supportsFailedSnapshot: boolean
   }
   prepare(repoRoot: string, task: PortTask): Promise<PreparedExecution>
   start(repoRoot: string, task: PortTask, prepared: PreparedExecution): Promise<TaskRunHandle>
   status(handle: TaskRunHandle): Promise<'running' | 'exited'>
   checkpoint(handle: TaskRunHandle): Promise<TaskCheckpointRef>
   restore(repoRoot: string, task: PortTask, checkpoint: TaskCheckpointRef): Promise<TaskRunHandle>
+  requestHandoff(handle: TaskRunHandle): Promise<AttachHandoffReady>
+  attachContext(handle: TaskRunHandle): Promise<AttachContext>
+  resumeFromAttach(handle: TaskRunHandle, token?: AttachResumeToken): Promise<void>
   cancel(handle: TaskRunHandle): Promise<void>
   cleanup(repoRoot: string, handle: TaskRunHandle): Promise<void>
 }
@@ -143,6 +171,9 @@ export class LocalTaskExecutionAdapter implements TaskExecutionAdapter {
     supportsCheckpoint: true,
     supportsRestore: true,
     supportsAttachHandoff: false,
+    supportsResumeToken: false,
+    supportsTranscript: false,
+    supportsFailedSnapshot: false,
   }
 
   constructor(private readonly scriptPath: string) {}
@@ -265,6 +296,18 @@ export class LocalTaskExecutionAdapter implements TaskExecutionAdapter {
     }
 
     return this.spawnWorker(repoRoot, task.id, worktreePath, branch, randomUUID())
+  }
+
+  async requestHandoff(_handle: TaskRunHandle): Promise<AttachHandoffReady> {
+    throw new Error('local adapter does not support attach handoff yet')
+  }
+
+  async attachContext(_handle: TaskRunHandle): Promise<AttachContext> {
+    throw new Error('local adapter does not provide attach context yet')
+  }
+
+  async resumeFromAttach(_handle: TaskRunHandle, _token?: AttachResumeToken): Promise<void> {
+    throw new Error('local adapter does not support attach resume yet')
   }
 
   async cancel(handle: TaskRunHandle): Promise<void> {

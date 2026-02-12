@@ -40,4 +40,27 @@ describe('taskAdapterRegistry', () => {
     const adapter = createTaskAdapter('local', '/repo/src/index.ts')
     expect(adapter.id).toBe('local')
   })
+
+  test('adapter contract exposes attach handoff methods across local and stub adapters', async () => {
+    const local = createTaskAdapter('local', '/repo/src/index.ts')
+    const stub = createTaskAdapter('stub-remote', '/repo/src/index.ts')
+
+    const handle = {
+      taskId: 'task-1',
+      runId: 'run-1',
+      workerPid: 123,
+      worktreePath: '/repo/.port/trees/port-task-task-1',
+      branch: 'port-task-task-1',
+    }
+
+    expect(typeof local.requestHandoff).toBe('function')
+    expect(typeof local.attachContext).toBe('function')
+    expect(typeof local.resumeFromAttach).toBe('function')
+    await expect(local.requestHandoff(handle)).rejects.toThrow('attach handoff')
+
+    expect(typeof stub.requestHandoff).toBe('function')
+    expect(typeof stub.attachContext).toBe('function')
+    expect(typeof stub.resumeFromAttach).toBe('function')
+    await expect(stub.requestHandoff(handle)).rejects.toThrow('attach handoff')
+  })
 })

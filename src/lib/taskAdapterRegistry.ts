@@ -1,6 +1,9 @@
 import { randomUUID } from 'crypto'
 import { loadConfig } from './config.ts'
 import {
+  type AttachContext,
+  type AttachHandoffReady,
+  type AttachResumeToken,
   LocalTaskExecutionAdapter,
   type PreparedExecution,
   type TaskCheckpointRef,
@@ -17,6 +20,9 @@ export interface TaskAdapterDescriptor {
     supportsCheckpoint: boolean
     supportsRestore: boolean
     supportsAttachHandoff: boolean
+    supportsResumeToken: boolean
+    supportsTranscript: boolean
+    supportsFailedSnapshot: boolean
   }
 }
 
@@ -26,6 +32,9 @@ class StubRemoteTaskExecutionAdapter implements TaskExecutionAdapter {
     supportsCheckpoint: true,
     supportsRestore: true,
     supportsAttachHandoff: false,
+    supportsResumeToken: false,
+    supportsTranscript: false,
+    supportsFailedSnapshot: false,
   }
 
   async prepare(_repoRoot: string, task: PortTask): Promise<PreparedExecution> {
@@ -61,6 +70,18 @@ class StubRemoteTaskExecutionAdapter implements TaskExecutionAdapter {
     throw new Error(`Remote stub adapter does not restore task ${task.id} yet`)
   }
 
+  async requestHandoff(_handle: TaskRunHandle): Promise<AttachHandoffReady> {
+    throw new Error('stub-remote does not support attach handoff yet')
+  }
+
+  async attachContext(_handle: TaskRunHandle): Promise<AttachContext> {
+    throw new Error('stub-remote does not provide attach context yet')
+  }
+
+  async resumeFromAttach(_handle: TaskRunHandle, _token?: AttachResumeToken): Promise<void> {
+    throw new Error('stub-remote does not support attach resume yet')
+  }
+
   async cancel(_handle: TaskRunHandle): Promise<void> {
     // no-op for stub
   }
@@ -79,6 +100,9 @@ const TASK_ADAPTERS: TaskAdapterDescriptor[] = [
       supportsCheckpoint: true,
       supportsRestore: true,
       supportsAttachHandoff: false,
+      supportsResumeToken: false,
+      supportsTranscript: false,
+      supportsFailedSnapshot: false,
     },
   },
   {
@@ -89,6 +113,9 @@ const TASK_ADAPTERS: TaskAdapterDescriptor[] = [
       supportsCheckpoint: true,
       supportsRestore: true,
       supportsAttachHandoff: false,
+      supportsResumeToken: false,
+      supportsTranscript: false,
+      supportsFailedSnapshot: false,
     },
   },
 ]

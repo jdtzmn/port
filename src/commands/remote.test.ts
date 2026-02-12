@@ -53,6 +53,9 @@ describe('remote commands', () => {
           supportsCheckpoint: true,
           supportsRestore: true,
           supportsAttachHandoff: false,
+          supportsResumeToken: false,
+          supportsTranscript: false,
+          supportsFailedSnapshot: false,
         },
       },
       {
@@ -63,6 +66,9 @@ describe('remote commands', () => {
           supportsCheckpoint: true,
           supportsRestore: true,
           supportsAttachHandoff: false,
+          supportsResumeToken: false,
+          supportsTranscript: false,
+          supportsFailedSnapshot: false,
         },
       },
     ])

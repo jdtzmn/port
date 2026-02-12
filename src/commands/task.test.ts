@@ -602,6 +602,125 @@ describe('task command', () => {
     )
   })
 
+  test('task attach requests adapter handoff when adapter supports attach', async () => {
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: {
+        id: 'task-1',
+        displayId: 1,
+        status: 'completed',
+        attach: {},
+        runtime: {
+          runAttempt: 1,
+          checkpoint: {
+            adapterId: 'local',
+            taskId: 'task-1',
+            runId: 'run-1',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            payload: {
+              workerPid: 123,
+              worktreePath: '/repo/.port/trees/port-task-task-1',
+              branch: 'port-task-task-1',
+            },
+          },
+        },
+      },
+    })
+
+    mocks.getTask.mockResolvedValue({
+      id: 'task-1',
+      displayId: 1,
+      status: 'completed',
+      attach: {},
+      runtime: {
+        runAttempt: 1,
+        checkpoint: {
+          adapterId: 'local',
+          taskId: 'task-1',
+          runId: 'run-1',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          payload: {
+            workerPid: 123,
+            worktreePath: '/repo/.port/trees/port-task-task-1',
+            branch: 'port-task-task-1',
+          },
+        },
+      },
+    })
+
+    const requestHandoff = vi.fn().mockResolvedValue({
+      boundary: 'tool_return',
+      sessionHandle: 'session-1',
+      readyAt: '2026-01-01T00:00:02.000Z',
+    })
+    const attachContext = vi.fn().mockResolvedValue({
+      sessionHandle: 'session-1',
+      checkpointRunId: 'run-2',
+      checkpointCreatedAt: '2026-01-01T00:00:02.000Z',
+      workspaceRef: '/repo/.port/trees/port-task-task-1',
+      resumeToken: {
+        token: 'resume-token-1',
+        expiresAt: '2026-01-01T00:30:00.000Z',
+      },
+      restoreStrategy: 'native_session',
+      summary: 'continue from native session',
+      transcriptPath: '/repo/.port/jobs/artifacts/task-1/attach/io.log',
+    })
+
+    mocks.resolveTaskAdapter.mockResolvedValue({
+      adapter: {
+        id: 'local',
+        capabilities: {
+          supportsCheckpoint: true,
+          supportsRestore: true,
+          supportsAttachHandoff: true,
+          supportsResumeToken: true,
+          supportsTranscript: true,
+          supportsFailedSnapshot: true,
+        },
+        restore: vi.fn().mockResolvedValue({
+          taskId: 'task-1',
+          runId: 'run-2',
+          workerPid: 777,
+          worktreePath: '/repo/.port/trees/port-task-task-1',
+          branch: 'port-task-task-1',
+        }),
+        checkpoint: vi.fn().mockResolvedValue({
+          adapterId: 'local',
+          taskId: 'task-1',
+          runId: 'run-2',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          payload: {
+            workerPid: 777,
+            worktreePath: '/repo/.port/trees/port-task-task-1',
+            branch: 'port-task-task-1',
+          },
+        }),
+        requestHandoff,
+        attachContext,
+        resumeFromAttach: vi.fn(),
+      },
+      configuredId: 'local',
+      resolvedId: 'local',
+      fallbackUsed: false,
+    })
+
+    await taskAttach('1')
+
+    expect(requestHandoff).toHaveBeenCalled()
+    expect(attachContext).toHaveBeenCalled()
+    expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      'paused_for_attach',
+      'Attach handoff ready'
+    )
+    expect(mocks.success).toHaveBeenCalledWith(
+      'Attach handoff ready for #1 (task-1) at tool_return'
+    )
+  })
+
   test('task attach fails without checkpoint', async () => {
     mocks.resolveTaskRef.mockResolvedValue({
       ok: true,
@@ -612,6 +731,122 @@ describe('task command', () => {
     await expect(taskAttach('1')).rejects.toBeInstanceOf(CliError)
     expect(mocks.error).toHaveBeenCalledWith(
       'Task #1 (task-1) does not have checkpoint data required for attach revival'
+    )
+  })
+
+  test('task attach rejects lock conflicts without --force', async () => {
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: {
+        id: 'task-1',
+        displayId: 1,
+        status: 'running',
+        attach: {
+          state: 'client_attached',
+          lockOwner: 'other-user',
+          sessionHandle: 'session-22',
+        },
+        runtime: {
+          checkpoint: {
+            adapterId: 'local',
+            taskId: 'task-1',
+            runId: 'run-1',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            payload: {
+              workerPid: 123,
+              worktreePath: '/repo/.port/trees/port-task-task-1',
+              branch: 'port-task-task-1',
+            },
+          },
+        },
+      },
+    })
+
+    const originalUser = process.env.USER
+    process.env.USER = 'current-user'
+
+    try {
+      await expect(taskAttach('1')).rejects.toBeInstanceOf(CliError)
+      expect(mocks.error).toHaveBeenCalledWith(
+        'Task #1 (task-1) attach lock is held by other-user (session session-22); retry with --force to take over'
+      )
+      expect(mocks.resolveTaskAdapter).not.toHaveBeenCalled()
+    } finally {
+      process.env.USER = originalUser
+    }
+  })
+
+  test('task attach force mode revokes prior lock owner before revive', async () => {
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: {
+        id: 'task-1',
+        displayId: 1,
+        status: 'running',
+        attach: {
+          state: 'client_attached',
+          lockOwner: 'other-user',
+          sessionHandle: 'session-22',
+        },
+        runtime: {
+          runAttempt: 1,
+          checkpoint: {
+            adapterId: 'local',
+            taskId: 'task-1',
+            runId: 'run-1',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            payload: {
+              workerPid: 123,
+              worktreePath: '/repo/.port/trees/port-task-task-1',
+              branch: 'port-task-task-1',
+            },
+          },
+        },
+      },
+    })
+
+    mocks.getTask.mockResolvedValue({
+      id: 'task-1',
+      displayId: 1,
+      status: 'running',
+      attach: {
+        state: 'pending_handoff',
+        lockOwner: 'current-user',
+      },
+      runtime: {
+        runAttempt: 1,
+        checkpoint: {
+          adapterId: 'local',
+          taskId: 'task-1',
+          runId: 'run-1',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          payload: {
+            workerPid: 123,
+            worktreePath: '/repo/.port/trees/port-task-task-1',
+            branch: 'port-task-task-1',
+          },
+        },
+      },
+    })
+
+    const originalUser = process.env.USER
+    process.env.USER = 'current-user'
+
+    try {
+      await taskAttach('1', { force: true })
+    } finally {
+      process.env.USER = originalUser
+    }
+
+    expect(mocks.patchTask).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      expect.objectContaining({
+        attach: expect.objectContaining({ state: 'revoked', lockOwner: 'current-user' }),
+      }),
+      expect.objectContaining({ type: 'task.attach.revoked' })
     )
   })
 

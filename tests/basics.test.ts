@@ -83,7 +83,7 @@ test('Task help includes logs/watch/wait/cancel/artifacts commands', async () =>
   const { findByText } = await renderCLI(['task', '--help'])
 
   expect(await findByText('list|ls')).toBeInTheConsole()
-  expect(await findByText('attach <task-ref>')).toBeInTheConsole()
+  expect(await findByText('attach [options] <task-ref>')).toBeInTheConsole()
   expect(await findByText('logs [options] <task-ref>')).toBeInTheConsole()
   expect(await findByText('watch [options]')).toBeInTheConsole()
   expect(await findByText('wait [options] <task-ref>')).toBeInTheConsole()
