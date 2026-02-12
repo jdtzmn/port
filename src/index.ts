@@ -18,12 +18,17 @@ import { cleanup } from './commands/cleanup.ts'
 import { urls } from './commands/urls.ts'
 import { onboard } from './commands/onboard.ts'
 import {
+  taskArtifacts,
   taskCleanup,
   taskDaemon,
   taskApply,
+  taskCancel,
   taskList,
+  taskLogs,
   taskRead,
   taskStart,
+  taskWait,
+  taskWatch,
   taskWorker,
 } from './commands/task.ts'
 import { detectWorktree } from './lib/worktree.ts'
@@ -101,6 +106,38 @@ taskCommand
 taskCommand.command('list').description('List persisted tasks').action(taskList)
 
 taskCommand.command('read <id>').description('Show details for a task').action(taskRead)
+
+taskCommand
+  .command('artifacts <id>')
+  .description('List task artifact paths and presence')
+  .action(taskArtifacts)
+
+taskCommand
+  .command('logs <id>')
+  .description('Show task logs (stdout by default)')
+  .option('--stderr', 'Show stderr log stream', false)
+  .option('--follow', 'Follow log output continuously', false)
+  .action((id: string, options: { stderr?: boolean; follow?: boolean }) => taskLogs(id, options))
+
+taskCommand
+  .command('wait <id>')
+  .description('Wait until task reaches a terminal state')
+  .option('--timeout-seconds <seconds>', 'Fail if task does not finish in time')
+  .action((id: string, options: { timeoutSeconds?: string }) => {
+    const timeoutSeconds = options.timeoutSeconds
+      ? Number.parseInt(options.timeoutSeconds, 10)
+      : undefined
+    return taskWait(id, { timeoutSeconds })
+  })
+
+taskCommand.command('cancel <id>').description('Cancel a running or queued task').action(taskCancel)
+
+taskCommand
+  .command('watch')
+  .description('Live task table view with optional log tail mode')
+  .option('--logs <id>', 'Tail logs for a single task instead of table mode')
+  .option('--once', 'Print one snapshot and exit', false)
+  .action((options: { logs?: string; once?: boolean }) => taskWatch(options))
 
 taskCommand
   .command('apply <id>')

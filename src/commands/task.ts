@@ -1,11 +1,16 @@
+import { existsSync } from 'fs'
+import { readFile, readdir, rm } from 'fs/promises'
+import { join } from 'path'
 import * as output from '../lib/output.ts'
 import { detectWorktree } from '../lib/worktree.ts'
 import { failWithError } from '../lib/cli.ts'
 import {
   createTask,
   getTask,
+  isTerminalTaskStatus,
   listTasks,
   patchTask,
+  readTaskEvents,
   type PortTaskMode,
   updateTaskStatus,
 } from '../lib/taskStore.ts'
@@ -21,7 +26,10 @@ import {
   appendTaskStdout,
   getTaskBundlePath,
   getTaskPatchPath,
+  getTaskStderrPath,
+  getTaskStdoutPath,
   hasTaskBundle,
+  listTaskArtifactPaths,
   readTaskCommitRefs,
   writeTaskCommitRefs,
   writeTaskMetadata,
@@ -122,6 +130,189 @@ export async function taskRead(taskId: string): Promise<void> {
   }
   output.dim(`Created: ${task.createdAt}`)
   output.dim(`Updated: ${task.updatedAt}`)
+
+  const events = await readTaskEvents(repoRoot, taskId, 10)
+  if (events.length > 0) {
+    output.newline()
+    output.info('Recent events:')
+    for (const event of events) {
+      output.dim(`- ${event.at} ${event.type}${event.message ? ` - ${event.message}` : ''}`)
+    }
+  }
+}
+
+export async function taskArtifacts(taskId: string): Promise<void> {
+  const repoRoot = getRepoRootOrFail()
+  const task = await getTask(repoRoot, taskId)
+  if (!task) {
+    failWithError(`Task not found: ${taskId}`)
+  }
+
+  const paths = listTaskArtifactPaths(repoRoot, taskId)
+  output.header(`Artifacts for ${output.branch(taskId)}:`)
+  output.newline()
+  for (const path of paths) {
+    const status = existsSync(path) ? 'present' : 'missing'
+    output.info(`${path} (${status})`)
+  }
+}
+
+async function printTaskLogLines(path: string): Promise<void> {
+  if (!existsSync(path)) {
+    output.info('No log file found.')
+    return
+  }
+
+  const content = await readFile(path, 'utf-8')
+  const lines = content.split('\n').filter(Boolean)
+  if (lines.length === 0) {
+    output.info('Log is empty.')
+    return
+  }
+
+  for (const line of lines) {
+    output.info(line)
+  }
+}
+
+export async function taskLogs(
+  taskId: string,
+  options: { stderr?: boolean; follow?: boolean } = {}
+): Promise<void> {
+  const repoRoot = getRepoRootOrFail()
+  const task = await getTask(repoRoot, taskId)
+  if (!task) {
+    failWithError(`Task not found: ${taskId}`)
+  }
+
+  const path = options.stderr
+    ? getTaskStderrPath(repoRoot, taskId)
+    : getTaskStdoutPath(repoRoot, taskId)
+  await printTaskLogLines(path)
+
+  if (!options.follow) {
+    return
+  }
+
+  let previous = existsSync(path) ? await readFile(path, 'utf-8') : ''
+  // Follow mode intentionally runs until interrupted.
+  while (true) {
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    if (!existsSync(path)) {
+      continue
+    }
+
+    const next = await readFile(path, 'utf-8')
+    if (next.length <= previous.length) {
+      continue
+    }
+
+    const delta = next.slice(previous.length)
+    for (const line of delta.split('\n').filter(Boolean)) {
+      output.info(line)
+    }
+    previous = next
+  }
+}
+
+export async function taskWait(
+  taskId: string,
+  options: { timeoutSeconds?: number } = {}
+): Promise<void> {
+  const repoRoot = getRepoRootOrFail()
+  const timeoutMs = (options.timeoutSeconds ?? 0) > 0 ? options.timeoutSeconds! * 1000 : null
+  const startedAt = Date.now()
+
+  while (true) {
+    const task = await getTask(repoRoot, taskId)
+    if (!task) {
+      failWithError(`Task not found: ${taskId}`)
+    }
+
+    if (isTerminalTaskStatus(task.status)) {
+      output.success(`Task ${output.branch(task.id)} is ${task.status}`)
+      return
+    }
+
+    if (timeoutMs !== null && Date.now() - startedAt >= timeoutMs) {
+      failWithError(`Timed out waiting for task ${taskId}`)
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 1000))
+  }
+}
+
+export async function taskCancel(taskId: string): Promise<void> {
+  const repoRoot = getRepoRootOrFail()
+  const task = await getTask(repoRoot, taskId)
+  if (!task) {
+    failWithError(`Task not found: ${taskId}`)
+  }
+
+  if (isTerminalTaskStatus(task.status)) {
+    output.info(`Task ${output.branch(task.id)} is already ${task.status}`)
+    return
+  }
+
+  if (task.runtime?.workerPid) {
+    try {
+      process.kill(task.runtime.workerPid, 'SIGTERM')
+    } catch {
+      // Worker may already have exited.
+    }
+  }
+
+  await patchTask(
+    repoRoot,
+    task.id,
+    {
+      runtime: {
+        ...(task.runtime ?? {}),
+        finishedAt: new Date().toISOString(),
+        retainedForDebug: true,
+      },
+    },
+    {
+      type: 'task.cancelled',
+      message: 'Cancelled by user command',
+    }
+  )
+  await updateTaskStatus(repoRoot, task.id, 'cancelled', 'Cancelled by user command')
+  output.success(`Cancelled ${output.branch(task.id)}`)
+}
+
+export async function taskWatch(options: { logs?: string; once?: boolean } = {}): Promise<void> {
+  const repoRoot = getRepoRootOrFail()
+
+  if (options.logs) {
+    await taskLogs(options.logs, { follow: true })
+    return
+  }
+
+  while (true) {
+    const tasks = await listTasks(repoRoot)
+    output.header('Task watch:')
+    output.newline()
+    if (tasks.length === 0) {
+      output.info('No tasks found.')
+    } else {
+      for (const task of tasks) {
+        const queueState = task.queue?.blockedByTaskId
+          ? ` blocked-by=${task.queue.blockedByTaskId}`
+          : ''
+        output.info(
+          `${output.branch(task.id)}  ${task.status}  ${task.mode}${queueState}  ${task.title}`
+        )
+      }
+    }
+
+    if (options.once) {
+      return
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    output.newline()
+  }
 }
 
 export async function taskCleanup(): Promise<void> {
@@ -137,8 +328,23 @@ export async function taskCleanup(): Promise<void> {
     output.success('Stopped task daemon')
   }
 
+  const tasks = await listTasks(repoRoot)
+  const taskIds = new Set(tasks.map(task => task.id))
+  const artifactsRoot = join(repoRoot, '.port', 'jobs', 'artifacts')
+  if (existsSync(artifactsRoot)) {
+    const entries = await readdir(artifactsRoot, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue
+      }
+      if (!taskIds.has(entry.name)) {
+        await rm(join(artifactsRoot, entry.name), { recursive: true, force: true })
+      }
+    }
+  }
+
   await cleanupTaskRuntime(repoRoot)
-  output.success('Cleaned task runtime state')
+  output.success('Cleaned task runtime state and garbage-collected orphan artifacts')
 }
 
 export async function taskDaemon(options: { serve?: boolean; repo?: string }): Promise<void> {

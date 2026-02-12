@@ -72,6 +72,16 @@ test('Task help includes apply command', async () => {
   expect(instance).toBeInTheConsole()
 })
 
+test('Task help includes logs/watch/wait/cancel/artifacts commands', async () => {
+  const { findByText } = await renderCLI(['task', '--help'])
+
+  expect(await findByText('logs [options] <id>')).toBeInTheConsole()
+  expect(await findByText('watch [options]')).toBeInTheConsole()
+  expect(await findByText('wait [options] <id>')).toBeInTheConsole()
+  expect(await findByText('cancel <id>')).toBeInTheConsole()
+  expect(await findByText('artifacts <id>')).toBeInTheConsole()
+})
+
 test('Shows a hint when command name collides with a branch', async () => {
   const sample = await prepareSample('simple-server', { initWithConfig: true })
 

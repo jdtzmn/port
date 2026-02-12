@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   createTask: vi.fn(),
   listTasks: vi.fn(),
   getTask: vi.fn(),
+  readTaskEvents: vi.fn(),
+  isTerminalTaskStatus: vi.fn(),
   patchTask: vi.fn(),
   updateTaskStatus: vi.fn(),
   ensureTaskDaemon: vi.fn(),
@@ -22,6 +24,9 @@ const mocks = vi.hoisted(() => ({
   hasTaskBundle: vi.fn(),
   getTaskBundlePath: vi.fn(),
   getTaskPatchPath: vi.fn(),
+  getTaskStdoutPath: vi.fn(),
+  getTaskStderrPath: vi.fn(),
+  listTaskArtifactPaths: vi.fn(),
   success: vi.fn(),
   dim: vi.fn(),
   info: vi.fn(),
@@ -39,6 +44,8 @@ vi.mock('../lib/taskStore.ts', () => ({
   createTask: mocks.createTask,
   listTasks: mocks.listTasks,
   getTask: mocks.getTask,
+  readTaskEvents: mocks.readTaskEvents,
+  isTerminalTaskStatus: mocks.isTerminalTaskStatus,
   patchTask: mocks.patchTask,
   updateTaskStatus: mocks.updateTaskStatus,
 }))
@@ -57,6 +64,9 @@ vi.mock('../lib/taskArtifacts.ts', () => ({
   hasTaskBundle: mocks.hasTaskBundle,
   getTaskBundlePath: mocks.getTaskBundlePath,
   getTaskPatchPath: mocks.getTaskPatchPath,
+  getTaskStdoutPath: mocks.getTaskStdoutPath,
+  getTaskStderrPath: mocks.getTaskStderrPath,
+  listTaskArtifactPaths: mocks.listTaskArtifactPaths,
 }))
 
 vi.mock('../lib/taskDaemon.ts', () => ({
@@ -78,11 +88,16 @@ vi.mock('../lib/output.ts', () => ({
 
 import {
   taskApply,
+  taskArtifacts,
+  taskCancel,
   taskCleanup,
   taskDaemon,
   taskList,
+  taskLogs,
   taskRead,
   taskStart,
+  taskWait,
+  taskWatch,
   taskWorker,
 } from './task.ts'
 
@@ -93,7 +108,12 @@ describe('task command', () => {
     mocks.branch.mockImplementation((value: string) => value)
     mocks.getTaskPatchPath.mockReturnValue('/repo/.port/jobs/artifacts/task-1/changes.patch')
     mocks.getTaskBundlePath.mockReturnValue('/repo/.port/jobs/artifacts/task-1/changes.bundle')
+    mocks.getTaskStdoutPath.mockReturnValue('/repo/.port/jobs/artifacts/task-1/stdout.log')
+    mocks.getTaskStderrPath.mockReturnValue('/repo/.port/jobs/artifacts/task-1/stderr.log')
+    mocks.listTaskArtifactPaths.mockReturnValue(['/repo/.port/jobs/artifacts/task-1/metadata.json'])
     mocks.hasTaskBundle.mockReturnValue(false)
+    mocks.isTerminalTaskStatus.mockReturnValue(false)
+    mocks.readTaskEvents.mockResolvedValue([])
   })
 
   test('task start queues a task and ensures daemon', async () => {
@@ -139,6 +159,61 @@ describe('task command', () => {
     expect(mocks.stopTaskDaemon).toHaveBeenCalledWith('/repo')
     expect(mocks.cleanupTaskRuntime).toHaveBeenCalledWith('/repo')
     expect(mocks.success).toHaveBeenCalledWith('Stopped task daemon')
+  })
+
+  test('task artifacts lists artifact paths', async () => {
+    mocks.getTask.mockResolvedValue({ id: 'task-1', title: 'done' })
+
+    await taskArtifacts('task-1')
+
+    expect(mocks.header).toHaveBeenCalledWith('Artifacts for task-1:')
+  })
+
+  test('task logs prints log content', async () => {
+    mocks.getTask.mockResolvedValue({ id: 'task-1', title: 'done' })
+    mocks.execFileAsync.mockResolvedValue({ stdout: '', stderr: '' })
+
+    await taskLogs('task-1')
+
+    expect(mocks.getTaskStdoutPath).toHaveBeenCalledWith('/repo', 'task-1')
+  })
+
+  test('task wait exits when task is terminal', async () => {
+    mocks.getTask.mockResolvedValue({ id: 'task-1', status: 'completed' })
+    mocks.isTerminalTaskStatus.mockReturnValue(true)
+
+    await taskWait('task-1')
+
+    expect(mocks.success).toHaveBeenCalledWith('Task task-1 is completed')
+  })
+
+  test('task cancel marks task cancelled', async () => {
+    mocks.getTask.mockResolvedValue({
+      id: 'task-1',
+      status: 'running',
+      runtime: { workerPid: 123 },
+    })
+    mocks.patchTask.mockResolvedValue(undefined)
+    mocks.updateTaskStatus.mockResolvedValue(undefined)
+
+    await taskCancel('task-1')
+
+    expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      'cancelled',
+      'Cancelled by user command'
+    )
+  })
+
+  test('task watch prints one snapshot in once mode', async () => {
+    mocks.listTasks.mockResolvedValue([
+      { id: 'task-1', status: 'queued', mode: 'write', title: 'demo' },
+    ])
+
+    await taskWatch({ once: true })
+
+    expect(mocks.header).toHaveBeenCalledWith('Task watch:')
   })
 
   test('task worker marks completed when execution succeeds', async () => {

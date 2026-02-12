@@ -84,6 +84,14 @@ const ACTIVE_TASK_STATUSES = new Set<PortTaskStatus>([
   'resume_failed',
 ])
 
+const TERMINAL_TASK_STATUSES = new Set<PortTaskStatus>([
+  'completed',
+  'failed',
+  'timeout',
+  'cancelled',
+  'cleaned',
+])
+
 const JOBS_DIR = 'jobs'
 const EVENTS_DIR = 'events'
 const RUNTIME_DIR = 'runtime'
@@ -96,6 +104,10 @@ function nowIso(): string {
 
 function isTaskActive(task: PortTask): boolean {
   return ACTIVE_TASK_STATUSES.has(task.status)
+}
+
+export function isTerminalTaskStatus(status: PortTaskStatus): boolean {
+  return TERMINAL_TASK_STATUSES.has(status)
 }
 
 function reconcileBranchQueue(tasks: PortTask[]): void {
@@ -379,4 +391,36 @@ export async function reconcileTaskQueue(repoRoot: string): Promise<void> {
     reconcileBranchQueue(index.tasks)
     await writeTaskIndex(repoRoot, index)
   })
+}
+
+export async function readTaskEvents(
+  repoRoot: string,
+  taskId: string,
+  limit: number = 200
+): Promise<PortTaskEvent[]> {
+  const path = getTaskEventPath(repoRoot, taskId)
+  if (!existsSync(path)) {
+    return []
+  }
+
+  try {
+    const raw = await readFile(path, 'utf-8')
+    const lines = raw
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+
+    const events: PortTaskEvent[] = []
+    for (const line of lines) {
+      try {
+        events.push(JSON.parse(line) as PortTaskEvent)
+      } catch {
+        // Ignore invalid line entries.
+      }
+    }
+
+    return events.slice(-limit)
+  } catch {
+    return []
+  }
 }

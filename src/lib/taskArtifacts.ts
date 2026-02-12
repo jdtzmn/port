@@ -137,6 +137,14 @@ export function hasTaskBundle(repoRoot: string, taskId: string): boolean {
   return existsSync(getTaskBundlePath(repoRoot, taskId))
 }
 
+export function getTaskStdoutPath(repoRoot: string, taskId: string): string {
+  return getStdoutPath(repoRoot, taskId)
+}
+
+export function getTaskStderrPath(repoRoot: string, taskId: string): string {
+  return getStderrPath(repoRoot, taskId)
+}
+
 export function listTaskArtifactPaths(repoRoot: string, taskId: string): string[] {
   return [
     getMetadataPath(repoRoot, taskId),

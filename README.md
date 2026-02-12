@@ -210,6 +210,11 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port task start <title>`                        | Queue a background task                               |
 | `port task list`                                 | List persisted background tasks                       |
 | `port task read <id>`                            | Show task details                                     |
+| `port task logs <id>`                            | Show task logs (stdout by default)                    |
+| `port task watch [--logs <id>]`                  | Watch live task table or tail task logs               |
+| `port task wait <id>`                            | Wait for task to finish                               |
+| `port task cancel <id>`                          | Cancel a running or queued task                       |
+| `port task artifacts <id>`                       | Show required artifact paths and presence             |
 | `port task apply <id>`                           | Apply task output with CP->bundle->patch fallback     |
 | `port task cleanup`                              | Clean task runtime and stop idle daemon               |
 | `port cleanup`                                   | Delete archived local branches with confirmation      |
