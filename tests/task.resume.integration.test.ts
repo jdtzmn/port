@@ -61,9 +61,20 @@ describe('task resume integration', () => {
           'failed',
           'timeout',
         ])
+        const finalizedRun = await waitFor(
+          'completed task run finalized',
+          async () => getTaskById(sample.dir, task.id),
+          value => value.status !== 'completed' || value.runtime?.activeRunId === undefined,
+          { timeoutMs: 10000 }
+        )
         expect(finalTask.status).toBe('completed')
-        expect((finalTask.runtime?.runAttempt ?? 0) >= 2).toBe(true)
-        expect((finalTask.runtime?.checkpointHistory?.length ?? 0) >= 1).toBe(true)
+        expect((finalizedRun.runtime?.runAttempt ?? 0) >= 2).toBe(true)
+        expect((finalizedRun.runtime?.checkpointHistory?.length ?? 0) >= 1).toBe(true)
+        expect((finalizedRun.runtime?.runs?.length ?? 0) >= 2).toBe(true)
+        expect(finalizedRun.runtime?.activeRunId).toBeUndefined()
+
+        const events = await runPortCommand(['task', 'events'], sample.dir)
+        expect(events.stdout).toContain('task.run.continuation_started')
       } finally {
         await cleanupTaskRuntime(sample.dir)
         await sample.cleanup()

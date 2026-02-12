@@ -20,6 +20,15 @@ export interface IntegrationTaskRecord {
   }
   runtime?: {
     runAttempt?: number
+    activeRunId?: string
+    runs?: Array<{
+      attempt: number
+      runId: string
+      status: string
+      startedAt: string
+      finishedAt?: string
+      reason?: string
+    }>
     workerPid?: number
     checkpoint?: {
       runId: string
@@ -173,5 +182,7 @@ export async function writePortConfig(repoRoot: string, config: object): Promise
 
 export async function cleanupTaskRuntime(repoRoot: string): Promise<void> {
   await runPortCommand(['task', 'cleanup'], repoRoot, { allowFailure: true, timeoutMs: 15000 })
-  await new Promise(resolve => setTimeout(resolve, 300))
+  await new Promise(resolve => setTimeout(resolve, 400))
+  await runPortCommand(['task', 'cleanup'], repoRoot, { allowFailure: true, timeoutMs: 15000 })
+  await new Promise(resolve => setTimeout(resolve, 800))
 }

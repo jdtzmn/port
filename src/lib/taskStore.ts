@@ -55,6 +55,15 @@ export interface PortTask {
   }
   runtime?: {
     runAttempt?: number
+    activeRunId?: string
+    runs?: Array<{
+      attempt: number
+      runId: string
+      status: 'started' | 'restored' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+      startedAt: string
+      finishedAt?: string
+      reason?: string
+    }>
     workerPid?: number
     worktreePath?: string
     timeoutAt?: string

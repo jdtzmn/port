@@ -222,6 +222,59 @@ export async function runTaskDaemon(
     )
   }
 
+  function appendRunStart(
+    runtime: NonNullable<PortTask['runtime']>,
+    options: {
+      attempt: number
+      runId: string
+      status: 'started' | 'restored'
+      startedAt: string
+      reason?: string
+    }
+  ): NonNullable<PortTask['runtime']> {
+    return {
+      ...runtime,
+      runAttempt: options.attempt,
+      activeRunId: options.runId,
+      runs: [
+        ...(runtime.runs ?? []),
+        {
+          attempt: options.attempt,
+          runId: options.runId,
+          status: options.status,
+          startedAt: options.startedAt,
+          reason: options.reason,
+        },
+      ],
+    }
+  }
+
+  function markRunTerminal(
+    runtime: NonNullable<PortTask['runtime']>,
+    status: 'completed' | 'failed' | 'timeout' | 'cancelled',
+    finishedAt: string
+  ): NonNullable<PortTask['runtime']> {
+    const runs = [...(runtime.runs ?? [])]
+    const targetIndex = runtime.activeRunId
+      ? runs.findIndex(run => run.runId === runtime.activeRunId)
+      : runs.length - 1
+
+    if (targetIndex >= 0 && runs[targetIndex]) {
+      runs[targetIndex] = {
+        ...runs[targetIndex],
+        status,
+        finishedAt,
+      }
+    }
+
+    return {
+      ...runtime,
+      activeRunId: undefined,
+      finishedAt,
+      runs,
+    }
+  }
+
   async function buildRunHandle(taskId: string): Promise<TaskRunHandle | null> {
     const runningTasks = await listRunningTasks(repoRoot)
     const task = runningTasks.find(candidate => candidate.id === taskId)
@@ -254,21 +307,29 @@ export async function runTaskDaemon(
       const resumedAt = nowIso()
       const timeoutAt =
         runtime.timeoutAt ?? new Date(Date.now() + (await getTaskTimeoutMs())).toISOString()
-      const nextRuntime = {
-        ...runtime,
-        runAttempt: (runtime.runAttempt ?? 0) + 1,
-        workerPid: restoredHandle.workerPid,
-        worktreePath: restoredHandle.worktreePath,
-        startedAt: resumedAt,
-        timeoutAt,
-        retainedForDebug: false,
-      }
+      const nextRuntime = appendRunStart(
+        {
+          ...runtime,
+          workerPid: restoredHandle.workerPid,
+          worktreePath: restoredHandle.worktreePath,
+          startedAt: resumedAt,
+          timeoutAt,
+          retainedForDebug: false,
+        },
+        {
+          attempt: (runtime.runAttempt ?? 0) + 1,
+          runId: checkpoint.runId,
+          status: 'restored',
+          startedAt: resumedAt,
+          reason,
+        }
+      )
 
       await persistCheckpoint(
         task.id,
         nextRuntime,
         checkpoint,
-        'task.restored',
+        'task.run.continuation_started',
         `${reason};run=${checkpoint.runId}`
       )
       await updateTaskStatus(repoRoot, task.id, 'running', 'Restored from adapter checkpoint')
@@ -279,11 +340,14 @@ export async function runTaskDaemon(
         repoRoot,
         task.id,
         {
-          runtime: {
-            ...runtime,
-            finishedAt: nowIso(),
-            retainedForDebug: true,
-          },
+          runtime: markRunTerminal(
+            {
+              ...runtime,
+              retainedForDebug: true,
+            },
+            'failed',
+            nowIso()
+          ),
         },
         {
           type: 'task.restore.failed',
@@ -329,8 +393,7 @@ export async function runTaskDaemon(
           task.id,
           {
             runtime: {
-              ...runtime,
-              finishedAt: nowIso(),
+              ...markRunTerminal(runtime, 'timeout', nowIso()),
               retainedForDebug: true,
             },
           },
@@ -382,7 +445,7 @@ export async function runTaskDaemon(
             task.id,
             {
               runtime: {
-                ...(refreshed.runtime ?? runtime),
+                ...markRunTerminal(refreshed.runtime ?? runtime, 'completed', nowIso()),
                 cleanedAt: nowIso(),
                 retainedForDebug: false,
               },
@@ -421,9 +484,12 @@ export async function runTaskDaemon(
           task.id,
           {
             runtime: {
-              ...(refreshed.runtime ?? runtime),
+              ...markRunTerminal(
+                refreshed.runtime ?? runtime,
+                refreshed.status,
+                refreshed.runtime?.finishedAt ?? nowIso()
+              ),
               retainedForDebug: true,
-              finishedAt: refreshed.runtime?.finishedAt ?? nowIso(),
             },
           },
           {
@@ -452,8 +518,7 @@ export async function runTaskDaemon(
         task.id,
         {
           runtime: {
-            ...(refreshed.runtime ?? runtime),
-            finishedAt: nowIso(),
+            ...markRunTerminal(refreshed.runtime ?? runtime, 'failed', nowIso()),
             retainedForDebug: true,
           },
         },
@@ -518,16 +583,24 @@ export async function runTaskDaemon(
 
       const handle = await adapter.start(repoRoot, task, prepared)
       const checkpoint = await adapter.checkpoint(handle)
-      const nextRuntime = {
-        ...(task.runtime ?? {}),
-        runAttempt: (task.runtime?.runAttempt ?? 0) + 1,
-        preparedAt: startedAt,
-        workerPid: handle.workerPid,
-        worktreePath: handle.worktreePath,
-        startedAt,
-        timeoutAt,
-        retainedForDebug: false,
-      }
+      const nextRuntime = appendRunStart(
+        {
+          ...(task.runtime ?? {}),
+          preparedAt: startedAt,
+          workerPid: handle.workerPid,
+          worktreePath: handle.worktreePath,
+          startedAt,
+          timeoutAt,
+          retainedForDebug: false,
+        },
+        {
+          attempt: (task.runtime?.runAttempt ?? 0) + 1,
+          runId: checkpoint.runId,
+          status: 'started',
+          startedAt,
+          reason: 'new_task_start',
+        }
+      )
 
       await persistCheckpoint(
         task.id,

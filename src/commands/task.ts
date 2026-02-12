@@ -11,6 +11,7 @@ import {
   listTasks,
   patchTask,
   readTaskEvents,
+  type PortTask,
   type PortTaskMode,
   updateTaskStatus,
 } from '../lib/taskStore.ts'
@@ -298,8 +299,7 @@ export async function taskCancel(taskId: string): Promise<void> {
     task.id,
     {
       runtime: {
-        ...(task.runtime ?? {}),
-        finishedAt: new Date().toISOString(),
+        ...markRunTerminalRuntime(task.runtime ?? {}, 'cancelled', new Date().toISOString()),
         retainedForDebug: true,
       },
     },
@@ -586,6 +586,32 @@ function parseSleepHint(title: string): number {
   return parsed
 }
 
+function markRunTerminalRuntime(
+  runtime: NonNullable<PortTask['runtime']>,
+  status: 'completed' | 'failed' | 'timeout' | 'cancelled',
+  finishedAt: string
+): NonNullable<PortTask['runtime']> {
+  const runs = [...(runtime.runs ?? [])]
+  const targetIndex = runtime.activeRunId
+    ? runs.findIndex(run => run.runId === runtime.activeRunId)
+    : runs.length - 1
+
+  if (targetIndex >= 0 && runs[targetIndex]) {
+    runs[targetIndex] = {
+      ...runs[targetIndex],
+      status,
+      finishedAt,
+    }
+  }
+
+  return {
+    ...runtime,
+    activeRunId: undefined,
+    finishedAt,
+    runs,
+  }
+}
+
 export async function taskWorker(options: {
   taskId: string
   repo: string
@@ -614,13 +640,18 @@ export async function taskWorker(options: {
       await execFileAsync('git', ['status', '--short'], { cwd: options.worktree })
     }
 
+    const latestTaskForSuccess = await getTask(options.repo, options.taskId)
+
     await patchTask(
       options.repo,
       options.taskId,
       {
         runtime: {
-          ...(task.runtime ?? {}),
-          finishedAt: new Date().toISOString(),
+          ...markRunTerminalRuntime(
+            latestTaskForSuccess?.runtime ?? task.runtime ?? {},
+            'completed',
+            new Date().toISOString()
+          ),
           lastExitCode: 0,
         },
       },
@@ -638,13 +669,17 @@ export async function taskWorker(options: {
     await appendTaskStdout(options.repo, options.taskId, 'worker:completed')
   } catch (error) {
     await appendTaskStderr(options.repo, options.taskId, `worker:error ${error}`)
+    const latestTaskForFailure = await getTask(options.repo, options.taskId)
     await patchTask(
       options.repo,
       options.taskId,
       {
         runtime: {
-          ...(task.runtime ?? {}),
-          finishedAt: new Date().toISOString(),
+          ...markRunTerminalRuntime(
+            latestTaskForFailure?.runtime ?? task.runtime ?? {},
+            'failed',
+            new Date().toISOString()
+          ),
           lastExitCode: 1,
           retainedForDebug: true,
         },
