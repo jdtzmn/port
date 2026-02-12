@@ -5,8 +5,11 @@ import { describe, expect, test } from 'vitest'
 import { prepareSample } from './utils'
 import {
   cleanupTaskRuntime,
+  getTaskById,
   runPortCommand,
+  waitFor,
   waitForTaskByTitle,
+  waitForTaskStatus,
   writePortConfig,
 } from './taskIntegrationHelpers'
 
@@ -101,6 +104,63 @@ describe('task event stream integration', () => {
         const contents = await readFile(outbox, 'utf-8')
         expect(contents).toContain('<task-notification')
         expect(contents).toContain(task.id)
+      } finally {
+        await cleanupTaskRuntime(sample.dir)
+        await sample.cleanup()
+      }
+    },
+    INTEGRATION_TIMEOUT
+  )
+
+  test(
+    'consumer cursor receives checkpoint and revive lifecycle events once',
+    async () => {
+      const sample = await prepareSample('simple-server', { initWithConfig: true })
+
+      try {
+        await runPortCommand(
+          ['task', 'start', 'events-revive[sleep=5000]', '--branch', 'feat-events'],
+          sample.dir
+        )
+        const task = await waitForTaskByTitle(sample.dir, 'events-revive[sleep=5000]')
+
+        await waitFor(
+          'task has active worker checkpoint',
+          async () => getTaskById(sample.dir, task.id),
+          value => Boolean(value.runtime?.workerPid && value.runtime?.checkpoint),
+          { timeoutMs: 20000 }
+        )
+
+        const initialRead = await runPortCommand(
+          ['task', 'events', '--consumer', 'lifecycle-subscriber'],
+          sample.dir
+        )
+        expect(initialRead.stdout).toContain(task.id)
+
+        const crashed = await getTaskById(sample.dir, task.id)
+        if (!crashed?.runtime?.workerPid) {
+          throw new Error('Expected worker PID to be available for crash simulation')
+        }
+        process.kill(crashed.runtime.workerPid, 'SIGKILL')
+
+        await runPortCommand(['task', 'attach', task.id], sample.dir)
+        await runPortCommand(['task', 'wait', task.id, '--timeout-seconds', '60'], sample.dir)
+        await waitForTaskStatus(sample.dir, task.id, ['completed', 'failed', 'timeout'])
+
+        const replayRead = await runPortCommand(
+          ['task', 'events', '--consumer', 'lifecycle-subscriber'],
+          sample.dir
+        )
+
+        expect(replayRead.stdout).toContain('task.attach.revive_started')
+        expect(replayRead.stdout).toContain('task.attach.revive_succeeded')
+        expect(replayRead.stdout).toContain('task.checkpoint.updated')
+
+        const emptyRead = await runPortCommand(
+          ['task', 'events', '--consumer', 'lifecycle-subscriber'],
+          sample.dir
+        )
+        expect(emptyRead.stdout.trim()).toBe('')
       } finally {
         await cleanupTaskRuntime(sample.dir)
         await sample.cleanup()

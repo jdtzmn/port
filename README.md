@@ -226,6 +226,20 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port cleanup`                                   | Delete archived local branches with confirmation        |
 | `port uninstall [--yes] [--domain DOMAIN]`       | Remove DNS configuration for wildcard domain            |
 
+### Task Event Stream Notes
+
+`port task events` reads an append-only, adapter-agnostic event log at `.port/jobs/events/all.jsonl`.
+
+- Events are written in append order and replay in the same order.
+- Subscriber cursors (`--consumer <id>`) only advance after handlers run, so events are replay-safe.
+- A second read with the same consumer returns only new events since its last cursor position.
+- Checkpoint/revive lifecycle events include entries like:
+  - `task.checkpoint.updated`
+  - `task.run.continuation_started`
+  - `task.attach.revive_started`
+  - `task.attach.revive_succeeded`
+  - `task.attach.revive_failed`
+
 ## How It Works
 
 ### Architecture
