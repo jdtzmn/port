@@ -173,6 +173,7 @@ OpenCode-specific guidance:
 
 - Adapter checkpoint may store OpenCode session/log references needed for `opencode --continue`.
 - If exact session restore is unavailable, adapter must provide fallback resume context summary.
+- See `OPENCODE-CHECKPOINT-COMPAT.md` for the concrete metadata contract and restore strategy.
 
 ---
 

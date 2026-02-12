@@ -44,6 +44,27 @@ describe('task lifecycle integration', () => {
   )
 
   test(
+    'task ls alias matches task list output',
+    async () => {
+      const sample = await prepareSample('simple-server', { initWithConfig: true })
+
+      try {
+        await runPortCommand(['task', 'start', 'alias-check'], sample.dir)
+        await waitForTaskByTitle(sample.dir, 'alias-check')
+
+        const list = await runPortCommand(['task', 'list'], sample.dir)
+        const alias = await runPortCommand(['task', 'ls'], sample.dir)
+
+        expect(alias.stdout).toBe(list.stdout)
+      } finally {
+        await cleanupTaskRuntime(sample.dir)
+        await sample.cleanup()
+      }
+    },
+    INTEGRATION_TIMEOUT
+  )
+
+  test(
     'write tasks on the same branch queue and unblock in order',
     async () => {
       const sample = await prepareSample('simple-server', { initWithConfig: true })

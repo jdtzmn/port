@@ -107,7 +107,7 @@ taskCommand
     await taskStart(title, { mode: options.mode, branch: options.branch })
   })
 
-taskCommand.command('list').description('List persisted tasks').action(taskList)
+taskCommand.command('list').alias('ls').description('List persisted tasks').action(taskList)
 
 taskCommand.command('read <task-ref>').description('Show details for a task').action(taskRead)
 

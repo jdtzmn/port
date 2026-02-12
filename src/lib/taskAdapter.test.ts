@@ -27,7 +27,7 @@ vi.mock('fs', async importOriginal => {
   }
 })
 
-import { LocalTaskExecutionAdapter } from './taskAdapter.ts'
+import { LocalTaskExecutionAdapter, buildOpenCodeContinuePlan } from './taskAdapter.ts'
 
 describe('LocalTaskExecutionAdapter', () => {
   beforeEach(() => {
@@ -120,6 +120,8 @@ describe('LocalTaskExecutionAdapter', () => {
       branch: 'port-task-task-1234',
     })
 
+    expect(checkpoint.payload.opencode?.fallbackSummary).toContain('Continue task task-1234')
+
     const restored = await adapter.restore(
       '/repo',
       {
@@ -143,6 +145,52 @@ describe('LocalTaskExecutionAdapter', () => {
 
     expect(restored.workerPid).toBe(9876)
     expect(mocks.spawn).toHaveBeenCalled()
+  })
+
+  test('builds native OpenCode continue plan when checkpoint has session metadata', () => {
+    const plan = buildOpenCodeContinuePlan('/repo', {
+      adapterId: 'local',
+      taskId: 'task-1234',
+      runId: 'run-1',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      payload: {
+        workerPid: 123,
+        worktreePath: '/repo/.port/trees/port-task-task-1234',
+        branch: 'port-task-task-1234',
+        opencode: {
+          sessionId: 'oc-session-1',
+          transcriptPath: '/repo/.port/jobs/artifacts/task-1234/attach/io.log',
+          workspaceRef: '/repo/.port/trees/port-task-task-1234',
+          fallbackSummary: 'resume task from summary',
+        },
+      },
+    })
+
+    expect(plan.strategy).toBe('native_session')
+    expect(plan.command).toBe('opencode')
+    expect(plan.args).toEqual(['--continue', 'oc-session-1'])
+    expect(plan.workspaceRef).toBe('/repo/.port/trees/port-task-task-1234')
+    expect(plan.transcriptPath).toBe('/repo/.port/jobs/artifacts/task-1234/attach/io.log')
+  })
+
+  test('builds fallback OpenCode continue plan when session metadata is missing', () => {
+    const plan = buildOpenCodeContinuePlan('/repo', {
+      adapterId: 'local',
+      taskId: 'task-1234',
+      runId: 'run-1',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      payload: {
+        workerPid: 123,
+        worktreePath: '/repo/.port/trees/port-task-task-1234',
+        branch: 'port-task-task-1234',
+      },
+    })
+
+    expect(plan.strategy).toBe('fallback_summary')
+    expect(plan.command).toBe('opencode')
+    expect(plan.args).toEqual([])
+    expect(plan.summary).toContain('Continue task task-1234 from run run-1.')
+    expect(plan.summary).toContain('.port/jobs/artifacts/task-1234')
   })
 
   test('cancels running worker and cleans up worktree', async () => {

@@ -10,6 +10,14 @@ export interface TaskRunHandle {
   workerPid: number
   worktreePath: string
   branch: string
+  opencode?: OpenCodeCheckpointMetadata
+}
+
+export interface OpenCodeCheckpointMetadata {
+  sessionId?: string
+  transcriptPath?: string
+  workspaceRef?: string
+  fallbackSummary?: string
 }
 
 export interface TaskCheckpointRef {
@@ -21,7 +29,18 @@ export interface TaskCheckpointRef {
     workerPid: number
     worktreePath: string
     branch: string
+    opencode?: OpenCodeCheckpointMetadata
   }
+}
+
+export interface OpenCodeContinuePlan {
+  strategy: 'native_session' | 'fallback_summary'
+  command: string
+  args: string[]
+  summary: string
+  sessionId?: string
+  workspaceRef: string
+  transcriptPath?: string
 }
 
 export interface PreparedExecution {
@@ -57,6 +76,60 @@ function isProcessAlive(pid: number): boolean {
     return true
   } catch {
     return false
+  }
+}
+
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+function buildDefaultFallbackSummary(checkpoint: TaskCheckpointRef): string {
+  return [
+    `Continue task ${checkpoint.taskId} from run ${checkpoint.runId}.`,
+    `Workspace: ${checkpoint.payload.worktreePath}`,
+    `Branch: ${checkpoint.payload.branch}`,
+    `Review artifacts under .port/jobs/artifacts/${checkpoint.taskId} before continuing.`,
+  ].join(' ')
+}
+
+export function buildOpenCodeContinuePlan(
+  repoRoot: string,
+  checkpoint: TaskCheckpointRef
+): OpenCodeContinuePlan {
+  const opencode = checkpoint.payload.opencode
+  const sessionId = normalizeOptionalString(opencode?.sessionId)
+  const transcriptPath = normalizeOptionalString(opencode?.transcriptPath)
+  const workspaceRef =
+    normalizeOptionalString(opencode?.workspaceRef) ??
+    normalizeOptionalString(checkpoint.payload.worktreePath) ??
+    repoRoot
+  const summary =
+    normalizeOptionalString(opencode?.fallbackSummary) ?? buildDefaultFallbackSummary(checkpoint)
+
+  if (sessionId) {
+    return {
+      strategy: 'native_session',
+      command: 'opencode',
+      args: ['--continue', sessionId],
+      summary,
+      sessionId,
+      workspaceRef,
+      transcriptPath,
+    }
+  }
+
+  return {
+    strategy: 'fallback_summary',
+    command: 'opencode',
+    args: [],
+    summary,
+    workspaceRef,
+    transcriptPath,
   }
 }
 
@@ -144,7 +217,7 @@ export class LocalTaskExecutionAdapter implements TaskExecutionAdapter {
   }
 
   async checkpoint(handle: TaskRunHandle): Promise<TaskCheckpointRef> {
-    return {
+    const checkpoint: TaskCheckpointRef = {
       adapterId: this.id,
       taskId: handle.taskId,
       runId: handle.runId,
@@ -153,8 +226,19 @@ export class LocalTaskExecutionAdapter implements TaskExecutionAdapter {
         workerPid: handle.workerPid,
         worktreePath: handle.worktreePath,
         branch: handle.branch,
+        opencode: {
+          sessionId: normalizeOptionalString(handle.opencode?.sessionId),
+          transcriptPath: normalizeOptionalString(handle.opencode?.transcriptPath),
+          workspaceRef:
+            normalizeOptionalString(handle.opencode?.workspaceRef) ?? handle.worktreePath,
+          fallbackSummary:
+            normalizeOptionalString(handle.opencode?.fallbackSummary) ??
+            `Continue task ${handle.taskId} from run ${handle.runId} in ${handle.worktreePath} on ${handle.branch}. Review .port/jobs/artifacts/${handle.taskId} before continuing.`,
+        },
       },
     }
+
+    return checkpoint
   }
 
   async restore(

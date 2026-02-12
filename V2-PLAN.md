@@ -151,6 +151,7 @@ Important:
 - Port scheduler stores universal orchestration state (status, lineage, locks, artifact pointers).
 - Adapter stores execution-native workflow position (OpenCode session continuation, graph cursor, etc.).
 - For OpenCode adapters, checkpoint/restore should preserve `opencode --continue` compatibility.
+- `OPENCODE-CHECKPOINT-COMPAT.md` defines the metadata contract and fallback-summary behavior.
 
 ---
 
