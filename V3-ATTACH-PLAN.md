@@ -30,7 +30,7 @@ Continuation model aligns with v2 decision:
 - Concurrency: **one attacher at a time**
 - Second attach receives lock error with owner/session details
 - Takeover: `--force` immediately revokes current attach lock
-- Attach to terminal tasks is rejected with actionable error
+- Attach to terminal tasks revives via continuation run before handoff
 - Default attach transport direction: **WebSocket stream** (adapter-level)
 - Default attach runtime model: **handoff to configured client**
 - Client coupling: avoid hard dependency on OpenCode; launch configured attach client
@@ -48,11 +48,13 @@ Continuation model aligns with v2 decision:
 ### Attach behavior
 
 1. User requests attach.
-2. Task remains observable while scheduler waits for a safe boundary.
-3. At boundary (after current tool call returns), scheduler checkpoints and yields control.
-4. Task enters `paused_for_attach`.
-5. `port` launches configured attach client with continuation context.
-6. On client exit/crash, scheduler auto-resumes background execution.
+2. If task is dead (including terminal), scheduler attempts adapter `restore` first.
+3. Restore creates a continuation run under the same task id (`runAttempt += 1`).
+4. Task remains observable while scheduler waits for a safe boundary.
+5. At boundary (after current tool call returns), scheduler checkpoints and yields control.
+6. Task enters `paused_for_attach`.
+7. `port` launches configured attach client with continuation context.
+8. On client exit/crash, scheduler auto-resumes background execution.
 
 ### Resume behavior
 
@@ -60,7 +62,7 @@ Continuation model aligns with v2 decision:
 - If user edited files while attached, resumed agent must **replan from current workspace**.
 - Task timeout is paused while attached and resumes when background execution resumes.
 - `resume` restarts background execution only for non-terminal states.
-- Terminal tasks remain terminal; user should use `attach` (if supported), `read`, or `apply` flows.
+- Terminal tasks remain terminal for `resume`; use `attach` to revive via continuation run.
 
 ### Detach behavior
 
@@ -75,6 +77,7 @@ Continuation model aligns with v2 decision:
 
 - `paused_for_attach` (non-terminal)
 - `resume_failed` (non-terminal recoverable substate)
+- `reviving_for_attach` (non-terminal, transient)
 
 ### Attach session lifecycle
 
@@ -89,6 +92,7 @@ Rules:
 
 - Task must never finalize while in `paused_for_attach`.
 - Terminal transition is blocked until resumed or cancelled.
+- Revive from terminal state is permitted only through attach flow and creates a new continuation run.
 
 ---
 
@@ -221,7 +225,7 @@ Attach details should appear in:
 
 ## Error Handling
 
-- Attach on completed/failed/cancelled task: reject with clear message
+- Attach on completed/failed/cancelled task: attempt revive via checkpoint restore and continuation run
 - Missing resumable session: reject with actionable guidance (logs/artifacts path)
 - Attach lock conflict: return lock holder + session info + `--force` option
 - Repeated transport failure: fallback guidance to logs + snapshot artifacts
@@ -244,10 +248,11 @@ Attach details should appear in:
 3. Background task auto-resumes after attach client exits or crashes.
 4. Resume after interactive edits triggers replan from current workspace.
 5. `paused_for_attach` and `resume_failed` states are surfaced via `task read` and `task list`.
-6. Required attach artifacts and failed snapshot artifacts are produced with strict redaction.
-7. Local and remote adapters pass parity tests for attach/handoff contract.
-8. Reconnect and resume token behavior satisfies configured grace/TTL settings.
-9. Attach path adds negligible overhead to tasks that are never attached.
+6. Attach can revive dead/terminal tasks using adapter restore and continuation runs under the same task id.
+7. Required attach artifacts and failed snapshot artifacts are produced with strict redaction.
+8. Local and remote adapters pass parity tests for attach/handoff contract.
+9. Reconnect and resume token behavior satisfies configured grace/TTL settings.
+10. Attach path adds negligible overhead to tasks that are never attached.
 
 ---
 

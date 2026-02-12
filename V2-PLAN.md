@@ -54,6 +54,7 @@ Resume behavior contract (locked):
 - `resume` always restarts background processing.
 - If task is `running` or `waiting_on_children`, it continues from checkpoint.
 - If task is terminal (`completed|failed|timeout|cancelled`), it remains terminal and `resume` is a no-op with guidance to attach/read/apply.
+- Attach behavior differs from resume: `attach` may revive terminal tasks via adapter restore.
 
 ### `port remote` commands (v2 scaffold)
 
@@ -162,6 +163,7 @@ Important:
 - `resumable`
 - `resuming`
 - `paused_for_attach` (non-terminal; timeout paused)
+- `reviving_for_attach`
 - terminal: `completed | failed | timeout | cancelled`
 - `cleaned` (post-terminal cleanup completion marker)
 
@@ -181,6 +183,7 @@ Lineage requirement:
 
 - Parent/child dependencies are persisted.
 - Parent can auto-transition to `waiting_on_children` and later become `resumable` when children finish.
+- Continuation requirement: attach-based revive reuses the same task id and creates a continuation run (`runAttempt += 1`).
 
 ---
 
@@ -335,6 +338,7 @@ Security default:
 - Per-task immediate notifications.
 - Optional OpenCode notification adapter.
 - `task resume` command wired to checkpoint/restore flow.
+- `task attach` revive path supports dead and terminal tasks via continuation run.
 
 ### Phase 4: Remote Scaffold
 
@@ -375,3 +379,4 @@ Security default:
 7. Adapter registry + stub adapter exists, using the same interface as local adapter.
 8. v2 persistence and adapter contracts include forward-compatible attach/handoff fields and capability flags without requiring interactive runtime support yet.
 9. `port task resume` uses adapter restore checkpoints for non-terminal tasks and preserves terminal-state semantics.
+10. `port task attach` can revive terminal tasks and continue under the same task id with incremented continuation run attempt.
