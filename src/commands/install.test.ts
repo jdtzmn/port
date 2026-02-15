@@ -146,16 +146,16 @@ describe('install command domain handling', () => {
         return { stdout: '' }
       }
 
+      if (cmd === 'cat /etc/resolver/stlabs 2>/dev/null') {
+        return { stdout: 'nameserver 127.0.0.1\n' }
+      }
+
       if (cmd === 'pgrep dnsmasq') {
         return { stdout: '123\n' }
       }
 
       if (cmd === 'sudo brew services restart dnsmasq') {
         return { stdout: '' }
-      }
-
-      if (cmd === 'cat /etc/resolver/stlabs 2>/dev/null') {
-        return { stdout: 'nameserver 127.0.0.1\n' }
       }
 
       return { stdout: '' }
@@ -186,16 +186,16 @@ describe('install command domain handling', () => {
         return { stdout: 'found\n' }
       }
 
+      if (cmd === 'cat /etc/resolver/stlabs 2>/dev/null') {
+        return { stdout: 'nameserver 127.0.0.1\n' }
+      }
+
       if (cmd === 'pgrep dnsmasq') {
         return { stdout: '123\n' }
       }
 
       if (cmd === 'sudo brew services restart dnsmasq') {
         return { stdout: '' }
-      }
-
-      if (cmd === 'cat /etc/resolver/stlabs 2>/dev/null') {
-        return { stdout: 'nameserver 127.0.0.1\n' }
       }
 
       return { stdout: '' }
@@ -205,5 +205,143 @@ describe('install command domain handling', () => {
 
     expect(mocks.execAsync).toHaveBeenCalledWith('sudo brew services restart dnsmasq')
     expect(mocks.success).toHaveBeenCalledWith('dnsmasq service reloaded')
+  })
+
+  test('creates resolver even when dnsmasq service restart fails (non-admin user)', async () => {
+    mocks.checkDns.mockResolvedValue(false)
+
+    mocks.execAsync.mockImplementation(async (cmd: string) => {
+      if (cmd === 'which brew' || cmd === 'which dnsmasq') {
+        return { stdout: '/opt/homebrew/bin/dnsmasq\n' }
+      }
+
+      if (cmd === 'brew --prefix') {
+        return { stdout: '/opt/homebrew\n' }
+      }
+
+      if (cmd.includes('grep -q "address=/stlabs/127.0.0.1"')) {
+        throw new Error('missing mapping')
+      }
+
+      if (cmd.includes('echo "address=/stlabs/127.0.0.1" >> /opt/homebrew/etc/dnsmasq.conf')) {
+        return { stdout: '' }
+      }
+
+      if (cmd === 'cat /etc/resolver/stlabs 2>/dev/null') {
+        throw new Error('missing resolver')
+      }
+
+      if (cmd === 'sudo mkdir -p /etc/resolver') {
+        return { stdout: '' }
+      }
+
+      if (cmd === 'echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/stlabs > /dev/null') {
+        return { stdout: '' }
+      }
+
+      if (cmd === 'pgrep dnsmasq') {
+        return { stdout: '123\n' }
+      }
+
+      if (cmd === 'sudo brew services restart dnsmasq') {
+        throw new Error('permission denied')
+      }
+
+      return { stdout: '' }
+    })
+
+    await install({ yes: true, domain: 'stlabs' })
+
+    // Resolver was still created despite service failure
+    expect(mocks.execAsync).toHaveBeenCalledWith('sudo mkdir -p /etc/resolver')
+    expect(mocks.execAsync).toHaveBeenCalledWith(
+      'echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/stlabs > /dev/null'
+    )
+    expect(mocks.success).toHaveBeenCalledWith('Resolver created at /etc/resolver/stlabs')
+    // Service failure is reported
+    expect(mocks.info).toHaveBeenCalledWith('Run this command as an admin user:')
+    expect(mocks.info).toHaveBeenCalledWith('  sudo brew services restart dnsmasq')
+    expect(mocks.warn).toHaveBeenCalledWith('DNS setup incomplete')
+  })
+
+  test('still attempts service restart when resolver creation fails', async () => {
+    mocks.checkDns.mockResolvedValue(false)
+
+    mocks.execAsync.mockImplementation(async (cmd: string) => {
+      if (cmd === 'which brew' || cmd === 'which dnsmasq') {
+        return { stdout: '/opt/homebrew/bin/dnsmasq\n' }
+      }
+
+      if (cmd === 'brew --prefix') {
+        return { stdout: '/opt/homebrew\n' }
+      }
+
+      if (cmd.includes('grep -q "address=/stlabs/127.0.0.1"')) {
+        return { stdout: 'found\n' }
+      }
+
+      if (cmd === 'cat /etc/resolver/stlabs 2>/dev/null') {
+        throw new Error('missing resolver')
+      }
+
+      if (cmd === 'sudo mkdir -p /etc/resolver') {
+        throw new Error('permission denied')
+      }
+
+      if (cmd === 'pgrep dnsmasq') {
+        return { stdout: '123\n' }
+      }
+
+      if (cmd === 'sudo brew services restart dnsmasq') {
+        return { stdout: '' }
+      }
+
+      return { stdout: '' }
+    })
+
+    await install({ yes: true, domain: 'stlabs' })
+
+    // Service restart was still attempted despite resolver failure
+    expect(mocks.execAsync).toHaveBeenCalledWith('sudo brew services restart dnsmasq')
+    expect(mocks.success).toHaveBeenCalledWith('dnsmasq service reloaded')
+    // But overall result is incomplete
+    expect(mocks.warn).toHaveBeenCalledWith('DNS setup incomplete')
+  })
+
+  test('uses start instead of restart when dnsmasq is not running', async () => {
+    mocks.checkDns.mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+
+    mocks.execAsync.mockImplementation(async (cmd: string) => {
+      if (cmd === 'which brew' || cmd === 'which dnsmasq') {
+        return { stdout: '/opt/homebrew/bin/dnsmasq\n' }
+      }
+
+      if (cmd === 'brew --prefix') {
+        return { stdout: '/opt/homebrew\n' }
+      }
+
+      if (cmd.includes('grep -q "address=/stlabs/127.0.0.1"')) {
+        return { stdout: 'found\n' }
+      }
+
+      if (cmd === 'cat /etc/resolver/stlabs 2>/dev/null') {
+        return { stdout: 'nameserver 127.0.0.1\n' }
+      }
+
+      if (cmd === 'pgrep dnsmasq') {
+        throw new Error('not running')
+      }
+
+      if (cmd === 'sudo brew services start dnsmasq') {
+        return { stdout: '' }
+      }
+
+      return { stdout: '' }
+    })
+
+    await install({ yes: true, domain: 'stlabs' })
+
+    expect(mocks.execAsync).toHaveBeenCalledWith('sudo brew services start dnsmasq')
+    expect(mocks.success).toHaveBeenCalledWith('dnsmasq service started')
   })
 })

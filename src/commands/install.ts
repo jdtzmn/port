@@ -126,56 +126,23 @@ async function installMacOS(dnsIp: string, domain: string): Promise<boolean> {
     }
   }
 
-  // Check if dnsmasq is already running
-  let dnsmasqRunning = false
+  // Set up resolver first — this is what makes macOS dscacheutil (and
+  // therefore checkDns / `port up`) work.  Without /etc/resolver/<domain>,
+  // DNS resolution for *.<domain> won't use dnsmasq at all, even if the
+  // service is running correctly.
+  let resolverOk = true
   try {
-    await execAsync('pgrep dnsmasq')
-    dnsmasqRunning = true
-  } catch {
-    // pgrep returns non-zero if no process found
-  }
-
-  if (dnsmasqRunning) {
-    output.info('Reloading dnsmasq service...')
-    try {
-      await execAsync('sudo brew services restart dnsmasq')
-      output.success('dnsmasq service reloaded')
-    } catch (error) {
-      output.error(`Failed to reload dnsmasq: ${error}`)
-      output.info('You can try running this command manually:')
-      output.info('  sudo brew services restart dnsmasq')
-      return false
-    }
-  } else {
-    // Start dnsmasq service
-    output.info('Starting dnsmasq service...')
-    try {
-      await execAsync('sudo brew services restart dnsmasq')
-      output.success('dnsmasq service started')
-    } catch (error) {
-      output.error(`Failed to start dnsmasq: ${error}`)
-      output.info('You can try running this command manually:')
-      output.info('  sudo brew services start dnsmasq')
-      return false
-    }
-  }
-
-  // Check if resolver is already configured
-  let resolverConfigured = false
-  try {
-    // Check if /etc/resolver exists and contains the correct config
+    // Check if /etc/resolver already contains the correct config
     const { stdout } = await execAsync(`cat /etc/resolver/${domain} 2>/dev/null`)
     if (stdout.includes(`nameserver ${dnsIp}`)) {
-      resolverConfigured = true
+      output.dim(`Resolver already configured at /etc/resolver/${domain}`)
+    } else {
+      // File exists but has wrong content — overwrite it
+      await execAsync(`echo "nameserver ${dnsIp}" | sudo tee /etc/resolver/${domain} > /dev/null`)
+      output.success(`Resolver updated at /etc/resolver/${domain}`)
     }
   } catch {
-    // File doesn't exist or can't be read
-  }
-
-  if (resolverConfigured) {
-    output.dim(`Resolver already configured at /etc/resolver/${domain}`)
-  } else {
-    // Create resolver directory and file
+    // File doesn't exist or can't be read — create it
     output.info(`Creating resolver for .${domain} domain...`)
     try {
       await execAsync('sudo mkdir -p /etc/resolver')
@@ -186,11 +153,41 @@ async function installMacOS(dnsIp: string, domain: string): Promise<boolean> {
       output.info('You can try running these commands manually:')
       output.info('  sudo mkdir -p /etc/resolver')
       output.info(`  echo "nameserver ${dnsIp}" | sudo tee /etc/resolver/${domain}`)
-      return false
+      resolverOk = false
     }
   }
 
-  return true
+  // Start or restart dnsmasq so it picks up any config changes
+  let serviceOk = true
+  let dnsmasqRunning = false
+  try {
+    await execAsync('pgrep dnsmasq')
+    dnsmasqRunning = true
+  } catch {
+    // pgrep returns non-zero if no process found
+  }
+
+  const serviceCommand = dnsmasqRunning
+    ? 'sudo brew services restart dnsmasq'
+    : 'sudo brew services start dnsmasq'
+
+  if (dnsmasqRunning) {
+    output.info('Reloading dnsmasq service...')
+  } else {
+    output.info('Starting dnsmasq service...')
+  }
+
+  try {
+    await execAsync(serviceCommand)
+    output.success(dnsmasqRunning ? 'dnsmasq service reloaded' : 'dnsmasq service started')
+  } catch (error) {
+    output.error(`Failed to ${dnsmasqRunning ? 'reload' : 'start'} dnsmasq: ${error}`)
+    output.info('Run this command as an admin user:')
+    output.info(`  ${serviceCommand}`)
+    serviceOk = false
+  }
+
+  return resolverOk && serviceOk
 }
 
 /**
