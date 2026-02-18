@@ -193,7 +193,19 @@ describe('LocalTaskExecutionAdapter', () => {
     expect(plan.summary).toContain('.port/jobs/artifacts/task-1234')
   })
 
-  test('local adapter exposes attach methods but reports unsupported handoff', async () => {
+  test('local adapter reports attach-capable with correct capability flags', () => {
+    const adapter = new LocalTaskExecutionAdapter('/repo/src/index.ts')
+
+    expect(adapter.capabilities.supportsCheckpoint).toBe(true)
+    expect(adapter.capabilities.supportsRestore).toBe(true)
+    expect(adapter.capabilities.supportsAttachHandoff).toBe(true)
+    expect(adapter.capabilities.supportsResumeToken).toBe(false)
+    expect(adapter.capabilities.supportsTranscript).toBe(false)
+    expect(adapter.capabilities.supportsFailedSnapshot).toBe(false)
+  })
+
+  test('requestHandoff returns immediate boundary for running worker', async () => {
+    mocks.processKill.mockReturnValue(true)
     const adapter = new LocalTaskExecutionAdapter('/repo/src/index.ts')
     const handle = {
       taskId: 'task-1234',
@@ -203,14 +215,120 @@ describe('LocalTaskExecutionAdapter', () => {
       branch: 'port-task-task-1234',
     }
 
-    expect(adapter.capabilities.supportsAttachHandoff).toBe(false)
-    expect(adapter.capabilities.supportsResumeToken).toBe(false)
-    expect(adapter.capabilities.supportsTranscript).toBe(false)
-    expect(adapter.capabilities.supportsFailedSnapshot).toBe(false)
+    const result = await adapter.requestHandoff(handle)
 
-    await expect(adapter.requestHandoff(handle)).rejects.toThrow('attach handoff')
-    await expect(adapter.attachContext(handle)).rejects.toThrow('attach context')
-    await expect(adapter.resumeFromAttach(handle)).rejects.toThrow('attach resume')
+    expect(result.boundary).toBe('immediate')
+    expect(result.sessionHandle).toBe('run-1')
+    expect(result.readyAt).toBeTruthy()
+    expect(() => new Date(result.readyAt).toISOString()).not.toThrow()
+  })
+
+  test('requestHandoff returns immediate boundary even for exited worker', async () => {
+    mocks.processKill.mockImplementation(() => {
+      throw new Error('not running')
+    })
+    const adapter = new LocalTaskExecutionAdapter('/repo/src/index.ts')
+    const handle = {
+      taskId: 'task-1234',
+      runId: 'run-1',
+      workerPid: 999,
+      worktreePath: '/repo/.port/trees/port-task-task-1234',
+      branch: 'port-task-task-1234',
+    }
+
+    const result = await adapter.requestHandoff(handle)
+
+    expect(result.boundary).toBe('immediate')
+    expect(result.sessionHandle).toBe('run-1')
+  })
+
+  test('attachContext returns native_session strategy when opencode sessionId is present', async () => {
+    const adapter = new LocalTaskExecutionAdapter('/repo/src/index.ts')
+    const handle = {
+      taskId: 'task-1234',
+      runId: 'run-1',
+      workerPid: 123,
+      worktreePath: '/repo/.port/trees/port-task-task-1234',
+      branch: 'port-task-task-1234',
+      opencode: {
+        sessionId: 'oc-session-1',
+        transcriptPath: '/repo/.port/jobs/artifacts/task-1234/attach/io.log',
+        workspaceRef: '/repo/.port/trees/port-task-task-1234',
+        fallbackSummary: 'resume task from summary',
+      },
+    }
+
+    const context = await adapter.attachContext(handle)
+
+    expect(context.sessionHandle).toBe('run-1')
+    expect(context.restoreStrategy).toBe('native_session')
+    expect(context.workspaceRef).toBe('/repo/.port/trees/port-task-task-1234')
+    expect(context.transcriptPath).toBe('/repo/.port/jobs/artifacts/task-1234/attach/io.log')
+    expect(context.summary).toBe('resume task from summary')
+    expect(context.checkpointRunId).toBe('run-1')
+    expect(context.checkpointCreatedAt).toBeTruthy()
+  })
+
+  test('attachContext returns fallback_summary strategy when opencode sessionId is absent', async () => {
+    const adapter = new LocalTaskExecutionAdapter('/repo/src/index.ts')
+    const handle = {
+      taskId: 'task-1234',
+      runId: 'run-1',
+      workerPid: 123,
+      worktreePath: '/repo/.port/trees/port-task-task-1234',
+      branch: 'port-task-task-1234',
+    }
+
+    const context = await adapter.attachContext(handle)
+
+    expect(context.restoreStrategy).toBe('fallback_summary')
+    expect(context.summary).toContain('Continue task task-1234')
+    expect(context.transcriptPath).toBeUndefined()
+  })
+
+  test('attachContext omits resumeToken for local adapter', async () => {
+    const adapter = new LocalTaskExecutionAdapter('/repo/src/index.ts')
+    const handle = {
+      taskId: 'task-1234',
+      runId: 'run-1',
+      workerPid: 123,
+      worktreePath: '/repo/.port/trees/port-task-task-1234',
+      branch: 'port-task-task-1234',
+    }
+
+    const context = await adapter.attachContext(handle)
+
+    expect(context.resumeToken).toBeUndefined()
+  })
+
+  test('resumeFromAttach resolves without error for running worker', async () => {
+    mocks.processKill.mockReturnValue(true)
+    const adapter = new LocalTaskExecutionAdapter('/repo/src/index.ts')
+    const handle = {
+      taskId: 'task-1234',
+      runId: 'run-1',
+      workerPid: 123,
+      worktreePath: '/repo/.port/trees/port-task-task-1234',
+      branch: 'port-task-task-1234',
+    }
+
+    await expect(adapter.resumeFromAttach(handle)).resolves.toBeUndefined()
+  })
+
+  test('resumeFromAttach resolves without error for exited worker', async () => {
+    mocks.processKill.mockImplementation(() => {
+      throw new Error('not running')
+    })
+    const adapter = new LocalTaskExecutionAdapter('/repo/src/index.ts')
+    const handle = {
+      taskId: 'task-1234',
+      runId: 'run-1',
+      workerPid: 999,
+      worktreePath: '/repo/.port/trees/port-task-task-1234',
+      branch: 'port-task-task-1234',
+    }
+
+    await expect(adapter.resumeFromAttach(handle)).resolves.toBeUndefined()
   })
 
   test('cancels running worker and cleans up worktree', async () => {

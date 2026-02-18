@@ -37,6 +37,13 @@ export interface IntegrationTaskRecord {
     checkpointHistory?: Array<{ runId: string }>
     retainedForDebug?: boolean
   }
+  attach?: {
+    state?: string
+    lockOwner?: string
+    sessionHandle?: string
+    checkpointId?: string
+    resumeTokenExpiresAt?: string
+  }
 }
 
 function cliScript(): string {

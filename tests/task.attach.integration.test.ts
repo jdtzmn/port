@@ -13,11 +13,12 @@ const INTEGRATION_TIMEOUT = 70000
 
 describe('task attach integration', () => {
   test(
-    'attach revives terminal task into a continuation run',
+    'attach revives terminal task and performs handoff to paused_for_attach',
     async () => {
       const sample = await prepareSample('simple-server', { initWithConfig: true })
 
       try {
+        // Use a short task so it completes quickly, then attach revives it.
         await runPortCommand(['task', 'start', 'attach-terminal'], sample.dir)
         const task = await waitForTaskByTitle(sample.dir, 'attach-terminal')
         await runPortCommand(['task', 'wait', task.id, '--timeout-seconds', '40'], sample.dir)
@@ -26,20 +27,24 @@ describe('task attach integration', () => {
         const baselineAttempt = beforeAttach?.runtime?.runAttempt ?? 1
 
         const attach = await runPortCommand(['task', 'attach', task.id], sample.dir)
-        expect(attach.stdout).toContain('Revived')
+        expect(attach.stdout).toContain('Attach handoff ready')
+        expect(attach.stdout).toContain('at immediate')
+        expect(attach.stdout).toContain('Restore strategy:')
 
-        await runPortCommand(['task', 'wait', task.id, '--timeout-seconds', '60'], sample.dir)
+        // The revived worker runs autonomously (immediate boundary), so it may
+        // complete before we poll. Accept either paused_for_attach or terminal.
         const afterAttach = await waitForTaskStatus(sample.dir, task.id, [
+          'paused_for_attach',
           'completed',
           'failed',
           'timeout',
         ])
-
         expect(afterAttach.runtime?.runAttempt ?? 0).toBeGreaterThanOrEqual(baselineAttempt + 1)
 
         const events = await runPortCommand(['task', 'events'], sample.dir)
         expect(events.stdout).toContain(`${task.id} task.attach.revive_started`)
         expect(events.stdout).toContain(`${task.id} task.attach.revive_succeeded`)
+        expect(events.stdout).toContain(`${task.id} task.attach.handoff_ready`)
       } finally {
         await cleanupTaskRuntime(sample.dir)
         await sample.cleanup()
@@ -49,7 +54,7 @@ describe('task attach integration', () => {
   )
 
   test(
-    'attach revives a dead non-terminal task after worker crash',
+    'attach revives a dead non-terminal task and reaches handoff ready',
     async () => {
       const sample = await prepareSample('simple-server', { initWithConfig: true })
 
@@ -70,20 +75,24 @@ describe('task attach integration', () => {
         process.kill(running.runtime!.workerPid!, 'SIGKILL')
 
         const attach = await runPortCommand(['task', 'attach', task.id], sample.dir)
-        expect(attach.stdout).toContain('Revived')
+        expect(attach.stdout).toContain('Attach handoff ready')
+        expect(attach.stdout).toContain('at immediate')
 
-        await runPortCommand(['task', 'wait', task.id, '--timeout-seconds', '60'], sample.dir)
-        const finalTask = await waitForTaskStatus(sample.dir, task.id, [
+        // The revived worker runs autonomously (immediate boundary). The daemon
+        // may also have restored a worker after the kill, so accept either
+        // paused_for_attach or terminal states.
+        const afterAttach = await waitForTaskStatus(sample.dir, task.id, [
+          'paused_for_attach',
           'completed',
           'failed',
           'timeout',
         ])
-        expect(finalTask.status).toBe('completed')
-        expect((finalTask.runtime?.runAttempt ?? 0) >= 2).toBe(true)
+        expect((afterAttach.runtime?.runAttempt ?? 0) >= 2).toBe(true)
 
         const events = await runPortCommand(['task', 'events'], sample.dir)
         expect(events.stdout).toContain(`${task.id} task.attach.revive_started`)
         expect(events.stdout).toContain(`${task.id} task.attach.revive_succeeded`)
+        expect(events.stdout).toContain(`${task.id} task.attach.handoff_ready`)
       } finally {
         await cleanupTaskRuntime(sample.dir)
         await sample.cleanup()

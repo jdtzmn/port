@@ -170,7 +170,7 @@ export class LocalTaskExecutionAdapter implements TaskExecutionAdapter {
   readonly capabilities = {
     supportsCheckpoint: true,
     supportsRestore: true,
-    supportsAttachHandoff: false,
+    supportsAttachHandoff: true,
     supportsResumeToken: false,
     supportsTranscript: false,
     supportsFailedSnapshot: false,
@@ -298,16 +298,37 @@ export class LocalTaskExecutionAdapter implements TaskExecutionAdapter {
     return this.spawnWorker(repoRoot, task.id, worktreePath, branch, randomUUID())
   }
 
-  async requestHandoff(_handle: TaskRunHandle): Promise<AttachHandoffReady> {
-    throw new Error('local adapter does not support attach handoff yet')
+  async requestHandoff(handle: TaskRunHandle): Promise<AttachHandoffReady> {
+    // The local worker has no IPC channel for safe-boundary signaling (spawned
+    // with stdio: 'ignore'), so we use the 'immediate' boundary — the worker
+    // continues running autonomously and the handoff is available right away.
+    return {
+      boundary: 'immediate',
+      sessionHandle: handle.runId,
+      readyAt: new Date().toISOString(),
+    }
   }
 
-  async attachContext(_handle: TaskRunHandle): Promise<AttachContext> {
-    throw new Error('local adapter does not provide attach context yet')
+  async attachContext(handle: TaskRunHandle): Promise<AttachContext> {
+    const checkpoint = await this.checkpoint(handle)
+    const plan = buildOpenCodeContinuePlan(handle.worktreePath, checkpoint)
+
+    return {
+      sessionHandle: handle.runId,
+      checkpointRunId: checkpoint.runId,
+      checkpointCreatedAt: checkpoint.createdAt,
+      workspaceRef: plan.workspaceRef,
+      restoreStrategy: plan.strategy,
+      summary: plan.summary,
+      transcriptPath: plan.transcriptPath,
+      // Local adapter does not issue resume tokens (supportsResumeToken: false).
+    }
   }
 
   async resumeFromAttach(_handle: TaskRunHandle, _token?: AttachResumeToken): Promise<void> {
-    throw new Error('local adapter does not support attach resume yet')
+    // The local worker runs autonomously — it was never actually paused since
+    // we use the 'immediate' boundary. No signal needed; the daemon's
+    // handleRunningTasks() loop handles state reconciliation.
   }
 
   async cancel(handle: TaskRunHandle): Promise<void> {

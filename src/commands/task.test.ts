@@ -177,7 +177,7 @@ describe('task command', () => {
         capabilities: {
           supportsCheckpoint: true,
           supportsRestore: true,
-          supportsAttachHandoff: false,
+          supportsAttachHandoff: true,
         },
         restore: vi.fn().mockResolvedValue({
           taskId: 'task-1',
@@ -197,6 +197,20 @@ describe('task command', () => {
             branch: 'port-task-task-1',
           },
         }),
+        requestHandoff: vi.fn().mockResolvedValue({
+          boundary: 'immediate',
+          sessionHandle: 'run-2',
+          readyAt: '2026-01-01T00:00:01.000Z',
+        }),
+        attachContext: vi.fn().mockResolvedValue({
+          sessionHandle: 'run-2',
+          checkpointRunId: 'run-2',
+          checkpointCreatedAt: '2026-01-01T00:00:00.000Z',
+          workspaceRef: '/repo/.port/trees/port-task-task-1',
+          restoreStrategy: 'fallback_summary',
+          summary: 'Continue task task-1 from run run-2.',
+        }),
+        resumeFromAttach: vi.fn(),
       },
       configuredId: 'local',
       resolvedId: 'local',
@@ -487,7 +501,7 @@ describe('task command', () => {
     )
   })
 
-  test('task attach revives terminal task with continuation run', async () => {
+  test('task attach revives terminal task and performs handoff', async () => {
     mocks.resolveTaskRef.mockResolvedValue({
       ok: true,
       matchedBy: 'display_id',
@@ -588,17 +602,117 @@ describe('task command', () => {
       'reviving_for_attach',
       'Attach requested; reviving task'
     )
+    expect(mocks.patchTask).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      expect.objectContaining({ runtime: expect.any(Object), attach: expect.any(Object) }),
+      expect.objectContaining({ type: 'task.attach.revive_succeeded' })
+    )
+    // With attach-capable adapter, handoff is performed and task reaches paused_for_attach
+    expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      'paused_for_attach',
+      'Attach handoff ready'
+    )
+    expect(mocks.patchTask).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      expect.objectContaining({
+        attach: expect.objectContaining({ state: 'handoff_ready' }),
+      }),
+      expect.objectContaining({ type: 'task.attach.handoff_ready' })
+    )
+  })
+
+  test('task attach falls through to running when adapter lacks handoff support', async () => {
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: {
+        id: 'task-1',
+        displayId: 1,
+        status: 'completed',
+        attach: {},
+        runtime: {
+          runAttempt: 1,
+          checkpoint: {
+            adapterId: 'local',
+            taskId: 'task-1',
+            runId: 'run-1',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            payload: {
+              workerPid: 123,
+              worktreePath: '/repo/.port/trees/port-task-task-1',
+              branch: 'port-task-task-1',
+            },
+          },
+        },
+      },
+    })
+    mocks.getTask.mockResolvedValue({
+      id: 'task-1',
+      displayId: 1,
+      status: 'completed',
+      attach: {},
+      runtime: {
+        runAttempt: 1,
+        checkpoint: {
+          adapterId: 'local',
+          taskId: 'task-1',
+          runId: 'run-1',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          payload: {
+            workerPid: 123,
+            worktreePath: '/repo/.port/trees/port-task-task-1',
+            branch: 'port-task-task-1',
+          },
+        },
+      },
+    })
+
+    mocks.resolveTaskAdapter.mockResolvedValue({
+      adapter: {
+        id: 'stub-remote',
+        capabilities: {
+          supportsCheckpoint: true,
+          supportsRestore: true,
+          supportsAttachHandoff: false,
+        },
+        restore: vi.fn().mockResolvedValue({
+          taskId: 'task-1',
+          runId: 'run-2',
+          workerPid: 777,
+          worktreePath: '/repo/.port/trees/port-task-task-1',
+          branch: 'port-task-task-1',
+        }),
+        checkpoint: vi.fn().mockResolvedValue({
+          adapterId: 'stub-remote',
+          taskId: 'task-1',
+          runId: 'run-2',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          payload: {
+            workerPid: 777,
+            worktreePath: '/repo/.port/trees/port-task-task-1',
+            branch: 'port-task-task-1',
+          },
+        }),
+      },
+      configuredId: 'stub-remote',
+      resolvedId: 'stub-remote',
+      fallbackUsed: false,
+    })
+
+    await taskAttach('1')
+
     expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
       '/repo',
       'task-1',
       'running',
       'Revived for attach'
     )
-    expect(mocks.patchTask).toHaveBeenCalledWith(
-      '/repo',
-      'task-1',
-      expect.objectContaining({ runtime: expect.any(Object), attach: expect.any(Object) }),
-      expect.objectContaining({ type: 'task.attach.revive_succeeded' })
+    expect(mocks.info).toHaveBeenCalledWith(
+      'Interactive attach handoff UI is not implemented yet; task continues in background.'
     )
   })
 

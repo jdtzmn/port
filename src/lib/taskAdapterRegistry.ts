@@ -99,7 +99,7 @@ const TASK_ADAPTERS: TaskAdapterDescriptor[] = [
     capabilities: {
       supportsCheckpoint: true,
       supportsRestore: true,
-      supportsAttachHandoff: false,
+      supportsAttachHandoff: true,
       supportsResumeToken: false,
       supportsTranscript: false,
       supportsFailedSnapshot: false,

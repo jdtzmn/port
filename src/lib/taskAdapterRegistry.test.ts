@@ -41,7 +41,7 @@ describe('taskAdapterRegistry', () => {
     expect(adapter.id).toBe('local')
   })
 
-  test('adapter contract exposes attach handoff methods across local and stub adapters', async () => {
+  test('local adapter implements attach handoff methods and stub-remote rejects them', async () => {
     const local = createTaskAdapter('local', '/repo/src/index.ts')
     const stub = createTaskAdapter('stub-remote', '/repo/src/index.ts')
 
@@ -53,14 +53,22 @@ describe('taskAdapterRegistry', () => {
       branch: 'port-task-task-1',
     }
 
-    expect(typeof local.requestHandoff).toBe('function')
-    expect(typeof local.attachContext).toBe('function')
-    expect(typeof local.resumeFromAttach).toBe('function')
-    await expect(local.requestHandoff(handle)).rejects.toThrow('attach handoff')
+    // Local adapter is attach-capable and returns valid results
+    expect(local.capabilities.supportsAttachHandoff).toBe(true)
+    const handoff = await local.requestHandoff(handle)
+    expect(handoff.boundary).toBe('immediate')
+    expect(handoff.sessionHandle).toBe('run-1')
 
-    expect(typeof stub.requestHandoff).toBe('function')
-    expect(typeof stub.attachContext).toBe('function')
-    expect(typeof stub.resumeFromAttach).toBe('function')
+    const context = await local.attachContext(handle)
+    expect(context.sessionHandle).toBe('run-1')
+    expect(context.restoreStrategy).toBe('fallback_summary')
+
+    await expect(local.resumeFromAttach(handle)).resolves.toBeUndefined()
+
+    // Stub-remote still rejects
+    expect(stub.capabilities.supportsAttachHandoff).toBe(false)
     await expect(stub.requestHandoff(handle)).rejects.toThrow('attach handoff')
+    await expect(stub.attachContext(handle)).rejects.toThrow('attach context')
+    await expect(stub.resumeFromAttach(handle)).rejects.toThrow('attach resume')
   })
 })
