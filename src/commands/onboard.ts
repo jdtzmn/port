@@ -9,7 +9,7 @@ interface OnboardStep {
   why: string
 }
 
-export const STEPS: OnboardStep[] = [
+const STEPS: OnboardStep[] = [
   {
     command: 'port init',
     how: 'Run in your repository root if setup has not been done yet (check with port status first).',

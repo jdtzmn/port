@@ -34,7 +34,7 @@ vi.mock('../lib/worktree.ts', () => ({
   detectWorktree: worktreeMocks.detectWorktree,
 }))
 
-import { onboard, generateMarkdown, STEPS } from './onboard.ts'
+import { onboard, generateMarkdown } from './onboard.ts'
 
 describe('onboard command', () => {
   beforeEach(() => {
@@ -79,10 +79,7 @@ describe('onboard command', () => {
     test('writes ONBOARD.md to repo root', async () => {
       await onboard({ md: true })
 
-      expect(fsMocks.writeFile).toHaveBeenCalledWith(
-        '/fake/repo/ONBOARD.md',
-        expect.any(String)
-      )
+      expect(fsMocks.writeFile).toHaveBeenCalledWith('/fake/repo/ONBOARD.md', expect.any(String))
       expect(mocks.success).toHaveBeenCalledWith('Wrote /fake/repo/ONBOARD.md')
     })
 
@@ -102,11 +99,34 @@ describe('onboard command', () => {
       expect(call).toBeDefined()
       const writtenContent = call![1] as string
 
-      for (const step of STEPS) {
-        expect(writtenContent).toContain(`\`${step.command}\``)
-        expect(writtenContent).toContain(step.how)
-        expect(writtenContent).toContain(step.why)
+      const expectedCommands = [
+        'port init',
+        'port install',
+        'port enter <branch>',
+        'port up',
+        'port urls [service]',
+        'port status',
+        'port down',
+        'port remove <branch>',
+      ]
+
+      for (const cmd of expectedCommands) {
+        expect(writtenContent).toContain(`\`${cmd}\``)
       }
+
+      // Spot-check how/why content from different steps
+      expect(writtenContent).toContain('Creates .port config, hooks, and worktree directories.')
+      expect(writtenContent).toContain('Configures wildcard DNS so branch domains resolve locally.')
+      expect(writtenContent).toContain(
+        'Creates or enters the branch worktree safely and predictably.'
+      )
+      expect(writtenContent).toContain('Starts services and wires routing through Traefik.')
+      expect(writtenContent).toContain(
+        'Stops project services and offers Traefik shutdown when appropriate.'
+      )
+      expect(writtenContent).toContain(
+        'Stops services, removes worktree, and archives the local branch.'
+      )
     })
 
     test('generated markdown contains useful checks', async () => {
@@ -137,8 +157,19 @@ describe('onboard command', () => {
     test('includes all steps in order', () => {
       const md = generateMarkdown()
 
-      for (const [index, step] of STEPS.entries()) {
-        expect(md).toContain(`### ${index + 1}. \`${step.command}\``)
+      const expectedHeadings = [
+        '### 1. `port init`',
+        '### 2. `port install`',
+        '### 3. `port enter <branch>`',
+        '### 4. `port up`',
+        '### 5. `port urls [service]`',
+        '### 6. `port status`',
+        '### 7. `port down`',
+        '### 8. `port remove <branch>`',
+      ]
+
+      for (const heading of expectedHeadings) {
+        expect(md).toContain(heading)
       }
     })
   })
