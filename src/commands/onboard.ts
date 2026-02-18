@@ -1,4 +1,7 @@
+import { writeFile } from 'fs/promises'
+import { resolve } from 'path'
 import * as output from '../lib/output.ts'
+import { detectWorktree } from '../lib/worktree.ts'
 
 interface OnboardStep {
   command: string
@@ -6,7 +9,7 @@ interface OnboardStep {
   why: string
 }
 
-const STEPS: OnboardStep[] = [
+export const STEPS: OnboardStep[] = [
   {
     command: 'port init',
     how: 'Run in your repository root if setup has not been done yet (check with port status first).',
@@ -50,9 +53,48 @@ const STEPS: OnboardStep[] = [
 ]
 
 /**
- * Print a focused onboarding guide for common Port workflows.
+ * Generate markdown content from the STEPS data structure.
  */
-export async function onboard(): Promise<void> {
+export function generateMarkdown(): string {
+  const lines: string[] = []
+
+  lines.push('# Port Onboarding')
+  lines.push('')
+  lines.push('## Recommended Flow')
+  lines.push('')
+
+  for (const [index, step] of STEPS.entries()) {
+    lines.push(`### ${index + 1}. \`${step.command}\``)
+    lines.push('')
+    lines.push(`- **How**: ${step.how}`)
+    lines.push(`- **Why**: ${step.why}`)
+    lines.push('')
+  }
+
+  lines.push('## Useful Checks')
+  lines.push('')
+  lines.push('- `port list`: quick worktree and host-service summary')
+  lines.push('- `port kill [port]`: stop host processes started with port run')
+  lines.push('- `port cleanup`: delete archived local branches from port remove')
+  lines.push('')
+
+  return lines.join('\n')
+}
+
+/**
+ * Print a focused onboarding guide for common Port workflows.
+ * When --md is passed, writes an ONBOARD.md file to the repo root.
+ */
+export async function onboard(options?: { md?: boolean }): Promise<void> {
+  if (options?.md) {
+    const { repoRoot } = detectWorktree()
+    const markdown = generateMarkdown()
+    const filePath = resolve(repoRoot, 'ONBOARD.md')
+    await writeFile(filePath, markdown)
+    output.success(`Wrote ${filePath}`)
+    return
+  }
+
   output.header('Port onboarding')
   output.newline()
   output.info('Recommended flow:')

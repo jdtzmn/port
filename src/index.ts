@@ -75,6 +75,7 @@ program
 program
   .command('onboard')
   .description('Show recommended Port workflow and command guide')
+  .option('--md', 'Write an ONBOARD.md file to the repo root')
   .action(onboard)
 
 // port install
