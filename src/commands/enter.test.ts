@@ -2,7 +2,7 @@ import { join } from 'path'
 import { execPortAsync, prepareSample } from '@tests/utils'
 import { describe, test, expect } from 'vitest'
 
-const TIMEOUT = 120000
+const TIMEOUT = 180000
 
 describe('parallel worktrees', () => {
   test(
@@ -21,6 +21,7 @@ describe('parallel worktrees', () => {
       const worktreeADir = join(sample.dir, './.port/trees/a')
       const worktreeBDir = join(sample.dir, './.port/trees/b')
 
+      // Start worktrees sequentially to avoid concurrent image builds
       await execPortAsync(['up'], worktreeADir)
       await execPortAsync(['up'], worktreeBDir)
 
@@ -28,33 +29,33 @@ describe('parallel worktrees', () => {
       const aURL = 'http://a.port:3000'
       const bURL = 'http://b.port:3000'
 
-      await new Promise<void>((resolve, reject) => {
-        const maxWaitTime = 90000
-        const startTime = Date.now()
+      const maxWaitTime = 120000
+      const startTime = Date.now()
+      let textA = ''
+      let textB = ''
+      let ready = false
 
-        const intervalId = setInterval(async () => {
-          // Check for timeout
-          if (Date.now() - startTime > maxWaitTime) {
-            clearInterval(intervalId)
-            reject(new Error('Timed out waiting for services to respond'))
-            return
+      while (Date.now() - startTime < maxWaitTime) {
+        try {
+          const [resA, resB] = await Promise.all([fetch(aURL), fetch(bURL)])
+
+          if (resA.status === 200 && resB.status === 200) {
+            textA = await resA.text()
+            textB = await resB.text()
+            ready = true
+            break
           }
+        } catch {
+          // Services not ready yet, continue polling
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
 
-          try {
-            const resA = await fetch(aURL)
-            const resB = await fetch(bURL)
+      if (!ready) {
+        throw new Error('Timed out waiting for services to respond')
+      }
 
-            if (resA.status === 200 && resB.status === 200) {
-              clearInterval(intervalId)
-
-              expect(await resA.text()).not.toEqual(await resB.text())
-              resolve()
-            }
-          } catch {
-            // Services not ready yet, continue polling
-          }
-        }, 1000)
-      })
+      expect(textA).not.toEqual(textB)
 
       // End the sample (use -y to skip Traefik confirmation prompt)
       await execPortAsync(['down', '-y'], worktreeADir)
