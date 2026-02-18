@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'child_process'
 import { join, resolve } from 'path'
-import { execPortAsync, prepareSample } from './utils'
+import { execPortAsync, fetchWithTimeout, prepareSample } from './utils'
 import { afterEach, describe, test, expect } from 'vitest'
 
 const TIMEOUT = 45000
@@ -113,7 +113,7 @@ async function pollUntilReady(url: string, timeoutMs = 30000): Promise<Response>
 
   while (Date.now() - startTime < timeoutMs) {
     try {
-      const response = await fetch(url)
+      const response = await fetchWithTimeout(url)
       if (response.status === 200) {
         return response
       }
