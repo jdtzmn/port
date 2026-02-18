@@ -1,5 +1,5 @@
 import { join } from 'path'
-import { execPortAsync, prepareSample } from './utils'
+import { execPortAsync, fetchWithTimeout, prepareSample } from './utils'
 import { describe, test, expect } from 'vitest'
 
 const TIMEOUT = 240000 // Next.js takes longer to start than other frameworks
@@ -7,25 +7,11 @@ const TIMEOUT = 240000 // Next.js takes longer to start than other frameworks
 /** Max time to poll for a service to respond (leave headroom for setup/teardown) */
 const POLL_TIMEOUT = 150000
 
-/** Max time for a single HTTP request before retrying */
-const REQUEST_TIMEOUT = 5000
-
 /** UUID regex for validating a complete string */
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** UUID regex for searching within text */
 const UUID_SEARCH_REGEX = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
-
-async function fetchWithTimeout(url: string, timeoutMs = REQUEST_TIMEOUT): Promise<Response> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), timeoutMs)
-
-  try {
-    return await fetch(url, { signal: controller.signal })
-  } finally {
-    clearTimeout(timeout)
-  }
-}
 
 /**
  * Helper to fetch JSON from a URL with retries.

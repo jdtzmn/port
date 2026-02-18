@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'child_process'
 import { join, resolve } from 'path'
-import { execPortAsync, prepareSample } from './utils'
+import { execPortAsync, fetchWithTimeout, prepareSample } from './utils'
 import { afterEach, describe, test, expect } from 'vitest'
 
 const TIMEOUT = 45000
@@ -103,17 +103,6 @@ function spawnPortRun(port: number, command: string[], cwd: string): ChildProces
     cwd,
     stdio: 'pipe', // Don't inherit to avoid cluttering test output
   })
-}
-
-async function fetchWithTimeout(url: string, timeoutMs = 5000): Promise<Response> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), timeoutMs)
-
-  try {
-    return await fetch(url, { signal: controller.signal })
-  } finally {
-    clearTimeout(timeout)
-  }
 }
 
 /**

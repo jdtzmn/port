@@ -1,21 +1,9 @@
 import { join } from 'path'
-import { execPortAsync, prepareSample } from '@tests/utils'
+import { execPortAsync, fetchWithTimeout, prepareSample } from '@tests/utils'
 import { describe, test, expect } from 'vitest'
 
 const TIMEOUT = 180000
 const POLL_TIMEOUT = 120000
-const REQUEST_TIMEOUT = 5000
-
-async function fetchWithTimeout(url: string, timeoutMs = REQUEST_TIMEOUT): Promise<Response> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), timeoutMs)
-
-  try {
-    return await fetch(url, { signal: controller.signal })
-  } finally {
-    clearTimeout(timeout)
-  }
-}
 
 async function safeDown(worktreePath: string): Promise<void> {
   try {
