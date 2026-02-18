@@ -316,12 +316,154 @@ export async function taskResume(taskRef: string): Promise<void> {
     return
   }
 
+  // Resume from paused_for_attach: call adapter.resumeFromAttach(), clear
+  // attach state, and hand back to the daemon for monitoring.
+  if (task.status === 'paused_for_attach') {
+    const scriptPath = process.argv[1]
+    if (!scriptPath) {
+      failWithError('Unable to resolve CLI entrypoint for resume')
+    }
+
+    const resolved = await resolveTaskAdapter(repoRoot, scriptPath)
+    const adapter = resolved.adapter
+    const runtime = task.runtime
+
+    try {
+      if (runtime?.workerPid && runtime.worktreePath) {
+        await adapter.resumeFromAttach(
+          {
+            taskId: task.id,
+            runId: runtime.checkpoint?.runId ?? `${task.id}-runtime`,
+            workerPid: runtime.workerPid,
+            worktreePath: runtime.worktreePath,
+            branch: task.branch ?? `port-task-${task.id}`,
+          },
+          task.attach?.resumeTokenExpiresAt
+            ? {
+                token: task.attach.sessionHandle ?? '',
+                expiresAt: task.attach.resumeTokenExpiresAt,
+              }
+            : undefined
+        )
+      }
+
+      await patchTask(
+        repoRoot,
+        task.id,
+        {
+          attach: {
+            ...(task.attach ?? {}),
+            state: 'detached',
+            lockOwner: undefined,
+            sessionHandle: undefined,
+          },
+        },
+        {
+          type: 'task.attach.resumed',
+          message: 'Resumed from paused_for_attach by user',
+        }
+      )
+      await updateTaskStatus(repoRoot, task.id, 'running', 'Resumed from attach pause')
+      await ensureTaskDaemon(repoRoot)
+      output.success(
+        `Resumed ${output.branch(taskReferenceLabel(task))} from attach pause; daemon will monitor`
+      )
+    } catch (error) {
+      await patchTask(
+        repoRoot,
+        task.id,
+        {
+          attach: {
+            ...(task.attach ?? {}),
+            state: 'detached',
+            lockOwner: undefined,
+            sessionHandle: undefined,
+          },
+        },
+        {
+          type: 'task.attach.resume_failed',
+          message: `${error}`,
+        }
+      )
+      await updateTaskStatus(
+        repoRoot,
+        task.id,
+        'resume_failed',
+        `Resume from attach failed: ${error}`
+      )
+      failWithError(
+        `Failed to resume ${taskReferenceLabel(task)} from attach: ${error}\n` +
+          'Try: port task attach <ref> to revive from checkpoint, or port task cancel <ref>'
+      )
+    }
+    return
+  }
+
+  // Resume from resume_failed: attempt to restore from checkpoint if available.
+  if (task.status === 'resume_failed') {
+    if (!task.runtime?.checkpoint) {
+      failWithError(
+        `Task ${taskReferenceLabel(task)} has no checkpoint; try: port task attach <ref> to revive, or port task cancel <ref>`
+      )
+    }
+
+    await updateTaskStatus(repoRoot, task.id, 'resuming', 'Resume requested from failed state')
+    await ensureTaskDaemon(repoRoot)
+    output.success(
+      `Resume requested for ${output.branch(taskReferenceLabel(task))}; daemon will attempt restoration from checkpoint`
+    )
+    return
+  }
+
+  // Default: generic resume for other non-terminal statuses.
   if (task.status !== 'queued') {
     await updateTaskStatus(repoRoot, task.id, 'resuming', 'Resume requested by user')
   }
 
   await ensureTaskDaemon(repoRoot)
   output.success(`Resume requested for ${output.branch(taskReferenceLabel(task))}`)
+}
+
+const PAUSABLE_STATUSES = new Set(['running', 'preparing', 'resuming'])
+
+export async function taskPause(taskRef: string): Promise<void> {
+  const repoRoot = getRepoRootOrFail()
+  const task = await resolveTaskOrFail(repoRoot, taskRef)
+
+  if (isTerminalTaskStatus(task.status)) {
+    failWithError(`Task ${taskReferenceLabel(task)} is terminal (${task.status}); cannot pause`)
+  }
+
+  if (task.status === 'paused_for_attach') {
+    output.info(`Task ${output.branch(taskReferenceLabel(task))} is already paused`)
+    return
+  }
+
+  if (!PAUSABLE_STATUSES.has(task.status)) {
+    failWithError(
+      `Task ${taskReferenceLabel(task)} is ${task.status}; only running, preparing, or resuming tasks can be paused`
+    )
+  }
+
+  await patchTask(
+    repoRoot,
+    task.id,
+    {
+      attach: {
+        ...(task.attach ?? {}),
+        state: 'pending_handoff',
+      },
+    },
+    {
+      type: 'task.paused',
+      message: 'Paused by user command',
+    }
+  )
+  await updateTaskStatus(repoRoot, task.id, 'paused_for_attach', 'Paused by user')
+  output.success(`Paused ${output.branch(taskReferenceLabel(task))}`)
+  output.info(
+    'The task daemon will stop managing this task until it is resumed. The worker process continues running.'
+  )
 }
 
 export async function taskCancel(taskRef: string): Promise<void> {

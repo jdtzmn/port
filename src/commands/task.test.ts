@@ -112,6 +112,7 @@ import {
   taskDaemon,
   taskList,
   taskLogs,
+  taskPause,
   taskRead,
   taskResume,
   taskStart,
@@ -978,6 +979,217 @@ describe('task command', () => {
     await expect(taskRead('a')).rejects.toBeInstanceOf(CliError)
     expect(mocks.error).toHaveBeenCalledWith(
       'Task id "a" is ambiguous: #1 (task-a1111111), #2 (task-a2222222); use a longer prefix or numeric id'
+    )
+  })
+
+  test('task pause transitions running task to paused_for_attach', async () => {
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: {
+        id: 'task-1',
+        displayId: 1,
+        status: 'running',
+        attach: {},
+        runtime: { workerPid: 123, worktreePath: '/repo/.port/trees/port-task-task-1' },
+      },
+    })
+
+    await taskPause('1')
+
+    expect(mocks.patchTask).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      expect.objectContaining({
+        attach: expect.objectContaining({ state: 'pending_handoff' }),
+      }),
+      expect.objectContaining({ type: 'task.paused' })
+    )
+    expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      'paused_for_attach',
+      'Paused by user'
+    )
+  })
+
+  test('task pause rejects terminal task', async () => {
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: { id: 'task-1', displayId: 1, status: 'completed' },
+    })
+    mocks.isTerminalTaskStatus.mockReturnValue(true)
+
+    await expect(taskPause('1')).rejects.toBeInstanceOf(CliError)
+    expect(mocks.error).toHaveBeenCalledWith(
+      'Task #1 (task-1) is terminal (completed); cannot pause'
+    )
+  })
+
+  test('task pause is no-op when already paused', async () => {
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: { id: 'task-1', displayId: 1, status: 'paused_for_attach' },
+    })
+
+    await taskPause('1')
+
+    expect(mocks.info).toHaveBeenCalledWith('Task #1 (task-1) is already paused')
+    expect(mocks.patchTask).not.toHaveBeenCalled()
+  })
+
+  test('task pause rejects queued task', async () => {
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: { id: 'task-1', displayId: 1, status: 'queued' },
+    })
+
+    await expect(taskPause('1')).rejects.toBeInstanceOf(CliError)
+    expect(mocks.error).toHaveBeenCalledWith(
+      'Task #1 (task-1) is queued; only running, preparing, or resuming tasks can be paused'
+    )
+  })
+
+  test('task resume from paused_for_attach calls resumeFromAttach and transitions to running', async () => {
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: {
+        id: 'task-1',
+        displayId: 1,
+        status: 'paused_for_attach',
+        attach: {
+          state: 'handoff_ready',
+          lockOwner: 'jacob',
+          sessionHandle: 'session-1',
+        },
+        runtime: {
+          workerPid: 777,
+          worktreePath: '/repo/.port/trees/port-task-task-1',
+          checkpoint: {
+            runId: 'run-2',
+          },
+        },
+        branch: 'port-task-task-1',
+      },
+    })
+
+    await taskResume('1')
+
+    const resolved = await mocks.resolveTaskAdapter.mock.results[0]?.value
+    expect(resolved.adapter.resumeFromAttach).toHaveBeenCalled()
+    expect(mocks.patchTask).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      expect.objectContaining({
+        attach: expect.objectContaining({ state: 'detached', lockOwner: undefined }),
+      }),
+      expect.objectContaining({ type: 'task.attach.resumed' })
+    )
+    expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      'running',
+      'Resumed from attach pause'
+    )
+    expect(mocks.ensureTaskDaemon).toHaveBeenCalledWith('/repo')
+  })
+
+  test('task resume from paused_for_attach marks resume_failed on adapter error', async () => {
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: {
+        id: 'task-1',
+        displayId: 1,
+        status: 'paused_for_attach',
+        attach: {
+          state: 'handoff_ready',
+          lockOwner: 'jacob',
+          sessionHandle: 'session-1',
+        },
+        runtime: {
+          workerPid: 777,
+          worktreePath: '/repo/.port/trees/port-task-task-1',
+          checkpoint: { runId: 'run-2' },
+        },
+        branch: 'port-task-task-1',
+      },
+    })
+
+    mocks.resolveTaskAdapter.mockResolvedValue({
+      adapter: {
+        id: 'local',
+        capabilities: {
+          supportsCheckpoint: true,
+          supportsRestore: true,
+          supportsAttachHandoff: true,
+        },
+        resumeFromAttach: vi.fn().mockRejectedValue(new Error('resume exploded')),
+        restore: vi.fn(),
+        checkpoint: vi.fn(),
+        requestHandoff: vi.fn(),
+        attachContext: vi.fn(),
+      },
+      configuredId: 'local',
+      resolvedId: 'local',
+      fallbackUsed: false,
+    })
+
+    await expect(taskResume('1')).rejects.toBeInstanceOf(CliError)
+    expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      'resume_failed',
+      'Resume from attach failed: Error: resume exploded'
+    )
+  })
+
+  test('task resume from resume_failed requests daemon restoration', async () => {
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: {
+        id: 'task-1',
+        displayId: 1,
+        status: 'resume_failed',
+        runtime: {
+          checkpoint: {
+            runId: 'run-1',
+          },
+        },
+      },
+    })
+
+    await taskResume('1')
+
+    expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
+      '/repo',
+      'task-1',
+      'resuming',
+      'Resume requested from failed state'
+    )
+    expect(mocks.ensureTaskDaemon).toHaveBeenCalledWith('/repo')
+  })
+
+  test('task resume from resume_failed without checkpoint rejects with guidance', async () => {
+    mocks.resolveTaskRef.mockResolvedValue({
+      ok: true,
+      matchedBy: 'display_id',
+      task: {
+        id: 'task-1',
+        displayId: 1,
+        status: 'resume_failed',
+        runtime: {},
+      },
+    })
+
+    await expect(taskResume('1')).rejects.toBeInstanceOf(CliError)
+    expect(mocks.error).toHaveBeenCalledWith(
+      'Task #1 (task-1) has no checkpoint; try: port task attach <ref> to revive, or port task cancel <ref>'
     )
   })
 })

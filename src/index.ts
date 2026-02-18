@@ -28,6 +28,7 @@ import {
   taskList,
   taskEvents,
   taskLogs,
+  taskPause,
   taskRead,
   taskResume,
   taskStart,
@@ -146,6 +147,11 @@ taskCommand
   .command('resume <task-ref>')
   .description('Resume a non-terminal task from checkpoints')
   .action(taskResume)
+
+taskCommand
+  .command('pause <task-ref>')
+  .description('Pause a running task (daemon stops managing it)')
+  .action(taskPause)
 
 taskCommand
   .command('cancel <task-ref>')
