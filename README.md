@@ -79,6 +79,8 @@ port install
 
 Configures your system to resolve your configured wildcard domain (default `*.port`) to `127.0.0.1`.
 
+On macOS, `port install` runs privileged steps through a centralized elevation helper: it uses the native admin credential dialog when a GUI session is available and falls back to terminal `sudo` in headless/non-GUI environments.
+
 You can optionally specify a custom IP address:
 
 ```bash

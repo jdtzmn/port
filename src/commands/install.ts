@@ -12,7 +12,7 @@ import {
 import { detectWorktree } from '../lib/worktree.ts'
 import { configExists, loadConfig } from '../lib/config.ts'
 import * as output from '../lib/output.ts'
-import { execAsync } from '../lib/exec.ts'
+import { execAsync, execPrivileged } from '../lib/exec.ts'
 
 /**
  * Check if a command exists
@@ -138,15 +138,15 @@ async function installMacOS(dnsIp: string, domain: string): Promise<boolean> {
       output.dim(`Resolver already configured at /etc/resolver/${domain}`)
     } else {
       // File exists but has wrong content — overwrite it
-      await execAsync(`echo "nameserver ${dnsIp}" | sudo tee /etc/resolver/${domain} > /dev/null`)
+      await execPrivileged(`echo "nameserver ${dnsIp}" | tee /etc/resolver/${domain} > /dev/null`)
       output.success(`Resolver updated at /etc/resolver/${domain}`)
     }
   } catch {
     // File doesn't exist or can't be read — create it
     output.info(`Creating resolver for .${domain} domain...`)
     try {
-      await execAsync('sudo mkdir -p /etc/resolver')
-      await execAsync(`echo "nameserver ${dnsIp}" | sudo tee /etc/resolver/${domain} > /dev/null`)
+      await execPrivileged('mkdir -p /etc/resolver')
+      await execPrivileged(`echo "nameserver ${dnsIp}" | tee /etc/resolver/${domain} > /dev/null`)
       output.success(`Resolver created at /etc/resolver/${domain}`)
     } catch (error) {
       output.error(`Failed to create resolver: ${error}`)
@@ -168,8 +168,8 @@ async function installMacOS(dnsIp: string, domain: string): Promise<boolean> {
   }
 
   const serviceCommand = dnsmasqRunning
-    ? 'sudo brew services restart dnsmasq'
-    : 'sudo brew services start dnsmasq'
+    ? `${brewPrefix}/bin/brew services restart dnsmasq`
+    : `${brewPrefix}/bin/brew services start dnsmasq`
 
   if (dnsmasqRunning) {
     output.info('Reloading dnsmasq service...')
@@ -178,12 +178,12 @@ async function installMacOS(dnsIp: string, domain: string): Promise<boolean> {
   }
 
   try {
-    await execAsync(serviceCommand)
+    await execPrivileged(serviceCommand)
     output.success(dnsmasqRunning ? 'dnsmasq service reloaded' : 'dnsmasq service started')
   } catch (error) {
     output.error(`Failed to ${dnsmasqRunning ? 'reload' : 'start'} dnsmasq: ${error}`)
     output.info('Run this command as an admin user:')
-    output.info(`  ${serviceCommand}`)
+    output.info(`  sudo ${serviceCommand}`)
     serviceOk = false
   }
 
