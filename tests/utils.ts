@@ -156,3 +156,17 @@ async function bringDownComposeProject(projectDir: string) {
 export async function bringDownAllComposeProjects() {
   await Promise.all(Array.from(tempDirRegistry).map(dir => bringDownComposeProject(dir)))
 }
+
+/**
+ * Fetch with a timeout to prevent hung requests from consuming the entire poll window.
+ */
+export async function fetchWithTimeout(url: string, timeoutMs = 5000): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    return await fetch(url, { signal: controller.signal })
+  } finally {
+    clearTimeout(timeout)
+  }
+}
