@@ -29,14 +29,14 @@ function generatePosixHook(): string {
   return `port() {
   if [ "$1" = "enter" ] || [ "$1" = "exit" ]; then
     local __port_output __port_status
-    __port_output="$(command port "\$@" --shell-helper 2>/dev/tty)"
+    __port_output="$(command port "$@" --shell-helper 2>/dev/tty)"
     __port_status=$?
     if [ $__port_status -eq 0 ] && [ -n "$__port_output" ]; then
       eval "$__port_output"
     fi
     return $__port_status
   else
-    command port "\$@"
+    command port "$@"
   fi
 }`
 }
