@@ -17,6 +17,7 @@ services:
 
   app:
     build: .
+    image: port-test-db-and-server-app
     environment:
       NODE_ENV: development
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/app_db
