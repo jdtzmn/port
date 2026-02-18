@@ -116,13 +116,40 @@ async function logTimeoutDiagnostics(
   console.error('--- DIAGNOSTICS ---')
   console.error('docker ps:', await runDiag('docker ps -a'))
   console.error('docker network ls:', await runDiag('docker network ls'))
-  console.error('traefik logs:', await runDiag(`docker logs --tail 80 ${TRAEFIK_CONTAINER}`))
   console.error(
-    'traefik routers:',
+    'traefik logs (stdout+stderr):',
+    await runDiag(`docker logs --tail 80 ${TRAEFIK_CONTAINER} 2>&1`)
+  )
+  console.error(
+    'traefik config inside container:',
+    await runDiag(`docker exec ${TRAEFIK_CONTAINER} cat /etc/traefik/traefik.yml`)
+  )
+  console.error(
+    'traefik HTTP routers:',
     await runDiag(
-      `docker exec ${TRAEFIK_CONTAINER} sh -lc ${shellQuote('wget -qO- http://127.0.0.1:8080/api/http/routers || true')}`
+      `docker exec ${TRAEFIK_CONTAINER} wget -qO- http://127.0.0.1:8080/api/http/routers 2>&1 || true`
     )
   )
+  console.error(
+    'traefik entrypoints:',
+    await runDiag(
+      `docker exec ${TRAEFIK_CONTAINER} wget -qO- http://127.0.0.1:8080/api/entrypoints 2>&1 || true`
+    )
+  )
+  // Inspect app container networks and labels
+  const appContainers = await runDiag(
+    `docker ps --filter "label=traefik.enable=true" --format "{{.Names}}"`
+  )
+  for (const name of appContainers.split('\n').filter(Boolean)) {
+    console.error(
+      `container ${name} networks:`,
+      await runDiag(`docker inspect ${name} --format '{{json .NetworkSettings.Networks}}' 2>&1`)
+    )
+    console.error(
+      `container ${name} labels:`,
+      await runDiag(`docker inspect ${name} --format '{{json .Config.Labels}}' 2>&1`)
+    )
+  }
   console.error('curl probe:', await runDiag(buildCurlProbeCommand(url)))
   console.error(`dns lookup:`, await runDiag(`getent hosts ${new URL(url).hostname}`))
   console.error('last status:', lastStatus)

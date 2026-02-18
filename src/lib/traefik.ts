@@ -109,7 +109,7 @@ export function generateTraefikConfig(ports: number[]): TraefikConfig {
   return {
     api: {
       dashboard: true,
-      insecure: false,
+      insecure: true,
     },
     providers: {
       docker: {
