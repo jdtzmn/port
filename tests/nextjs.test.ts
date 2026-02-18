@@ -8,6 +8,9 @@ const TIMEOUT = 240000 // Next.js takes longer to start than other frameworks
 /** Max time to poll for a service to respond (leave headroom for setup/teardown) */
 const POLL_TIMEOUT = 150000
 
+/** Max time for a single HTTP request before retrying */
+const REQUEST_TIMEOUT = 3000
+
 /** UUID regex for validating a complete string */
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -23,7 +26,7 @@ async function fetchJson<T>(url: string, maxWaitTime = POLL_TIMEOUT): Promise<T>
 
   while (Date.now() - startTime < maxWaitTime) {
     try {
-      const res = await fetch(url)
+      const res = await fetchWithTimeout(url)
       if (res.status === 200) {
         const json = await res.json()
         return json as T
@@ -64,7 +67,7 @@ async function fetchHtmlWithContent(
 
   while (Date.now() - startTime < maxWaitTime) {
     try {
-      const res = await fetch(url)
+      const res = await fetchWithTimeout(url)
       if (res.status === 200) {
         const html = await res.text()
         if (contentCheck(html)) {
@@ -80,6 +83,25 @@ async function fetchHtmlWithContent(
   throw new Error(`Timed out waiting for ${url} to return expected content`)
 }
 
+async function fetchWithTimeout(url: string, timeoutMs = REQUEST_TIMEOUT): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    return await fetch(url, { signal: controller.signal })
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+async function safeDown(worktreePath: string): Promise<void> {
+  try {
+    await execPortAsync(['down', '-y'], worktreePath)
+  } catch {
+    // Best-effort cleanup in failure scenarios.
+  }
+}
+
 describe('Next.js routing through Traefik', () => {
   test(
     'separate worktrees have unique server UUIDs',
@@ -88,37 +110,36 @@ describe('Next.js routing through Traefik', () => {
         initWithConfig: true,
       })
 
-      // Create two worktrees (--no-shell so they exit immediately)
-      await execPortAsync(['next-a', '--no-shell'], sample.dir)
-      await execPortAsync(['next-b', '--no-shell'], sample.dir)
-
-      // Navigate to the worktree directories and run `up`
-      // Note: branch names are lowercased by sanitizeBranchName
       const worktreeADir = join(sample.dir, './.port/trees/next-a')
       const worktreeBDir = join(sample.dir, './.port/trees/next-b')
 
-      // Start worktrees sequentially to avoid concurrent image builds
-      await execPortAsync(['up'], worktreeADir)
-      await execPortAsync(['up'], worktreeBDir)
+      try {
+        // Create two worktrees (--no-shell so they exit immediately)
+        await execPortAsync(['next-a', '--no-shell'], sample.dir)
+        await execPortAsync(['next-b', '--no-shell'], sample.dir)
 
-      // Fetch UUIDs from both worktrees via API route
-      const aApiUrl = 'http://next-a.port:3000/api/id'
-      const bApiUrl = 'http://next-b.port:3000/api/id'
+        // Start worktrees sequentially to avoid concurrent image builds
+        await execPortAsync(['up'], worktreeADir)
+        await execPortAsync(['up'], worktreeBDir)
 
-      const aResponse = await fetchJson<{ id: string }>(aApiUrl)
-      const bResponse = await fetchJson<{ id: string }>(bApiUrl)
+        // Fetch UUIDs from both worktrees via API route
+        const aApiUrl = 'http://next-a.port:3000/api/id'
+        const bApiUrl = 'http://next-b.port:3000/api/id'
 
-      // Each server should have a unique UUID
-      expect(aResponse.id).not.toEqual(bResponse.id)
+        const aResponse = await fetchJson<{ id: string }>(aApiUrl)
+        const bResponse = await fetchJson<{ id: string }>(bApiUrl)
 
-      // Verify UUIDs are valid UUID format
-      expect(aResponse.id).toMatch(UUID_REGEX)
-      expect(bResponse.id).toMatch(UUID_REGEX)
+        // Each server should have a unique UUID
+        expect(aResponse.id).not.toEqual(bResponse.id)
 
-      // Cleanup
-      await execPortAsync(['down', '-y'], worktreeADir)
-      await execPortAsync(['down', '-y'], worktreeBDir)
-      await sample.cleanup()
+        // Verify UUIDs are valid UUID format
+        expect(aResponse.id).toMatch(UUID_REGEX)
+        expect(bResponse.id).toMatch(UUID_REGEX)
+      } finally {
+        await safeDown(worktreeADir)
+        await safeDown(worktreeBDir)
+        await sample.cleanup()
+      }
     },
     TIMEOUT
   )
@@ -130,25 +151,26 @@ describe('Next.js routing through Traefik', () => {
         initWithConfig: true,
       })
 
-      await execPortAsync(['up'], sample.dir)
+      try {
+        await execPortAsync(['up'], sample.dir)
 
-      const apiUrl = `${sample.urlWithPort(3000)}/api/id`
+        const apiUrl = `${sample.urlWithPort(3000)}/api/id`
 
-      // Make multiple requests
-      const response1 = await fetchJson<{ id: string }>(apiUrl)
-      const response2 = await fetchJson<{ id: string }>(apiUrl)
-      const response3 = await fetchJson<{ id: string }>(apiUrl)
+        // Make multiple requests
+        const response1 = await fetchJson<{ id: string }>(apiUrl)
+        const response2 = await fetchJson<{ id: string }>(apiUrl)
+        const response3 = await fetchJson<{ id: string }>(apiUrl)
 
-      // All requests should return the same UUID
-      expect(response1.id).toEqual(response2.id)
-      expect(response2.id).toEqual(response3.id)
+        // All requests should return the same UUID
+        expect(response1.id).toEqual(response2.id)
+        expect(response2.id).toEqual(response3.id)
 
-      // Verify it's a valid UUID
-      expect(response1.id).toMatch(UUID_REGEX)
-
-      // Cleanup
-      await execPortAsync(['down', '-y'], sample.dir)
-      await sample.cleanup()
+        // Verify it's a valid UUID
+        expect(response1.id).toMatch(UUID_REGEX)
+      } finally {
+        await safeDown(sample.dir)
+        await sample.cleanup()
+      }
     },
     TIMEOUT
   )
@@ -160,26 +182,27 @@ describe('Next.js routing through Traefik', () => {
         initWithConfig: true,
       })
 
-      await execPortAsync(['up'], sample.dir)
+      try {
+        await execPortAsync(['up'], sample.dir)
 
-      const pageUrl = sample.urlWithPort(3000)
+        const pageUrl = sample.urlWithPort(3000)
 
-      // Poll until the page returns HTML containing a UUID.
-      // Next.js dev server may return a loading/compiling page before the
-      // actual content is ready, so we keep retrying until the UUID appears.
-      const pageHtml = await fetchHtmlWithContent(pageUrl, html => UUID_SEARCH_REGEX.test(html))
+        // Poll until the page returns HTML containing a UUID.
+        // Next.js dev server may return a loading/compiling page before the
+        // actual content is ready, so we keep retrying until the UUID appears.
+        const pageHtml = await fetchHtmlWithContent(pageUrl, html => UUID_SEARCH_REGEX.test(html))
 
-      // Verify the page contains a UUID (the server ID rendered by the page component)
-      const uuidMatch = pageHtml.match(UUID_SEARCH_REGEX)
-      expect(uuidMatch).not.toBeNull()
+        // Verify the page contains a UUID (the server ID rendered by the page component)
+        const uuidMatch = pageHtml.match(UUID_SEARCH_REGEX)
+        expect(uuidMatch).not.toBeNull()
 
-      // Verify it's valid HTML
-      expect(pageHtml).toContain('<!DOCTYPE html>')
-      expect(pageHtml).toContain('</html>')
-
-      // Cleanup
-      await execPortAsync(['down', '-y'], sample.dir)
-      await sample.cleanup()
+        // Verify it's valid HTML
+        expect(pageHtml).toContain('<!DOCTYPE html>')
+        expect(pageHtml).toContain('</html>')
+      } finally {
+        await safeDown(sample.dir)
+        await sample.cleanup()
+      }
     },
     TIMEOUT
   )

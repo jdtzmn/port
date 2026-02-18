@@ -4,6 +4,7 @@ import { execPortAsync, prepareSample } from './utils'
 import { afterEach, describe, test, expect } from 'vitest'
 
 const TIMEOUT = 45000
+const REQUEST_TIMEOUT = 3000
 
 describe('port run integration', () => {
   // Track spawned processes for cleanup
@@ -105,6 +106,17 @@ function spawnPortRun(port: number, command: string[], cwd: string): ChildProces
   })
 }
 
+async function fetchWithTimeout(url: string, timeoutMs = REQUEST_TIMEOUT): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    return await fetch(url, { signal: controller.signal })
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 /**
  * Poll a URL until it responds with status 200
  */
@@ -113,7 +125,7 @@ async function pollUntilReady(url: string, timeoutMs = 30000): Promise<Response>
 
   while (Date.now() - startTime < timeoutMs) {
     try {
-      const response = await fetch(url)
+      const response = await fetchWithTimeout(url)
       if (response.status === 200) {
         return response
       }
