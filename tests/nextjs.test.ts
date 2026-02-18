@@ -8,8 +8,7 @@ const TIMEOUT = 240000 // Next.js takes longer to start than other frameworks
 /** Max time to poll for a service to respond (leave headroom for setup/teardown) */
 const POLL_TIMEOUT = 150000
 
-/** Max time for a single HTTP request before retrying */
-const REQUEST_TIMEOUT = 3000
+const TRAEFIK_CONTAINER = 'port-traefik'
 
 /** UUID regex for validating a complete string */
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -23,12 +22,17 @@ const UUID_SEARCH_REGEX = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
  */
 async function fetchJson<T>(url: string, maxWaitTime = POLL_TIMEOUT): Promise<T> {
   const startTime = Date.now()
+  let lastStatus = 'none'
+  let lastBody = ''
 
   while (Date.now() - startTime < maxWaitTime) {
     try {
-      const res = await fetchWithTimeout(url)
-      if (res.status === 200) {
-        const json = await res.json()
+      const response = await curlRequest(url)
+      lastStatus = response.status.toString()
+      lastBody = response.body.slice(0, 300)
+
+      if (response.status === 200) {
+        const json = JSON.parse(response.body)
         return json as T
       }
     } catch {
@@ -37,22 +41,10 @@ async function fetchJson<T>(url: string, maxWaitTime = POLL_TIMEOUT): Promise<T>
     await new Promise(resolve => setTimeout(resolve, 1000))
   }
 
-  // Dump diagnostic info for CI debugging
-  const diag = async (cmd: string) => {
-    try {
-      const { stdout } = await execAsync(cmd)
-      return stdout.trim()
-    } catch {
-      return '(command failed)'
-    }
-  }
-  console.error('--- DIAGNOSTICS ---')
-  console.error('docker ps:', await diag('docker ps -a'))
-  console.error('docker network ls:', await diag('docker network ls'))
-  console.error('traefik routers:', await diag('curl -s http://localhost:1211/api/http/routers'))
-  console.error(`dns lookup:`, await diag(`getent hosts ${new URL(url).hostname}`))
-  console.error('--- END DIAGNOSTICS ---')
-  throw new Error(`Timed out waiting for ${url} to respond`)
+  await logTimeoutDiagnostics(url, lastStatus, lastBody)
+  throw new Error(
+    `Timed out waiting for ${url} to respond (last status=${lastStatus}, body=${JSON.stringify(lastBody)})`
+  )
 }
 
 /**
@@ -64,12 +56,17 @@ async function fetchHtmlWithContent(
   maxWaitTime = POLL_TIMEOUT
 ): Promise<string> {
   const startTime = Date.now()
+  let lastStatus = 'none'
+  let lastBody = ''
 
   while (Date.now() - startTime < maxWaitTime) {
     try {
-      const res = await fetchWithTimeout(url)
-      if (res.status === 200) {
-        const html = await res.text()
+      const response = await curlRequest(url)
+      lastStatus = response.status.toString()
+      lastBody = response.body.slice(0, 300)
+
+      if (response.status === 200) {
+        const html = response.body
         if (contentCheck(html)) {
           return html
         }
@@ -80,17 +77,86 @@ async function fetchHtmlWithContent(
     await new Promise(resolve => setTimeout(resolve, 1000))
   }
 
-  throw new Error(`Timed out waiting for ${url} to return expected content`)
+  await logTimeoutDiagnostics(url, lastStatus, lastBody)
+  throw new Error(
+    `Timed out waiting for ${url} to return expected content (last status=${lastStatus}, body=${JSON.stringify(lastBody)})`
+  )
 }
 
-async function fetchWithTimeout(url: string, timeoutMs = REQUEST_TIMEOUT): Promise<Response> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), timeoutMs)
-
+async function runDiag(command: string): Promise<string> {
   try {
-    return await fetch(url, { signal: controller.signal })
-  } finally {
-    clearTimeout(timeout)
+    const { stdout } = await execAsync(command)
+    return stdout.trim()
+  } catch {
+    return '(command failed)'
+  }
+}
+
+function resolveHostForUrl(url: string): string {
+  const parsed = new URL(url)
+  const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80')
+  return `${parsed.hostname}:${port}:127.0.0.1`
+}
+
+function buildCurlProbeCommand(url: string): string {
+  return [
+    'curl -sS --max-time 5 --noproxy "*"',
+    `--resolve ${shellQuote(resolveHostForUrl(url))}`,
+    '-D -',
+    `${shellQuote(url)}`,
+    '| head -40',
+  ].join(' ')
+}
+
+async function logTimeoutDiagnostics(
+  url: string,
+  lastStatus: string,
+  lastBody: string
+): Promise<void> {
+  console.error('--- DIAGNOSTICS ---')
+  console.error('docker ps:', await runDiag('docker ps -a'))
+  console.error('docker network ls:', await runDiag('docker network ls'))
+  console.error('traefik logs:', await runDiag(`docker logs --tail 80 ${TRAEFIK_CONTAINER}`))
+  console.error(
+    'traefik routers:',
+    await runDiag(
+      `docker exec ${TRAEFIK_CONTAINER} sh -lc ${shellQuote('wget -qO- http://127.0.0.1:8080/api/http/routers || true')}`
+    )
+  )
+  console.error('curl probe:', await runDiag(buildCurlProbeCommand(url)))
+  console.error(`dns lookup:`, await runDiag(`getent hosts ${new URL(url).hostname}`))
+  console.error('last status:', lastStatus)
+  console.error('last body snippet:', lastBody)
+  console.error('--- END DIAGNOSTICS ---')
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`
+}
+
+async function curlRequest(url: string): Promise<{ status: number; body: string }> {
+  const command = [
+    'curl -sS --max-time 5 --noproxy "*"',
+    `--resolve ${shellQuote(resolveHostForUrl(url))}`,
+    `${shellQuote(url)}`,
+    '-w "\\n%{http_code}"',
+  ].join(' ')
+
+  const { stdout } = await execAsync(command)
+  const trimmed = stdout.trimEnd()
+  const splitIndex = trimmed.lastIndexOf('\n')
+
+  if (splitIndex === -1) {
+    return { status: 0, body: trimmed }
+  }
+
+  const body = trimmed.slice(0, splitIndex)
+  const statusText = trimmed.slice(splitIndex + 1).trim()
+  const status = parseInt(statusText, 10)
+
+  return {
+    status: Number.isFinite(status) ? status : 0,
+    body,
   }
 }
 
