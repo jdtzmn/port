@@ -12,7 +12,7 @@ describe('parallel worktrees', () => {
         initWithConfig: true,
       })
 
-      // Create worktrees (enter now returns immediately without spawning a sub-shell)
+      // Create worktrees
       await execPortAsync(['enter', 'A'], sample.dir)
       await execPortAsync(['enter', 'B'], sample.dir)
 
