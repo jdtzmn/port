@@ -138,7 +138,7 @@ async function installMacOS(dnsIp: string, domain: string): Promise<boolean> {
       output.dim(`Resolver already configured at /etc/resolver/${domain}`)
     } else {
       // File exists but has wrong content — overwrite it
-      await execPrivileged(`echo "nameserver ${dnsIp}" | tee /etc/resolver/${domain} > /dev/null`)
+      await execPrivileged(`echo "nameserver ${dnsIp}" > /etc/resolver/${domain}`)
       output.success(`Resolver updated at /etc/resolver/${domain}`)
     }
   } catch {
@@ -146,7 +146,7 @@ async function installMacOS(dnsIp: string, domain: string): Promise<boolean> {
     output.info(`Creating resolver for .${domain} domain...`)
     try {
       await execPrivileged('mkdir -p /etc/resolver')
-      await execPrivileged(`echo "nameserver ${dnsIp}" | tee /etc/resolver/${domain} > /dev/null`)
+      await execPrivileged(`echo "nameserver ${dnsIp}" > /etc/resolver/${domain}`)
       output.success(`Resolver created at /etc/resolver/${domain}`)
     } catch (error) {
       output.error(`Failed to create resolver: ${error}`)
@@ -221,7 +221,7 @@ async function installLinuxDualMode(dnsIp: string, domain: string): Promise<bool
   if (!(await commandExists('dnsmasq'))) {
     output.info('Installing dnsmasq...')
     try {
-      await execAsync('sudo apt-get update && sudo apt-get install -y dnsmasq')
+      await execPrivileged('apt-get update && apt-get install -y dnsmasq')
       output.success('dnsmasq installed')
     } catch (error) {
       output.error(`Failed to install dnsmasq: ${error}`)
@@ -237,19 +237,13 @@ async function installLinuxDualMode(dnsIp: string, domain: string): Promise<bool
   // 2. Configure dnsmasq on port 5354
   output.info(`Configuring dnsmasq on port ${DNSMASQ_ALT_PORT}...`)
   try {
-    await execAsync('sudo mkdir -p /etc/dnsmasq.d/')
-    await execAsync(
-      `echo "port=${DNSMASQ_ALT_PORT}" | sudo tee /etc/dnsmasq.d/${domain}.conf > /dev/null`
-    )
-    await execAsync(
-      `echo "address=/${domain}/${dnsIp}" | sudo tee -a /etc/dnsmasq.d/${domain}.conf > /dev/null`
-    )
+    await execPrivileged('mkdir -p /etc/dnsmasq.d/')
+    await execPrivileged(`echo "port=${DNSMASQ_ALT_PORT}" > /etc/dnsmasq.d/${domain}.conf`)
+    await execPrivileged(`echo "address=/${domain}/${dnsIp}" >> /etc/dnsmasq.d/${domain}.conf`)
 
     // If running in Docker, configure dnsmasq to forward non-.port queries to Docker's DNS
     if (inDocker) {
-      await execAsync(
-        `echo "server=127.0.0.11" | sudo tee -a /etc/dnsmasq.d/${domain}.conf > /dev/null`
-      )
+      await execPrivileged(`echo "server=127.0.0.11" >> /etc/dnsmasq.d/${domain}.conf`)
       output.dim('Added Docker DNS (127.0.0.11) as upstream server')
     }
 
@@ -262,7 +256,7 @@ async function installLinuxDualMode(dnsIp: string, domain: string): Promise<bool
   // 3. Restart dnsmasq via systemctl (will use port 5354 from config)
   output.info('Restarting dnsmasq...')
   try {
-    await execAsync('sudo systemctl restart dnsmasq')
+    await execPrivileged('systemctl restart dnsmasq')
     output.success(`dnsmasq restarted on port ${DNSMASQ_ALT_PORT}`)
   } catch (error) {
     output.error(`Failed to restart dnsmasq: ${error}`)
@@ -272,23 +266,21 @@ async function installLinuxDualMode(dnsIp: string, domain: string): Promise<bool
   // 4. Configure systemd-resolved to use dnsmasq
   output.info('Configuring systemd-resolved...')
   try {
-    await execAsync('sudo mkdir -p /etc/systemd/resolved.conf.d/')
-    await execAsync(
-      `echo "[Resolve]" | sudo tee /etc/systemd/resolved.conf.d/${domain}.conf > /dev/null`
-    )
-    await execAsync(
-      `echo "DNS=127.0.0.1:${DNSMASQ_ALT_PORT}" | sudo tee -a /etc/systemd/resolved.conf.d/${domain}.conf > /dev/null`
+    await execPrivileged('mkdir -p /etc/systemd/resolved.conf.d/')
+    await execPrivileged(`echo "[Resolve]" > /etc/systemd/resolved.conf.d/${domain}.conf`)
+    await execPrivileged(
+      `echo "DNS=127.0.0.1:${DNSMASQ_ALT_PORT}" >> /etc/systemd/resolved.conf.d/${domain}.conf`
     )
 
     // For non-Docker Linux, use routing domain so systemd-resolved
     // only sends wildcard-domain queries to dnsmasq (keeps default DNS for other queries)
     if (!inDocker) {
-      await execAsync(
-        `echo "Domains=~${domain}" | sudo tee -a /etc/systemd/resolved.conf.d/${domain}.conf > /dev/null`
+      await execPrivileged(
+        `echo "Domains=~${domain}" >> /etc/systemd/resolved.conf.d/${domain}.conf`
       )
     }
 
-    await execAsync('sudo systemctl restart systemd-resolved')
+    await execPrivileged('systemctl restart systemd-resolved')
     output.success('systemd-resolved configured')
   } catch (error) {
     output.error(`Failed to configure systemd-resolved: ${error}`)
@@ -309,7 +301,7 @@ async function installLinuxStandalone(dnsIp: string, domain: string): Promise<bo
   if (!(await commandExists('dnsmasq'))) {
     output.info('Installing dnsmasq...')
     try {
-      await execAsync('sudo apt-get update && sudo apt-get install -y dnsmasq')
+      await execPrivileged('apt-get update && apt-get install -y dnsmasq')
       output.success('dnsmasq installed')
     } catch (error) {
       output.error(`Failed to install dnsmasq: ${error}`)
@@ -322,10 +314,8 @@ async function installLinuxStandalone(dnsIp: string, domain: string): Promise<bo
   // 2. Configure dnsmasq on port 53 (standard)
   output.info('Configuring dnsmasq...')
   try {
-    await execAsync('sudo mkdir -p /etc/dnsmasq.d/')
-    await execAsync(
-      `echo "address=/${domain}/${dnsIp}" | sudo tee /etc/dnsmasq.d/${domain}.conf > /dev/null`
-    )
+    await execPrivileged('mkdir -p /etc/dnsmasq.d/')
+    await execPrivileged(`echo "address=/${domain}/${dnsIp}" > /etc/dnsmasq.d/${domain}.conf`)
     output.success('dnsmasq configured')
   } catch (error) {
     output.error(`Failed to configure dnsmasq: ${error}`)
@@ -335,7 +325,7 @@ async function installLinuxStandalone(dnsIp: string, domain: string): Promise<bo
   // 3. Restart dnsmasq service
   output.info('Restarting dnsmasq...')
   try {
-    await execAsync('sudo systemctl restart dnsmasq')
+    await execPrivileged('systemctl restart dnsmasq')
     output.success('dnsmasq restarted')
   } catch (error) {
     output.error(`Failed to restart dnsmasq: ${error}`)

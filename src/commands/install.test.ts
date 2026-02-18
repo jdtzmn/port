@@ -242,7 +242,7 @@ describe('install command domain handling', () => {
         return { stdout: '' }
       }
 
-      if (cmd === 'echo "nameserver 127.0.0.1" | tee /etc/resolver/stlabs > /dev/null') {
+      if (cmd === 'echo "nameserver 127.0.0.1" > /etc/resolver/stlabs') {
         return { stdout: '' }
       }
 
@@ -258,7 +258,7 @@ describe('install command domain handling', () => {
     // Resolver was still created despite service failure
     expect(mocks.execPrivileged).toHaveBeenCalledWith('mkdir -p /etc/resolver')
     expect(mocks.execPrivileged).toHaveBeenCalledWith(
-      'echo "nameserver 127.0.0.1" | tee /etc/resolver/stlabs > /dev/null'
+      'echo "nameserver 127.0.0.1" > /etc/resolver/stlabs'
     )
     expect(mocks.success).toHaveBeenCalledWith('Resolver created at /etc/resolver/stlabs')
     // Service failure is reported
