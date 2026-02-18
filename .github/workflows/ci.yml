@@ -71,8 +71,39 @@ jobs:
         run: |
           sudo ln -s "$(pwd)/dist/index.js" /usr/local/bin/port && chmod +x dist/index.js
 
+      - name: Pre-pull and build Docker images used by integration tests
+        run: |
+          # Pull/build images from test sample compose files
+          for dir in tests/samples/*/; do
+            if [ -f "$dir/docker-compose.yml" ]; then
+              docker compose -f "$dir/docker-compose.yml" pull --ignore-buildable &
+              docker compose -f "$dir/docker-compose.yml" build &
+            fi
+          done
+
+          # Pull the Traefik image referenced in source code
+          grep -roh "traefik:v[0-9.]*" src/lib/traefik.ts | head -1 | xargs docker pull &
+
+          wait
+
       - name: Configure DNS
         run: sudo env PATH=$PATH port install -y
 
       - name: Run tests
         run: bun run test
+
+      - name: Traefik diagnostics
+        if: failure()
+        run: |
+          echo "=== Docker containers ==="
+          docker ps -a
+          echo "=== Docker networks ==="
+          docker network ls
+          echo "=== Traefik logs ==="
+          docker logs --tail 100 port-traefik 2>&1 || echo "(no traefik container)"
+          echo "=== Traefik config ==="
+          docker exec port-traefik cat /etc/traefik/traefik.yml 2>&1 || echo "(no traefik container)"
+          echo "=== Traefik HTTP routers ==="
+          docker exec port-traefik wget -qO- http://127.0.0.1:8080/api/http/routers 2>&1 || echo "(API unavailable)"
+          echo "=== Traefik entrypoints ==="
+          docker exec port-traefik wget -qO- http://127.0.0.1:8080/api/entrypoints 2>&1 || echo "(API unavailable)"
