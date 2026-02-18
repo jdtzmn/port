@@ -1,5 +1,6 @@
 import { join } from 'path'
 import { execPortAsync, prepareSample } from '@tests/utils'
+import { execAsync } from '../lib/exec'
 import { describe, test, expect } from 'vitest'
 
 const TIMEOUT = 180000
@@ -52,6 +53,24 @@ describe('parallel worktrees', () => {
       }
 
       if (!ready) {
+        // Dump diagnostic info for CI debugging
+        const diag = async (cmd: string) => {
+          try {
+            const { stdout } = await execAsync(cmd)
+            return stdout.trim()
+          } catch {
+            return '(command failed)'
+          }
+        }
+        console.error('--- DIAGNOSTICS ---')
+        console.error('docker ps:', await diag('docker ps -a'))
+        console.error('docker network ls:', await diag('docker network ls'))
+        console.error(
+          'traefik routers:',
+          await diag('curl -s http://localhost:1211/api/http/routers')
+        )
+        console.error('dns a.port:', await diag('getent hosts a.port'))
+        console.error('--- END DIAGNOSTICS ---')
         throw new Error('Timed out waiting for services to respond')
       }
 

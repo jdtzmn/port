@@ -1,5 +1,6 @@
 import { join } from 'path'
 import { execPortAsync, prepareSample } from './utils'
+import { execAsync } from '../src/lib/exec'
 import { describe, test, expect } from 'vitest'
 
 const TIMEOUT = 240000 // Next.js takes longer to start than other frameworks
@@ -33,6 +34,21 @@ async function fetchJson<T>(url: string, maxWaitTime = POLL_TIMEOUT): Promise<T>
     await new Promise(resolve => setTimeout(resolve, 1000))
   }
 
+  // Dump diagnostic info for CI debugging
+  const diag = async (cmd: string) => {
+    try {
+      const { stdout } = await execAsync(cmd)
+      return stdout.trim()
+    } catch {
+      return '(command failed)'
+    }
+  }
+  console.error('--- DIAGNOSTICS ---')
+  console.error('docker ps:', await diag('docker ps -a'))
+  console.error('docker network ls:', await diag('docker network ls'))
+  console.error('traefik routers:', await diag('curl -s http://localhost:1211/api/http/routers'))
+  console.error(`dns lookup:`, await diag(`getent hosts ${new URL(url).hostname}`))
+  console.error('--- END DIAGNOSTICS ---')
   throw new Error(`Timed out waiting for ${url} to respond`)
 }
 

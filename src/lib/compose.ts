@@ -436,7 +436,11 @@ export function generateOverrideContent(
       }
 
       serviceOverride.ports = [] // Will be prefixed with !override in output
-      serviceOverride.networks = [TRAEFIK_NETWORK]
+      // Keep the default project network for inter-service DNS resolution
+      // (e.g. app → postgres) and add traefik-network for external routing.
+      // Without "default", all services share only traefik-network, causing
+      // DNS alias collisions when multiple projects use the same service names.
+      serviceOverride.networks = ['default', TRAEFIK_NETWORK]
       serviceOverride.labels = labels
     }
 
@@ -676,13 +680,18 @@ export async function isTraefikRunning(): Promise<boolean> {
 }
 
 /**
- * Restart Traefik container (needed after config changes)
+ * Restart Traefik container (needed after config changes).
+ *
+ * Uses `up -d` instead of `restart` so the container is recreated when the
+ * compose file changes (e.g. new port mappings or volume mounts).  A plain
+ * `restart` only stops/starts the existing container, leaving stale port
+ * bindings in place.
  */
 export async function restartTraefik(): Promise<void> {
   const cmd = await getComposeCommand()
 
   try {
-    await execAsync(`${cmd} restart`, {
+    await execAsync(`${cmd} up -d`, {
       cwd: TRAEFIK_DIR,
       timeout: 60000,
     })
