@@ -5,6 +5,7 @@ import { init } from './commands/init.ts'
 import { list } from './commands/list.ts'
 import { install } from './commands/install.ts'
 import { enter } from './commands/enter.ts'
+import { exit } from './commands/exit.ts'
 import { up } from './commands/up.ts'
 import { down } from './commands/down.ts'
 import { remove } from './commands/remove.ts'
@@ -110,6 +111,12 @@ program
     const shellEnabled = commandShell ?? parentShell ?? true
     await enter(branch, { noShell: !shellEnabled })
   })
+
+// port exit
+program
+  .command('exit')
+  .description('Exit the current worktree and return to the repository root')
+  .action(exit)
 
 // port urls [service]
 program
