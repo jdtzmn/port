@@ -2,7 +2,7 @@ import { join } from 'path'
 import { execPortAsync, prepareSample } from '@tests/utils'
 import { describe, test, expect } from 'vitest'
 
-const TIMEOUT = 60000
+const TIMEOUT = 120000
 
 describe('parallel worktrees', () => {
   test(
@@ -29,7 +29,7 @@ describe('parallel worktrees', () => {
       const bURL = 'http://b.port:3000'
 
       await new Promise<void>((resolve, reject) => {
-        const maxWaitTime = 30000
+        const maxWaitTime = 90000
         const startTime = Date.now()
 
         const intervalId = setInterval(async () => {

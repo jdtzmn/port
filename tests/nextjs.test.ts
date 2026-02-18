@@ -2,7 +2,7 @@ import { join } from 'path'
 import { execPortAsync, prepareSample } from './utils'
 import { describe, test, expect } from 'vitest'
 
-const TIMEOUT = 120000 // Next.js takes longer to start than other frameworks
+const TIMEOUT = 180000 // Next.js takes longer to start than other frameworks
 
 /** UUID regex for validating a complete string */
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -13,7 +13,7 @@ const UUID_SEARCH_REGEX = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 /**
  * Helper to fetch JSON from a URL with retries
  */
-async function fetchJson<T>(url: string, maxWaitTime = 60000): Promise<T> {
+async function fetchJson<T>(url: string, maxWaitTime = 90000): Promise<T> {
   const startTime = Date.now()
 
   while (Date.now() - startTime < maxWaitTime) {
@@ -116,7 +116,7 @@ describe('Next.js routing through Traefik', () => {
 
       // Wait for the page to respond and verify it contains a UUID
       const startTime = Date.now()
-      const maxWaitTime = 60000
+      const maxWaitTime = 90000
 
       let pageHtml = ''
       while (Date.now() - startTime < maxWaitTime) {

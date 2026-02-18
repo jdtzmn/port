@@ -66,6 +66,21 @@ jobs:
         run: |
           sudo ln -s "$(pwd)/dist/index.js" /usr/local/bin/port && chmod +x dist/index.js
 
+      - name: Pre-pull and build Docker images used by integration tests
+        run: |
+          # Pull/build images from test sample compose files
+          for dir in tests/samples/*/; do
+            if [ -f "$dir/docker-compose.yml" ]; then
+              docker compose -f "$dir/docker-compose.yml" pull --ignore-buildable &
+              docker compose -f "$dir/docker-compose.yml" build &
+            fi
+          done
+
+          # Pull the Traefik image referenced in source code
+          grep -roh "traefik:v[0-9.]*" src/lib/traefik.ts | head -1 | xargs docker pull &
+
+          wait
+
       - name: Configure DNS
         run: sudo env PATH=$PATH port install -y
 
