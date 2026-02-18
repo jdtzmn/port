@@ -49,8 +49,8 @@ describe('port run integration', () => {
       })
 
       // Create worktrees A and B
-      await execPortAsync(['run-a', '--no-shell'], sample.dir)
-      await execPortAsync(['run-b', '--no-shell'], sample.dir)
+      await execPortAsync(['enter', 'run-a'], sample.dir)
+      await execPortAsync(['enter', 'run-b'], sample.dir)
 
       const worktreeADir = join(sample.dir, '.port/trees/run-a')
       const worktreeBDir = join(sample.dir, '.port/trees/run-b')

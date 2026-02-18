@@ -12,9 +12,9 @@ describe('parallel worktrees', () => {
         initWithConfig: true,
       })
 
-      // Create worktrees (--no-shell so they exit immediately)
-      await execPortAsync(['A', '--no-shell'], sample.dir)
-      await execPortAsync(['B', '--no-shell'], sample.dir)
+      // Create worktrees (enter now returns immediately without spawning a sub-shell)
+      await execPortAsync(['enter', 'A'], sample.dir)
+      await execPortAsync(['enter', 'B'], sample.dir)
 
       // Navigate to the worktree directories and run `up`
       // Note: branch names are lowercased by sanitizeBranchName

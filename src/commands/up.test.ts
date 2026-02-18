@@ -40,9 +40,9 @@ describe('samples start', () => {
         initWithConfig: true,
       })
 
-      const { findByText } = await renderCLI(['up'], sample.dir)
+      const { findByError } = await renderCLI(['up'], sample.dir)
 
-      const instance = await findByText(
+      const instance = await findByError(
         'Traefik dashboard:',
         {},
         {
@@ -78,9 +78,9 @@ describe('samples start', () => {
       })
 
       try {
-        const { findByText } = await renderCLI(['up'], sample.dir)
+        const { findByError } = await renderCLI(['up'], sample.dir)
 
-        await findByText('Traefik dashboard:', {}, { timeout: SAMPLES_TIMEOUT })
+        await findByError('Traefik dashboard:', {}, { timeout: SAMPLES_TIMEOUT })
 
         const postgresHost = new URL(sample.urlWithPort(5432)).hostname
         const sslResponse = await probePostgresSslResponse(postgresHost, 5432)
@@ -107,15 +107,15 @@ describe('docker compose output streaming', () => {
         initWithConfig: true,
       })
 
-      const { findByText } = await renderCLI(['up'], sample.dir)
+      const { findByError } = await renderCLI(['up'], sample.dir)
 
       // Docker compose outputs "Started" when containers start.
       // This confirms docker compose output is being streamed to the terminal.
-      const startedOutput = await findByText('Started', {}, { timeout: SAMPLES_TIMEOUT })
+      const startedOutput = await findByError('Started', {}, { timeout: SAMPLES_TIMEOUT })
       expect(startedOutput).toBeInTheConsole()
 
       // Wait for completion and cleanup
-      await findByText('Traefik dashboard:', {}, { timeout: SAMPLES_TIMEOUT })
+      await findByError('Traefik dashboard:', {}, { timeout: SAMPLES_TIMEOUT })
       const downInstance = await renderCLI(['down', '-y'], sample.dir)
       await waitFor(() => expect(downInstance.hasExit()).toMatchObject({ exitCode: 0 }), {
         timeout: SAMPLES_TIMEOUT,
@@ -134,14 +134,14 @@ describe('docker compose output streaming', () => {
 
       // First start the services
       const upInstance = await renderCLI(['up'], sample.dir)
-      await upInstance.findByText('Traefik dashboard:', {}, { timeout: SAMPLES_TIMEOUT })
+      await upInstance.findByError('Traefik dashboard:', {}, { timeout: SAMPLES_TIMEOUT })
 
       // Now test that down streams docker compose output
-      const { findByText } = await renderCLI(['down', '-y'], sample.dir)
+      const { findByError } = await renderCLI(['down', '-y'], sample.dir)
 
       // Docker compose outputs "Stopping" when containers stop.
       // This confirms docker compose output is being streamed to the terminal.
-      const stoppingOutput = await findByText('Stopping', {}, { timeout: SAMPLES_TIMEOUT })
+      const stoppingOutput = await findByError('Stopping', {}, { timeout: SAMPLES_TIMEOUT })
       expect(stoppingOutput).toBeInTheConsole()
 
       await sample.cleanup()

@@ -18,6 +18,7 @@ import { status } from './commands/status.ts'
 import { cleanup } from './commands/cleanup.ts'
 import { urls } from './commands/urls.ts'
 import { onboard } from './commands/onboard.ts'
+import { shellHook } from './commands/shell-hook.ts'
 import { detectWorktree } from './lib/worktree.ts'
 import { branchExists } from './lib/git.ts'
 import * as output from './lib/output.ts'
@@ -104,19 +105,25 @@ program.command('status').description('Show per-service status for all worktrees
 program
   .command('enter <branch>')
   .description('Enter a worktree by branch name (works even for command-name branches)')
-  .option('--no-shell', 'Skip spawning a subshell (useful for CI/scripting)')
-  .action(async (branch: string, options: { shell?: boolean }, command: Command) => {
-    const commandShell = options.shell
-    const parentShell = command.parent?.opts<{ shell?: boolean }>().shell
-    const shellEnabled = commandShell ?? parentShell ?? true
-    await enter(branch, { noShell: !shellEnabled })
+  .option('--shell-helper', 'Output shell commands to stdout for eval (used by shell-hook)')
+  .action(async (branch: string, options: { shellHelper?: boolean }) => {
+    await enter(branch, { shellHelper: options.shellHelper })
   })
 
 // port exit
 program
   .command('exit')
   .description('Exit the current worktree and return to the repository root')
-  .action(exit)
+  .option('--shell-helper', 'Output shell commands to stdout for eval (used by shell-hook)')
+  .action(async (options: { shellHelper?: boolean }) => {
+    await exit({ shellHelper: options.shellHelper })
+  })
+
+// port shell-hook <shell>
+program
+  .command('shell-hook <shell>')
+  .description('Print shell integration code for automatic cd (bash, zsh, or fish)')
+  .action(shellHook)
 
 // port urls [service]
 program
@@ -198,15 +205,15 @@ program.hook('preAction', async () => {
 
 program
   .argument('[branch]', 'Branch name to enter (creates worktree if needed)')
-  .option('--no-shell', 'Skip spawning a subshell (useful for CI/scripting)')
-  .action(async (branch: string | undefined, options: { shell: boolean }) => {
+  .option('--shell-helper', 'Output shell commands to stdout for eval (used by shell-hook)')
+  .action(async (branch: string | undefined, options: { shellHelper?: boolean }) => {
     if (branch) {
       // Check if it looks like a command that wasn't matched
       if (getReservedCommands().has(branch)) {
         program.help()
         return
       }
-      await enter(branch, { noShell: !options.shell })
+      await enter(branch, { shellHelper: options.shellHelper })
     } else {
       // No argument provided, show help
       program.help()

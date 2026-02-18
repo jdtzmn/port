@@ -90,6 +90,7 @@ import { enter } from './enter.ts'
 
 describe('enter typo confirmation', () => {
   let exitSpy: ReturnType<typeof vi.spyOn>
+  let stdoutSpy: ReturnType<typeof vi.spyOn>
   const originalIsTTY = process.stdin.isTTY
   const originalArgv = process.argv
 
@@ -118,7 +119,7 @@ describe('enter typo confirmation', () => {
     mocks.command.mockImplementation((value: string) => value)
 
     Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true })
-    process.argv = ['/usr/local/bin/bun', '/repo/dist/index.js', 'instal', '--no-shell']
+    process.argv = ['/usr/local/bin/bun', '/repo/dist/index.js', 'instal']
 
     mocks.spawn.mockImplementation(() => ({
       on: (event: string, handler: (code?: number) => void) => {
@@ -131,12 +132,15 @@ describe('enter typo confirmation', () => {
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => {
       throw new Error(`process.exit:${typeof code === 'number' ? code : 0}`)
     })
+
+    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
   })
 
   afterEach(() => {
     Object.defineProperty(process.stdin, 'isTTY', { value: originalIsTTY, configurable: true })
     process.argv = originalArgv
     exitSpy.mockRestore()
+    stdoutSpy.mockRestore()
   })
 
   test('cancels creation when the user rejects typo confirmation', async () => {
@@ -144,7 +148,7 @@ describe('enter typo confirmation', () => {
       .mockResolvedValueOnce({ createBranch: false })
       .mockResolvedValueOnce({ runSuggestedCommand: false })
 
-    await expect(enter('instal', { noShell: true })).rejects.toThrow('process.exit:1')
+    await expect(enter('instal')).rejects.toThrow('process.exit:1')
 
     expect(mocks.prompt).toHaveBeenCalledWith([
       {
@@ -158,7 +162,7 @@ describe('enter typo confirmation', () => {
       {
         type: 'confirm',
         name: 'runSuggestedCommand',
-        message: 'Run "port install --no-shell" instead?',
+        message: 'Run "port install" instead?',
         default: true,
       },
     ])
@@ -169,7 +173,7 @@ describe('enter typo confirmation', () => {
   test('creates worktree when the user confirms typo warning', async () => {
     mocks.prompt.mockResolvedValue({ createBranch: true })
 
-    await enter('instal', { noShell: true })
+    await enter('instal')
 
     expect(mocks.prompt).toHaveBeenCalledTimes(1)
     expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'instal')
@@ -188,7 +192,7 @@ describe('enter typo confirmation', () => {
       .mockResolvedValueOnce({ createBranch: false })
       .mockResolvedValueOnce({ runSuggestedCommand: true })
 
-    await expect(enter('instal', { noShell: true })).rejects.toThrow('process.exit:0')
+    await expect(enter('instal')).rejects.toThrow('process.exit:0')
 
     expect(mocks.spawn).toHaveBeenCalledWith(
       process.execPath,
@@ -205,9 +209,72 @@ describe('enter typo confirmation', () => {
     mocks.branchExists.mockResolvedValue(true)
     mocks.createWorktree.mockResolvedValue('/repo/.port/trees/status')
 
-    await enter('status', { noShell: true })
+    await enter('status')
 
     expect(mocks.prompt).not.toHaveBeenCalled()
     expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'status')
+  })
+})
+
+describe('enter --shell-helper', () => {
+  let exitSpy: ReturnType<typeof vi.spyOn>
+  let stdoutSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+
+    mocks.detectWorktree.mockReturnValue({
+      repoRoot: '/repo',
+      worktreePath: '/repo',
+      name: 'main',
+      isMainRepo: true,
+    })
+    mocks.configExists.mockReturnValue(true)
+    mocks.loadConfig.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
+    mocks.getTreesDir.mockReturnValue('/tmp')
+    mocks.getComposeFile.mockReturnValue('docker-compose.yml')
+    mocks.worktreeExists.mockReturnValue(true)
+    mocks.getWorktreePath.mockReturnValue('/repo/.port/trees/feature-1')
+    mocks.hookExists.mockResolvedValue(false)
+    mocks.parseComposeFile.mockRejectedValue(new Error('compose missing'))
+    mocks.getProjectName.mockReturnValue('repo-feature-1')
+    mocks.branch.mockImplementation((value: string) => value)
+    mocks.command.mockImplementation((value: string) => value)
+
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => {
+      throw new Error(`process.exit:${typeof code === 'number' ? code : 0}`)
+    })
+
+    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  })
+
+  afterEach(() => {
+    exitSpy.mockRestore()
+    stdoutSpy.mockRestore()
+  })
+
+  test('outputs shell commands to stdout when --shell-helper is set', async () => {
+    await enter('feature-1', { shellHelper: true })
+
+    expect(stdoutSpy).toHaveBeenCalledTimes(1)
+    const output = stdoutSpy.mock.calls[0][0] as string
+
+    expect(output).toContain("cd -- '/repo/.port/trees/feature-1'")
+    expect(output).toContain("export PORT_WORKTREE='feature-1'")
+    expect(output).toContain("export PORT_REPO='/repo'")
+  })
+
+  test('does not output shell commands without --shell-helper', async () => {
+    await enter('feature-1')
+
+    expect(stdoutSpy).not.toHaveBeenCalled()
+    // Should print human-readable hints instead
+    expect(mocks.info).toHaveBeenCalledWith('Run: cd /repo/.port/trees/feature-1')
+  })
+
+  test('prints shell integration hint without --shell-helper', async () => {
+    await enter('feature-1')
+
+    expect(mocks.dim).toHaveBeenCalledWith(expect.stringContaining('port shell-hook'))
   })
 })

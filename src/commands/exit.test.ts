@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   info: vi.fn(),
   dim: vi.fn(),
+  newline: vi.fn(),
 }))
 
 vi.mock('../lib/worktree.ts', () => ({
@@ -17,13 +18,14 @@ vi.mock('../lib/output.ts', () => ({
   error: mocks.error,
   info: mocks.info,
   dim: mocks.dim,
+  newline: mocks.newline,
 }))
 
 import { exit } from './exit.ts'
 
 describe('exit command', () => {
   let exitSpy: ReturnType<typeof vi.spyOn>
-  let consoleSpy: ReturnType<typeof vi.spyOn>
+  let stdoutSpy: ReturnType<typeof vi.spyOn>
   const originalEnv = { ...process.env }
 
   beforeEach(() => {
@@ -41,7 +43,7 @@ describe('exit command', () => {
       throw new Error(`process.exit:${typeof code === 'number' ? code : 0}`)
     })
 
-    consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
 
     // Clear PORT_WORKTREE by default
     delete process.env.PORT_WORKTREE
@@ -50,67 +52,163 @@ describe('exit command', () => {
 
   afterEach(() => {
     exitSpy.mockRestore()
-    consoleSpy.mockRestore()
+    stdoutSpy.mockRestore()
     // Restore original env
     process.env = { ...originalEnv }
   })
 
-  test('exits the sub-shell when PORT_WORKTREE is set', async () => {
-    process.env.PORT_WORKTREE = 'feature-1'
+  describe('with --shell-helper', () => {
+    test('outputs shell commands when in a worktree (detected by git)', async () => {
+      await exit({ shellHelper: true })
 
-    await expect(exit()).rejects.toThrow('process.exit:0')
+      expect(stdoutSpy).toHaveBeenCalledTimes(1)
+      const output = stdoutSpy.mock.calls[0][0] as string
 
-    expect(exitSpy).toHaveBeenCalledWith(0)
-    expect(mocks.dim).toHaveBeenCalledWith('Leaving worktree: feature-1')
-  })
-
-  test('prints cd command when in a worktree but not a sub-shell', async () => {
-    await exit()
-
-    expect(consoleSpy).toHaveBeenCalledWith('cd /repo')
-    expect(exitSpy).not.toHaveBeenCalled()
-  })
-
-  test('informs user when already at repository root', async () => {
-    mocks.detectWorktree.mockReturnValue({
-      repoRoot: '/repo',
-      worktreePath: '/repo',
-      name: 'repo',
-      isMainRepo: true,
+      expect(output).toContain("cd -- '/repo'")
+      expect(output).toContain('unset PORT_WORKTREE')
+      expect(output).toContain('unset PORT_REPO')
     })
 
-    await exit()
+    test('outputs shell commands when PORT_WORKTREE is set', async () => {
+      process.env.PORT_WORKTREE = 'feature-1'
 
-    expect(mocks.info).toHaveBeenCalledWith('Already at the repository root')
-    expect(consoleSpy).not.toHaveBeenCalledWith(expect.stringContaining('cd '))
-    expect(exitSpy).not.toHaveBeenCalled()
-  })
+      // Even if git says we're in main repo, PORT_WORKTREE takes precedence
+      mocks.detectWorktree.mockReturnValue({
+        repoRoot: '/repo',
+        worktreePath: '/repo',
+        name: 'repo',
+        isMainRepo: true,
+      })
 
-  test('exits with error when not in a git repository', async () => {
-    mocks.detectWorktree.mockImplementation(() => {
-      throw new Error('not a git repo')
+      await exit({ shellHelper: true })
+
+      expect(stdoutSpy).toHaveBeenCalledTimes(1)
+      const output = stdoutSpy.mock.calls[0][0] as string
+
+      expect(output).toContain("cd -- '/repo'")
+      expect(output).toContain('unset PORT_WORKTREE')
+      expect(output).toContain('unset PORT_REPO')
     })
 
-    await expect(exit()).rejects.toThrow('process.exit:1')
+    test('does not output shell commands when at repo root', async () => {
+      mocks.detectWorktree.mockReturnValue({
+        repoRoot: '/repo',
+        worktreePath: '/repo',
+        name: 'repo',
+        isMainRepo: true,
+      })
 
-    expect(mocks.error).toHaveBeenCalledWith('Not in a git repository')
-    expect(exitSpy).toHaveBeenCalledWith(1)
-  })
+      await exit({ shellHelper: true })
 
-  test('prioritizes sub-shell exit over worktree detection', async () => {
-    // Even if detectWorktree says we're in the main repo,
-    // if PORT_WORKTREE is set we should exit the sub-shell
-    process.env.PORT_WORKTREE = 'feature-1'
-    mocks.detectWorktree.mockReturnValue({
-      repoRoot: '/repo',
-      worktreePath: '/repo',
-      name: 'repo',
-      isMainRepo: true,
+      expect(stdoutSpy).not.toHaveBeenCalled()
+      expect(mocks.info).toHaveBeenCalledWith('Already at the repository root')
     })
 
-    await expect(exit()).rejects.toThrow('process.exit:0')
+    test('exits with error when not in a git repository', async () => {
+      mocks.detectWorktree.mockImplementation(() => {
+        throw new Error('not a git repo')
+      })
 
-    expect(exitSpy).toHaveBeenCalledWith(0)
-    expect(mocks.dim).toHaveBeenCalledWith('Leaving worktree: feature-1')
+      await expect(exit({ shellHelper: true })).rejects.toThrow('process.exit:1')
+
+      expect(mocks.error).toHaveBeenCalledWith('Not in a git repository')
+      expect(exitSpy).toHaveBeenCalledWith(1)
+    })
+  })
+
+  describe('without --shell-helper', () => {
+    test('prints cd hint when in a worktree', async () => {
+      await exit()
+
+      expect(mocks.info).toHaveBeenCalledWith('Run: cd /repo')
+      expect(stdoutSpy).not.toHaveBeenCalled()
+    })
+
+    test('prints shell integration hint when in a worktree', async () => {
+      await exit()
+
+      expect(mocks.dim).toHaveBeenCalledWith(expect.stringContaining('port shell-hook'))
+    })
+
+    test('prints cd hint when PORT_WORKTREE is set', async () => {
+      process.env.PORT_WORKTREE = 'feature-1'
+      mocks.detectWorktree.mockReturnValue({
+        repoRoot: '/repo',
+        worktreePath: '/repo',
+        name: 'repo',
+        isMainRepo: true,
+      })
+
+      await exit()
+
+      expect(mocks.info).toHaveBeenCalledWith('Run: cd /repo')
+    })
+
+    test('informs user when already at repository root', async () => {
+      mocks.detectWorktree.mockReturnValue({
+        repoRoot: '/repo',
+        worktreePath: '/repo',
+        name: 'repo',
+        isMainRepo: true,
+      })
+
+      await exit()
+
+      expect(mocks.info).toHaveBeenCalledWith('Already at the repository root')
+      expect(stdoutSpy).not.toHaveBeenCalled()
+    })
+
+    test('exits with error when not in a git repository', async () => {
+      mocks.detectWorktree.mockImplementation(() => {
+        throw new Error('not a git repo')
+      })
+
+      await expect(exit()).rejects.toThrow('process.exit:1')
+
+      expect(mocks.error).toHaveBeenCalledWith('Not in a git repository')
+      expect(exitSpy).toHaveBeenCalledWith(1)
+    })
+  })
+
+  describe('shell command output format', () => {
+    test('outputs commands separated by newlines', async () => {
+      await exit({ shellHelper: true })
+
+      const output = stdoutSpy.mock.calls[0][0] as string
+      const lines = output.trim().split('\n')
+
+      expect(lines).toHaveLength(3)
+      expect(lines[0]).toBe("cd -- '/repo'")
+      expect(lines[1]).toBe('unset PORT_WORKTREE')
+      expect(lines[2]).toBe('unset PORT_REPO')
+    })
+
+    test('handles repo root paths with spaces', async () => {
+      mocks.detectWorktree.mockReturnValue({
+        repoRoot: '/my repo/path',
+        worktreePath: '/my repo/path/.port/trees/feature-1',
+        name: 'feature-1',
+        isMainRepo: false,
+      })
+
+      await exit({ shellHelper: true })
+
+      const output = stdoutSpy.mock.calls[0][0] as string
+      expect(output).toContain("cd -- '/my repo/path'")
+    })
+
+    test('handles repo root paths with single quotes', async () => {
+      mocks.detectWorktree.mockReturnValue({
+        repoRoot: "/O'Brien/repo",
+        worktreePath: "/O'Brien/repo/.port/trees/feature-1",
+        name: 'feature-1',
+        isMainRepo: false,
+      })
+
+      await exit({ shellHelper: true })
+
+      const output = stdoutSpy.mock.calls[0][0] as string
+      expect(output).toContain("cd -- '/O'\\''Brien/repo'")
+    })
   })
 })

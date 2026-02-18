@@ -4,14 +4,14 @@ import chalk from 'chalk'
  * Output a success message with a green checkmark
  */
 export function success(message: string): void {
-  console.log(chalk.green('✓') + ' ' + message)
+  console.error(chalk.green('✓') + ' ' + message)
 }
 
 /**
  * Output a warning message with a yellow warning symbol
  */
 export function warn(message: string): void {
-  console.warn(chalk.yellow('⚠') + ' ' + message)
+  console.error(chalk.yellow('⚠') + ' ' + message)
 }
 
 /**
@@ -25,21 +25,21 @@ export function error(message: string): void {
  * Output an info message with a blue arrow
  */
 export function info(message: string): void {
-  console.log(chalk.blue('→') + ' ' + message)
+  console.error(chalk.blue('→') + ' ' + message)
 }
 
 /**
  * Output a dim/muted message (for secondary information)
  */
 export function dim(message: string): void {
-  console.log(chalk.dim(message))
+  console.error(chalk.dim(message))
 }
 
 /**
  * Output a header/title in bold
  */
 export function header(message: string): void {
-  console.log(chalk.bold(message))
+  console.error(chalk.bold(message))
 }
 
 /**
@@ -68,10 +68,10 @@ export function branch(name: string): string {
  */
 export function serviceUrls(services: Array<{ name: string; urls: string[] }>): void {
   for (const service of services) {
-    console.log()
-    console.log('  ' + chalk.bold(service.name) + ':')
+    console.error()
+    console.error('  ' + chalk.bold(service.name) + ':')
     for (const serviceUrl of service.urls) {
-      console.log('    ' + chalk.dim('•') + ' ' + url(serviceUrl))
+      console.error('    ' + chalk.dim('•') + ' ' + url(serviceUrl))
     }
   }
 }
@@ -80,5 +80,5 @@ export function serviceUrls(services: Array<{ name: string; urls: string[] }>): 
  * Output a blank line
  */
 export function newline(): void {
-  console.log()
+  console.error()
 }
