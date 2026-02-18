@@ -9,11 +9,10 @@ export default defineConfig({
     globalSetup: ['./tests/globalSetup.ts'],
     setupFiles: ['./tests/setup.ts'],
     exclude: ['**/node_modules/**', '**/.port/**'],
-    // Reserve one core for Docker containers, Traefik, and other child
-    // processes spawned by integration tests.  Without this cap the default
-    // (all available cores) lets multiple heavy test files run concurrently,
-    // which on a 2-core CI runner starves the containers and causes timeouts.
-    maxWorkers: Math.max(1, availableParallelism() - 1),
+    // CI runs Docker-heavy integration tests that share Traefik/DNS state.
+    // Keep workers at 1 in CI to avoid cross-test contention and startup
+    // timeouts on smaller runners.
+    maxWorkers: process.env.CI ? 1 : Math.max(1, availableParallelism() - 1),
   },
   resolve: {
     alias: {
