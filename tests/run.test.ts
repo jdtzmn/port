@@ -105,6 +105,17 @@ function spawnPortRun(port: number, command: string[], cwd: string): ChildProces
   })
 }
 
+async function fetchWithTimeout(url: string, timeoutMs = 5000): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    return await fetch(url, { signal: controller.signal })
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 /**
  * Poll a URL until it responds with status 200
  */
@@ -113,7 +124,7 @@ async function pollUntilReady(url: string, timeoutMs = 30000): Promise<Response>
 
   while (Date.now() - startTime < timeoutMs) {
     try {
-      const response = await fetch(url)
+      const response = await fetchWithTimeout(url)
       if (response.status === 200) {
         return response
       }
