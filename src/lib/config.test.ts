@@ -73,4 +73,36 @@ describe('loadConfig', () => {
 
     expect(config.domain).toBe(DEFAULT_DOMAIN)
   })
+
+  test('parses tcpPorts array', async () => {
+    const configPath = join(repoRoot, PORT_DIR, CONFIG_FILE)
+    await writeFile(configPath, '{ "tcpPorts": [5432, 3306] }')
+
+    const config = await loadConfig(repoRoot)
+
+    expect(config.tcpPorts).toEqual([5432, 3306])
+  })
+
+  test('tcpPorts defaults to undefined when omitted', async () => {
+    const configPath = join(repoRoot, PORT_DIR, CONFIG_FILE)
+    await writeFile(configPath, '{}')
+
+    const config = await loadConfig(repoRoot)
+
+    expect(config.tcpPorts).toBeUndefined()
+  })
+
+  test('rejects non-array tcpPorts', async () => {
+    const configPath = join(repoRoot, PORT_DIR, CONFIG_FILE)
+    await writeFile(configPath, '{ "tcpPorts": "5432" }')
+
+    await expect(loadConfig(repoRoot)).rejects.toBeInstanceOf(ConfigError)
+  })
+
+  test('rejects invalid port numbers in tcpPorts', async () => {
+    const configPath = join(repoRoot, PORT_DIR, CONFIG_FILE)
+    await writeFile(configPath, '{ "tcpPorts": [99999] }')
+
+    await expect(loadConfig(repoRoot)).rejects.toBeInstanceOf(ConfigError)
+  })
 })

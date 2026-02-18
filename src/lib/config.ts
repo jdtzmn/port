@@ -105,9 +105,24 @@ function validateConfig(config: unknown): PortConfig {
     compose = c.compose.trim()
   }
 
+  // Validate tcpPorts (optional, defaults to [])
+  let tcpPorts: number[] | undefined
+  if (c.tcpPorts !== undefined) {
+    if (!Array.isArray(c.tcpPorts)) {
+      throw new ConfigError('tcpPorts must be an array of port numbers')
+    }
+    for (const port of c.tcpPorts) {
+      if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new ConfigError(`tcpPorts: invalid port ${port} (must be integer 1-65535)`)
+      }
+    }
+    tcpPorts = c.tcpPorts as number[]
+  }
+
   return {
     domain,
     compose,
+    tcpPorts,
   }
 }
 

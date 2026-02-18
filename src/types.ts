@@ -6,6 +6,8 @@ export interface PortConfig {
   domain: string
   /** Path to docker-compose file (default: "docker-compose.yml") */
   compose?: string
+  /** Ports that should use TCP routing instead of HTTP (e.g. [5432] for Postgres) */
+  tcpPorts?: number[]
 }
 
 /**

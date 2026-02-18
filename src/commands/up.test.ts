@@ -13,7 +13,7 @@ async function probePostgresSslResponse(host: string, port: number): Promise<str
       reject(new Error(`Timed out probing Postgres at ${host}:${port}`))
     }, 8000)
 
-    socket.once('error', error => {
+    socket.once('error', (error: Error) => {
       clearTimeout(timeout)
       reject(error)
     })
@@ -23,7 +23,7 @@ async function probePostgresSslResponse(host: string, port: number): Promise<str
       socket.write(Buffer.from([0, 0, 0, 8, 4, 210, 22, 47]))
     })
 
-    socket.once('data', data => {
+    socket.once('data', (data: Buffer) => {
       clearTimeout(timeout)
       const response = data.subarray(0, 1).toString('ascii')
       socket.end()
@@ -74,7 +74,7 @@ describe('samples start', () => {
     'routes postgres traffic through the .port domain',
     async () => {
       const sample = await prepareSample('db-and-server', {
-        initWithConfig: true,
+        initWithConfig: { domain: 'port', tcpPorts: [5432] },
       })
 
       try {

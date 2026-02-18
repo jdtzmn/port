@@ -113,7 +113,14 @@ export async function up(): Promise<void> {
 
   // Generate/update override file
   try {
-    await writeOverrideFile(worktreePath, parsedCompose, name, config.domain, projectName)
+    await writeOverrideFile(
+      worktreePath,
+      parsedCompose,
+      name,
+      config.domain,
+      projectName,
+      config.tcpPorts
+    )
     output.dim('Updated .port/override.yml')
   } catch (error) {
     output.error(`Failed to generate override file: ${error}`)

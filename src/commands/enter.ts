@@ -150,7 +150,14 @@ export async function enter(branch: string, options?: EnterOptions): Promise<voi
   try {
     const parsedCompose = await parseComposeFile(worktreePath, composeFile)
     const projectName = getProjectName(repoRoot, sanitized)
-    await writeOverrideFile(worktreePath, parsedCompose, sanitized, config.domain, projectName)
+    await writeOverrideFile(
+      worktreePath,
+      parsedCompose,
+      sanitized,
+      config.domain,
+      projectName,
+      config.tcpPorts
+    )
     output.success('Generated .port/override.yml')
   } catch (error) {
     // It's okay if compose parsing fails here - the file might not exist yet in the worktree

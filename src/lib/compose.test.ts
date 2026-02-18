@@ -58,7 +58,38 @@ describe('generateOverrideContent', () => {
     )
   })
 
-  test('adds TCP routing labels for postgres-style connections', () => {
+  test('emits TCP labels for ports listed in tcpPorts', () => {
+    const parsedCompose: ParsedComposeFile = {
+      name: 'demo',
+      services: {
+        db: {
+          image: 'postgres:16',
+          ports: [{ published: 5432, target: 5432 }],
+        },
+      },
+    }
+
+    const override = generateOverrideContent(
+      parsedCompose,
+      'feature-1',
+      'port',
+      'feature-1',
+      [5432]
+    )
+
+    expect(override).toContain(
+      'traefik.tcp.routers.feature-1-db-5432.rule=HostSNI(`feature-1.port`)'
+    )
+    expect(override).toContain('traefik.tcp.routers.feature-1-db-5432.entrypoints=port5432')
+    expect(override).toContain('traefik.tcp.routers.feature-1-db-5432.tls=true')
+    expect(override).toContain(
+      'traefik.tcp.services.feature-1-db-5432.loadbalancer.server.port=5432'
+    )
+    // Should NOT also have HTTP labels for the same port
+    expect(override).not.toContain('traefik.http.routers.feature-1-db-5432')
+  })
+
+  test('defaults to HTTP labels when tcpPorts is empty', () => {
     const parsedCompose: ParsedComposeFile = {
       name: 'demo',
       services: {
@@ -71,14 +102,8 @@ describe('generateOverrideContent', () => {
 
     const override = generateOverrideContent(parsedCompose, 'feature-1', 'port')
 
-    expect(override).toContain(
-      'traefik.tcp.routers.feature-1-db-5432.rule=HostSNI(`feature-1.port`)'
-    )
-    expect(override).toContain('traefik.tcp.routers.feature-1-db-5432.entrypoints=port5432')
-    expect(override).toContain('traefik.tcp.routers.feature-1-db-5432.tls=true')
-    expect(override).toContain(
-      'traefik.tcp.services.feature-1-db-5432.loadbalancer.server.port=5432'
-    )
+    expect(override).toContain('traefik.http.routers.feature-1-db-5432')
+    expect(override).not.toContain('traefik.tcp.')
   })
 
   test('keeps separate mappings when published and target differ', () => {

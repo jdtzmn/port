@@ -382,21 +382,28 @@ function generateTraefikTcpLabels(
 /**
  * Generate Traefik labels for a service port.
  *
- * We emit both HTTP and TCP routers so hostname-based routing works for
- * HTTP traffic and TCP protocols (for example Postgres) on the same
- * `.port` domain conventions.
+ * Each port gets EITHER HTTP or TCP labels, never both. A TCP router
+ * with `tls=true` on the same entrypoint as an HTTP router forces
+ * Traefik to attempt TLS detection on every incoming connection, which
+ * breaks plain-HTTP routing (connections hit the TLS acceptor and get
+ * rejected with a 404).
+ *
+ * Ports listed in `tcpPorts` get TCP labels (for protocols like
+ * Postgres that negotiate TLS via HostSNI). All other ports get HTTP
+ * labels.
  */
 function generateTraefikLabels(
   worktreeName: string,
   serviceName: string,
   publishedPort: number,
   targetPort: number,
-  domain: string
+  domain: string,
+  tcpPorts: number[] = []
 ): string[] {
-  return [
-    ...generateTraefikHttpLabels(worktreeName, serviceName, publishedPort, targetPort, domain),
-    ...generateTraefikTcpLabels(worktreeName, serviceName, publishedPort, targetPort, domain),
-  ]
+  if (tcpPorts.includes(publishedPort)) {
+    return generateTraefikTcpLabels(worktreeName, serviceName, publishedPort, targetPort, domain)
+  }
+  return generateTraefikHttpLabels(worktreeName, serviceName, publishedPort, targetPort, domain)
 }
 
 /**
@@ -405,13 +412,16 @@ function generateTraefikLabels(
  * @param parsedCompose - Parsed compose file from docker compose config
  * @param worktreeName - Sanitized worktree/branch name
  * @param domain - Domain suffix (default: 'port')
+ * @param projectName - Compose project name
+ * @param tcpPorts - Ports that should use TCP routing instead of HTTP
  * @returns YAML string for the override file
  */
 export function generateOverrideContent(
   parsedCompose: ParsedComposeFile,
   worktreeName: string,
   domain: string = 'port',
-  projectName: string = worktreeName
+  projectName: string = worktreeName,
+  tcpPorts: number[] = []
 ): string {
   const services: Record<string, unknown> = {}
 
@@ -431,7 +441,14 @@ export function generateOverrideContent(
       // Add labels for each port
       for (const port of ports) {
         labels.push(
-          ...generateTraefikLabels(worktreeName, serviceName, port.published, port.target, domain)
+          ...generateTraefikLabels(
+            worktreeName,
+            serviceName,
+            port.published,
+            port.target,
+            domain,
+            tcpPorts
+          )
         )
       }
 
@@ -480,9 +497,16 @@ export async function writeOverrideFile(
   parsedCompose: ParsedComposeFile,
   worktreeName: string,
   domain: string = 'port',
-  projectName: string = worktreeName
+  projectName: string = worktreeName,
+  tcpPorts: number[] = []
 ): Promise<void> {
-  const content = generateOverrideContent(parsedCompose, worktreeName, domain, projectName)
+  const content = generateOverrideContent(
+    parsedCompose,
+    worktreeName,
+    domain,
+    projectName,
+    tcpPorts
+  )
   const overridePath = join(worktreePath, PORT_DIR, OVERRIDE_FILE)
   // Ensure .port directory exists (for worktrees)
   await mkdir(join(worktreePath, PORT_DIR), { recursive: true })
