@@ -47,7 +47,7 @@ async function updateTraefikComposeUnlocked(ports: number[]): Promise<void> {
   const compose = {
     services: {
       traefik: {
-        image: 'traefik:v3.0',
+        image: 'traefik:v3.6',
         container_name: 'port-traefik',
         restart: 'unless-stopped',
         ports: portMappings,
@@ -229,7 +229,7 @@ export function generateTraefikCompose(): string {
   const compose = {
     services: {
       traefik: {
-        image: 'traefik:v3.0',
+        image: 'traefik:v3.6',
         container_name: 'port-traefik',
         restart: 'unless-stopped',
         ports: ['80:80'],
