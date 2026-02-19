@@ -29,7 +29,7 @@ function generatePosixHook(shell: string): string {
   return `port() {
   if [ "$1" = "enter" ] || [ "$1" = "exit" ]; then
     local __port_output __port_status
-    __port_output="$(command port "$@" --shell-helper ${shell} 2>/dev/tty)"
+    __port_output="$(command port "$@" --shell-helper ${shell})"
     __port_status=$?
     if [ $__port_status -eq 0 ] && [ -n "$__port_output" ]; then
       eval "$__port_output"
@@ -44,7 +44,7 @@ function generatePosixHook(shell: string): string {
 function generateFishHook(): string {
   return `function port
   if test (count $argv) -gt 0; and begin; test "$argv[1]" = "enter"; or test "$argv[1]" = "exit"; end
-    set -l __port_output (command port $argv --shell-helper fish 2>/dev/tty | string collect)
+    set -l __port_output (command port $argv --shell-helper fish | string collect)
     set -l __port_status $status
     if test $__port_status -eq 0; and test -n "$__port_output"
       eval $__port_output

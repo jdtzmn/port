@@ -51,8 +51,8 @@ describe('shell-hook command', () => {
     // Should eval the output
     expect(output).toContain('eval')
 
-    // Should redirect stderr to tty so messages are visible
-    expect(output).toContain('2>/dev/tty')
+    // Should NOT redirect stderr (it passes through naturally in command substitution)
+    expect(output).not.toContain('2>/dev/tty')
   })
 
   test('generates zsh hook with port function', () => {
@@ -86,8 +86,8 @@ describe('shell-hook command', () => {
     // Should use fish-style test
     expect(output).toContain('test')
 
-    // Should redirect stderr to tty
-    expect(output).toContain('2>/dev/tty')
+    // Should NOT redirect stderr (it passes through naturally in command substitution)
+    expect(output).not.toContain('2>/dev/tty')
   })
 
   test('exits with error for unsupported shell', () => {

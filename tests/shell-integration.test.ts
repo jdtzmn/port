@@ -69,7 +69,7 @@ describe('shell integration', () => {
         try {
           const result = execSync(
             `bash -c '
-              eval "$(port shell-hook bash | sed "s|2>/dev/tty|2>/dev/null|")"
+              eval "$(port shell-hook bash)"
               cd "${sampleDir}"
               port enter test-branch
               echo "ENTER_PWD=$PWD"
@@ -108,7 +108,7 @@ describe('shell integration', () => {
         try {
           const result = execSync(
             `zsh -c '
-              eval "$(port shell-hook zsh | sed "s|2>/dev/tty|2>/dev/null|")"
+              eval "$(port shell-hook zsh)"
               cd "${sampleDir}"
               port enter test-branch
               echo "ENTER_PWD=$PWD"
@@ -147,7 +147,7 @@ describe('shell integration', () => {
         try {
           const result = execSync(
             `fish -c '
-              source (port shell-hook fish | string replace "2>/dev/tty" "2>/dev/null" | psub)
+              port shell-hook fish | source
               cd "${sampleDir}"
               port enter test-branch
               echo "ENTER_PWD="(pwd)
