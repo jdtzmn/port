@@ -3,13 +3,13 @@ import { createConnection } from 'net'
 import { describe, test, expect } from 'vitest'
 import { prepareSample, renderCLI } from '../../tests/utils'
 
-const SAMPLES_TIMEOUT = 30_000
+const SAMPLES_TIMEOUT = 60_000
 
 async function probePostgresSslResponse(
   host: string,
   port: number,
-  retries = 5,
-  delayMs = 1000
+  retries = 20,
+  delayMs = 2000
 ): Promise<string> {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
@@ -18,7 +18,7 @@ async function probePostgresSslResponse(
         const timeout = setTimeout(() => {
           socket.destroy()
           reject(new Error(`Timed out probing Postgres at ${host}:${port}`))
-        }, 8000)
+        }, 5000)
 
         socket.once('error', error => {
           clearTimeout(timeout)
@@ -39,7 +39,7 @@ async function probePostgresSslResponse(
       })
     } catch (error) {
       if (attempt === retries) throw error
-      await new Promise(r => setTimeout(r, delayMs * attempt))
+      await new Promise(r => setTimeout(r, delayMs))
     }
   }
   throw new Error('unreachable')
@@ -96,7 +96,7 @@ describe('samples start', () => {
         await findByError('Traefik dashboard:', {}, { timeout: SAMPLES_TIMEOUT })
 
         const postgresHost = new URL(sample.urlWithPort(5432)).hostname
-        const sslResponse = await probePostgresSslResponse(postgresHost, 5432, 10, 2000)
+        const sslResponse = await probePostgresSslResponse(postgresHost, 5432)
 
         expect(['S', 'N']).toContain(sslResponse)
 

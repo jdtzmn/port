@@ -719,6 +719,44 @@ export async function isTraefikRunning(): Promise<boolean> {
 }
 
 /**
+ * Check which host port bindings the running Traefik container actually has.
+ *
+ * Parses the `Ports` column from `docker inspect` and returns the set of
+ * published host ports.
+ */
+export async function getTraefikBoundPorts(): Promise<number[]> {
+  try {
+    // Returns port bindings like "0.0.0.0:80->80/tcp, 0.0.0.0:3000->3000/tcp"
+    const { stdout } = await execAsync(
+      'docker inspect --format "{{range $p, $conf := .NetworkSettings.Ports}}{{(index $conf 0).HostPort}} {{end}}" port-traefik'
+    )
+
+    const ports: number[] = []
+    for (const token of stdout.trim().split(/\s+/)) {
+      const port = parseInt(token, 10)
+      if (Number.isFinite(port) && port > 0) {
+        ports.push(port)
+      }
+    }
+
+    return ports
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Check if the running Traefik container has all the required ports bound.
+ *
+ * @param requiredPorts - Ports that must be bound on the host
+ * @returns true if all required ports are bound
+ */
+export async function traefikHasRequiredPorts(requiredPorts: number[]): Promise<boolean> {
+  const boundPorts = new Set(await getTraefikBoundPorts())
+  return requiredPorts.every(port => boundPorts.has(port))
+}
+
+/**
  * Restart Traefik container (needed after config changes).
  *
  * Uses `up -d` instead of `restart` so the container is recreated when the

@@ -1,4 +1,4 @@
-import { open, rename, stat, unlink, writeFile } from 'fs/promises'
+import { open, readFile, rename, stat, unlink, writeFile } from 'fs/promises'
 import { randomUUID } from 'crypto'
 
 interface FileLockOptions {
@@ -20,6 +20,32 @@ async function sleep(ms: number): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, ms))
 }
 
+/**
+ * Check if a process with the given PID is still running.
+ */
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0) // Signal 0 doesn't kill, just checks existence
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Read the PID stored in a lock file.
+ * Returns null if the file can't be read or doesn't contain a valid PID.
+ */
+async function readLockPid(lockFilePath: string): Promise<number | null> {
+  try {
+    const content = await readFile(lockFilePath, 'utf-8')
+    const pid = parseInt(content.trim(), 10)
+    return Number.isFinite(pid) && pid > 0 ? pid : null
+  } catch {
+    return null
+  }
+}
+
 export async function withFileLock<T>(
   lockFilePath: string,
   callback: () => Promise<T>,
@@ -39,20 +65,34 @@ export async function withFileLock<T>(
         throw error
       }
 
-      // Check if the existing lock is stale (holder likely crashed)
+      // Check if the existing lock is stale
+      let isStale = false
       try {
-        const lockStat = await stat(lockFilePath)
-        const lockAge = Date.now() - lockStat.mtimeMs
-        if (lockAge > staleLockThresholdMs) {
-          try {
-            await unlink(lockFilePath)
-          } catch {
-            // Another process may have already cleaned it up
+        // First check: is the lock holder process still alive?
+        const lockPid = await readLockPid(lockFilePath)
+        if (lockPid !== null && !isProcessAlive(lockPid)) {
+          isStale = true
+        }
+
+        // Second check: is the lock file older than the stale threshold?
+        if (!isStale) {
+          const lockStat = await stat(lockFilePath)
+          const lockAge = Date.now() - lockStat.mtimeMs
+          if (lockAge > staleLockThresholdMs) {
+            isStale = true
           }
-          continue
         }
       } catch {
         // Lock file disappeared between the open() and stat() — retry will succeed
+        continue
+      }
+
+      if (isStale) {
+        try {
+          await unlink(lockFilePath)
+        } catch {
+          // Another process may have already cleaned it up
+        }
         continue
       }
 
@@ -65,6 +105,8 @@ export async function withFileLock<T>(
   }
 
   try {
+    // Write our PID to the lock file so other processes can detect stale locks
+    await lockHandle.write(Buffer.from(String(process.pid)))
     return await callback()
   } finally {
     await lockHandle.close()
