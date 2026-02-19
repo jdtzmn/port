@@ -610,6 +610,42 @@ export async function composePs(
 }
 
 /**
+ * Wait until Traefik is accepting TCP connections on port 80.
+ * This ensures the proxy is fully ready before services start registering.
+ */
+async function waitForTraefikReady(timeoutMs = 15000): Promise<void> {
+  const { createConnection } = await import('net')
+  const startTime = Date.now()
+
+  while (Date.now() - startTime < timeoutMs) {
+    const connected = await new Promise<boolean>(resolve => {
+      const socket = createConnection({ host: '127.0.0.1', port: 80 })
+      const timer = setTimeout(() => {
+        socket.destroy()
+        resolve(false)
+      }, 2000)
+
+      socket.once('connect', () => {
+        clearTimeout(timer)
+        socket.destroy()
+        resolve(true)
+      })
+      socket.once('error', () => {
+        clearTimeout(timer)
+        socket.destroy()
+        resolve(false)
+      })
+    })
+
+    if (connected) return
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+
+  // Don't throw — Traefik may still become ready momentarily; callers have
+  // their own polling so a hard failure here would be overly strict.
+}
+
+/**
  * Start Traefik container
  *
  * This function handles concurrent starts gracefully - if another process
@@ -637,6 +673,7 @@ export async function startTraefik(): Promise<void> {
 
       while (Date.now() - startTime < maxWaitTime) {
         if (await isTraefikRunning()) {
+          await waitForTraefikReady()
           return // Traefik started successfully by another process
         }
         await new Promise(resolve => setTimeout(resolve, pollInterval))
@@ -647,6 +684,8 @@ export async function startTraefik(): Promise<void> {
 
     throw new ComposeError(`Failed to start Traefik: ${error}`)
   }
+
+  await waitForTraefikReady()
 }
 
 /**
@@ -698,4 +737,6 @@ export async function restartTraefik(): Promise<void> {
   } catch (error) {
     throw new ComposeError(`Failed to restart Traefik: ${error}`)
   }
+
+  await waitForTraefikReady()
 }
