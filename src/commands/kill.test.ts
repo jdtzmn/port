@@ -10,9 +10,9 @@ describe('port kill command', () => {
       gitInit: true,
     })
 
-    const { findByText } = await renderCLI(['kill'], sample.dir)
+    const { findByError } = await renderCLI(['kill'], sample.dir)
 
-    const instance = await findByText('No active host services found')
+    const instance = await findByError('No active host services found')
     expect(instance).toBeInTheConsole()
 
     await sample.cleanup()
@@ -38,9 +38,9 @@ describe('port kill command', () => {
       initWithConfig: true,
     })
 
-    const { findByText } = await renderCLI(['kill'], sample.dir)
+    const { findByError } = await renderCLI(['kill'], sample.dir)
 
-    const instance = await findByText('No active host services found')
+    const instance = await findByError('No active host services found')
     expect(instance).toBeInTheConsole()
 
     await sample.cleanup()
@@ -52,9 +52,9 @@ describe('port kill command', () => {
       initWithConfig: true,
     })
 
-    const { findByText } = await renderCLI(['kill', '3000'], sample.dir)
+    const { findByError } = await renderCLI(['kill', '3000'], sample.dir)
 
-    const instance = await findByText('No active host services found on logical port 3000')
+    const instance = await findByError('No active host services found on logical port 3000')
     expect(instance).toBeInTheConsole()
 
     await sample.cleanup()

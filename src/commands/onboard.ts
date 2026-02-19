@@ -21,9 +21,14 @@ const STEPS: OnboardStep[] = [
     why: 'Configures wildcard DNS so branch domains resolve locally.',
   },
   {
+    command: 'port shell-hook <bash|zsh|fish>',
+    how: 'Add eval "$(port shell-hook bash)" to your shell profile (one-time setup).',
+    why: 'Enables port enter/exit to change your shell directory automatically.',
+  },
+  {
     command: 'port enter <branch>',
     how: 'Use explicit enter, especially when branch names match commands.',
-    why: 'Creates or enters the branch worktree safely and predictably.',
+    why: 'Creates or enters the branch worktree and changes into it.',
   },
   {
     command: 'port up',
@@ -44,6 +49,11 @@ const STEPS: OnboardStep[] = [
     command: 'port down',
     how: 'Run in a worktree when you are done testing.',
     why: 'Stops project services and offers Traefik shutdown when appropriate.',
+  },
+  {
+    command: 'port exit',
+    how: 'Run to return to the repository root from a worktree.',
+    why: 'Changes back to the repo root and clears PORT_WORKTREE env var.',
   },
   {
     command: 'port remove <branch>',

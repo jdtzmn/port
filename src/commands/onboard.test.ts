@@ -48,8 +48,10 @@ describe('onboard command', () => {
     expect(mocks.header).toHaveBeenCalledWith('Port onboarding')
     expect(mocks.info).toHaveBeenCalledWith('Recommended flow:')
     expect(mocks.header).toHaveBeenCalledWith('1. port init')
-    expect(mocks.header).toHaveBeenCalledWith('3. port enter <branch>')
-    expect(mocks.header).toHaveBeenCalledWith('8. port remove <branch>')
+    expect(mocks.header).toHaveBeenCalledWith('3. port shell-hook <bash|zsh|fish>')
+    expect(mocks.header).toHaveBeenCalledWith('4. port enter <branch>')
+    expect(mocks.header).toHaveBeenCalledWith('9. port exit')
+    expect(mocks.header).toHaveBeenCalledWith('10. port remove <branch>')
     expect(mocks.dim).toHaveBeenCalledWith(
       '   How: Use explicit enter, especially when branch names match commands.'
     )
