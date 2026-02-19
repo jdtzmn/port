@@ -79,14 +79,16 @@ describe('Next.js routing through Traefik', () => {
         initWithConfig: true,
       })
 
+      // Create two worktrees
+      await execPortAsync(['enter', 'next-a'], sample.dir)
+      await execPortAsync(['enter', 'next-b'], sample.dir)
+
+      // Navigate to the worktree directories and run `up`
+      // Note: branch names are lowercased by sanitizeBranchName
       const worktreeADir = join(sample.dir, './.port/trees/next-a')
       const worktreeBDir = join(sample.dir, './.port/trees/next-b')
 
       try {
-        // Create two worktrees (--no-shell so they exit immediately)
-        await execPortAsync(['next-a', '--no-shell'], sample.dir)
-        await execPortAsync(['next-b', '--no-shell'], sample.dir)
-
         // Start worktrees sequentially to avoid concurrent image builds
         await execPortAsync(['up'], worktreeADir)
         await execPortAsync(['up'], worktreeBDir)

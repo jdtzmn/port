@@ -107,18 +107,43 @@ On Linux systems with `systemd-resolved` running (most modern Ubuntu/Debian syst
 
 This "dual-mode" setup allows both services to coexist without conflicts.
 
-### 4. Enter a Worktree
+### 4. Shell Integration (Recommended)
+
+Add this to your shell profile so `port enter` and `port exit` can change your working directory:
+
+```bash
+# ~/.bashrc
+eval "$(port shell-hook bash)"
+
+# ~/.zshrc
+eval "$(port shell-hook zsh)"
+
+# ~/.config/fish/config.fish
+port shell-hook fish | source
+```
+
+Without shell integration, `port enter` and `port exit` will print a `cd` command for you to run manually.
+
+### 5. Enter a Worktree
 
 ```bash
 port feature-1
 port enter feature-1
 ```
 
-This creates a new worktree and spawns a subshell inside it.
+This creates a new worktree and changes into it (with shell integration) or prints the path to `cd` into.
 Use `port enter <branch>` when your branch name collides with a command (for example `status` or `install`).
 If a branch and command collide, running `port <command>` shows a hint to use `port enter <branch>`.
 
-### 5. Start Services
+### 6. Exit a Worktree
+
+```bash
+port exit
+```
+
+Returns to the repository root and clears the `PORT_WORKTREE` environment variable.
+
+### 7. Start Services
 
 ```bash
 port up
@@ -126,7 +151,7 @@ port up
 
 Starts docker-compose services and makes them available at `feature-1.port:PORT`.
 
-### 6. Stop Services
+### 8. Stop Services
 
 ```bash
 port down
@@ -134,7 +159,7 @@ port down
 
 Stops services and optionally shuts down Traefik if no other projects are running.
 
-### 7. Run Host Processes (Non-Docker)
+### 9. Run Host Processes (Non-Docker)
 
 ```bash
 port run 3000 -- npm run dev
@@ -148,7 +173,7 @@ This is useful for:
 - Quick testing without containerization
 - Running multiple instances of the same service on different worktrees
 
-### 8. List Active Worktrees
+### 10. List Active Worktrees
 
 ```bash
 port list
@@ -171,7 +196,7 @@ port urls ui-frontend
 
 `port urls` works in either a worktree or the main repository.
 
-### 9. Remove a Worktree
+### 11. Remove a Worktree
 
 ```bash
 port remove feature-1
@@ -184,7 +209,7 @@ port rm --keep-branch feature-1
 Stops services, removes the worktree, and soft-deletes the local branch by archiving it under `archive/<name>-<timestamp>`.
 Use `--keep-branch` to preserve the local branch name.
 
-### 10. Clean Up Archived Branches
+### 12. Clean Up Archived Branches
 
 ```bash
 port cleanup
@@ -199,11 +224,14 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port init`                                      | Initialize `.port/` directory structure               |
 | `port onboard`                                   | Print recommended workflow and command usage guide    |
 | `port install [--dns-ip IP] [--domain DOMAIN]`   | Set up DNS for wildcard domain (default from config)  |
+| `port shell-hook <bash\|zsh\|fish>`              | Print shell integration code for automatic cd         |
 | `port enter <branch>`                            | Enter a worktree explicitly (including command names) |
 | `port <branch>`                                  | Enter a worktree (creates if doesn't exist)           |
+| `port exit`                                      | Exit the current worktree and return to repo root     |
 | `port up`                                        | Start docker-compose services in current worktree     |
 | `port down`                                      | Stop docker-compose services and host processes       |
 | `port run <port> -- <command...>`                | Run a host process with Traefik routing               |
+| `port kill [port]`                               | Stop host services (optionally by logical port)       |
 | `port remove <branch> [--force] [--keep-branch]` | Remove worktree and archive local branch              |
 | `port compose <args...>`                         | Run docker compose with auto `-f` flags               |
 | `port list`                                      | List worktree and host-service summary                |
@@ -305,6 +333,8 @@ port/
 │   │   ├── init.ts
 │   │   ├── install.ts
 │   │   ├── enter.ts
+│   │   ├── exit.ts
+│   │   ├── shell-hook.ts        # Shell integration (bash/zsh/fish)
 │   │   ├── up.ts
 │   │   ├── down.ts
 │   │   ├── run.ts               # Host process runner
@@ -315,6 +345,7 @@ port/
 │   │   ├── config.ts
 │   │   ├── git.ts
 │   │   ├── compose.ts
+│   │   ├── shell.ts             # Shell command generation
 │   │   ├── traefik.ts
 │   │   ├── registry.ts
 │   │   ├── hostService.ts       # Host service management

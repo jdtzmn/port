@@ -58,14 +58,21 @@ test('Help includes the onboard command', async () => {
   expect(instance).toBeInTheConsole()
 })
 
+test('Help includes the shell-hook command', async () => {
+  const { findByText } = await renderCLI(['--help'])
+
+  const instance = await findByText('shell-hook')
+  expect(instance).toBeInTheConsole()
+})
+
 test('Shows a hint when command name collides with a branch', async () => {
   const sample = await prepareSample('simple-server', { initWithConfig: true })
 
   try {
     await execAsync('git branch status', { cwd: sample.dir })
 
-    const { findByText } = await renderCLI(['status'], sample.dir)
-    const instance = await findByText(
+    const { findByError } = await renderCLI(['status'], sample.dir)
+    const instance = await findByError(
       'Hint: branch "status" matches a command. Use "port enter status".'
     )
     expect(instance).toBeInTheConsole()
