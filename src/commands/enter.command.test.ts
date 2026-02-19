@@ -253,7 +253,29 @@ describe('enter --shell-helper', () => {
     stdoutSpy.mockRestore()
   })
 
-  test('outputs shell commands to stdout when --shell-helper is set', async () => {
+  test('outputs bash shell commands when --shell-helper is bash', async () => {
+    await enter('feature-1', { shellHelper: 'bash' })
+
+    expect(stdoutSpy).toHaveBeenCalledTimes(1)
+    const output = stdoutSpy.mock.calls[0][0] as string
+
+    expect(output).toContain("cd -- '/repo/.port/trees/feature-1'")
+    expect(output).toContain("export PORT_WORKTREE='feature-1'")
+    expect(output).toContain("export PORT_REPO='/repo'")
+  })
+
+  test('outputs fish shell commands when --shell-helper is fish', async () => {
+    await enter('feature-1', { shellHelper: 'fish' })
+
+    expect(stdoutSpy).toHaveBeenCalledTimes(1)
+    const output = stdoutSpy.mock.calls[0][0] as string
+
+    expect(output).toContain("builtin cd '/repo/.port/trees/feature-1'")
+    expect(output).toContain("set -gx PORT_WORKTREE 'feature-1'")
+    expect(output).toContain("set -gx PORT_REPO '/repo'")
+  })
+
+  test('defaults to bash when --shell-helper is boolean true (backward compat)', async () => {
     await enter('feature-1', { shellHelper: true })
 
     expect(stdoutSpy).toHaveBeenCalledTimes(1)

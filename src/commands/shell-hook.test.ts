@@ -41,8 +41,8 @@ describe('shell-hook command', () => {
     // Should use `command port` to avoid recursion
     expect(output).toContain('command port')
 
-    // Should pass --shell-helper for enter/exit
-    expect(output).toContain('--shell-helper')
+    // Should pass --shell-helper bash for enter/exit
+    expect(output).toContain('--shell-helper bash')
 
     // Should intercept enter and exit
     expect(output).toContain('"enter"')
@@ -64,7 +64,7 @@ describe('shell-hook command', () => {
     // zsh uses same format as bash
     expect(output).toContain('port()')
     expect(output).toContain('command port')
-    expect(output).toContain('--shell-helper')
+    expect(output).toContain('--shell-helper zsh')
   })
 
   test('generates fish hook with port function', () => {
@@ -80,8 +80,8 @@ describe('shell-hook command', () => {
     // Should use `command port` to avoid recursion
     expect(output).toContain('command port')
 
-    // Should pass --shell-helper
-    expect(output).toContain('--shell-helper')
+    // Should pass --shell-helper fish
+    expect(output).toContain('--shell-helper fish')
 
     // Should use fish-style test
     expect(output).toContain('test')

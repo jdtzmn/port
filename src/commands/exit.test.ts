@@ -58,7 +58,29 @@ describe('exit command', () => {
   })
 
   describe('with --shell-helper', () => {
-    test('outputs shell commands when in a worktree (detected by git)', async () => {
+    test('outputs bash shell commands when --shell-helper is bash', async () => {
+      await exit({ shellHelper: 'bash' })
+
+      expect(stdoutSpy).toHaveBeenCalledTimes(1)
+      const output = stdoutSpy.mock.calls[0][0] as string
+
+      expect(output).toContain("cd -- '/repo'")
+      expect(output).toContain('unset PORT_WORKTREE')
+      expect(output).toContain('unset PORT_REPO')
+    })
+
+    test('outputs fish shell commands when --shell-helper is fish', async () => {
+      await exit({ shellHelper: 'fish' })
+
+      expect(stdoutSpy).toHaveBeenCalledTimes(1)
+      const output = stdoutSpy.mock.calls[0][0] as string
+
+      expect(output).toContain("builtin cd '/repo'")
+      expect(output).toContain('set -e PORT_WORKTREE')
+      expect(output).toContain('set -e PORT_REPO')
+    })
+
+    test('defaults to bash when --shell-helper is boolean true (backward compat)', async () => {
       await exit({ shellHelper: true })
 
       expect(stdoutSpy).toHaveBeenCalledTimes(1)
@@ -80,7 +102,7 @@ describe('exit command', () => {
         isMainRepo: true,
       })
 
-      await exit({ shellHelper: true })
+      await exit({ shellHelper: 'bash' })
 
       expect(stdoutSpy).toHaveBeenCalledTimes(1)
       const output = stdoutSpy.mock.calls[0][0] as string
@@ -98,7 +120,7 @@ describe('exit command', () => {
         isMainRepo: true,
       })
 
-      await exit({ shellHelper: true })
+      await exit({ shellHelper: 'bash' })
 
       expect(stdoutSpy).not.toHaveBeenCalled()
       expect(mocks.info).toHaveBeenCalledWith('Already at the repository root')
@@ -109,7 +131,7 @@ describe('exit command', () => {
         throw new Error('not a git repo')
       })
 
-      await expect(exit({ shellHelper: true })).rejects.toThrow('process.exit:1')
+      await expect(exit({ shellHelper: 'bash' })).rejects.toThrow('process.exit:1')
 
       expect(mocks.error).toHaveBeenCalledWith('Not in a git repository')
       expect(exitSpy).toHaveBeenCalledWith(1)
@@ -171,8 +193,8 @@ describe('exit command', () => {
   })
 
   describe('shell command output format', () => {
-    test('outputs commands separated by newlines', async () => {
-      await exit({ shellHelper: true })
+    test('outputs bash commands separated by newlines', async () => {
+      await exit({ shellHelper: 'bash' })
 
       const output = stdoutSpy.mock.calls[0][0] as string
       const lines = output.trim().split('\n')
@@ -183,6 +205,18 @@ describe('exit command', () => {
       expect(lines[2]).toBe('unset PORT_REPO')
     })
 
+    test('outputs fish commands separated by newlines', async () => {
+      await exit({ shellHelper: 'fish' })
+
+      const output = stdoutSpy.mock.calls[0][0] as string
+      const lines = output.trim().split('\n')
+
+      expect(lines).toHaveLength(3)
+      expect(lines[0]).toBe("builtin cd '/repo'")
+      expect(lines[1]).toBe('set -e PORT_WORKTREE')
+      expect(lines[2]).toBe('set -e PORT_REPO')
+    })
+
     test('handles repo root paths with spaces', async () => {
       mocks.detectWorktree.mockReturnValue({
         repoRoot: '/my repo/path',
@@ -191,13 +225,13 @@ describe('exit command', () => {
         isMainRepo: false,
       })
 
-      await exit({ shellHelper: true })
+      await exit({ shellHelper: 'bash' })
 
       const output = stdoutSpy.mock.calls[0][0] as string
       expect(output).toContain("cd -- '/my repo/path'")
     })
 
-    test('handles repo root paths with single quotes', async () => {
+    test('handles repo root paths with single quotes (bash)', async () => {
       mocks.detectWorktree.mockReturnValue({
         repoRoot: "/O'Brien/repo",
         worktreePath: "/O'Brien/repo/.port/trees/feature-1",
@@ -205,10 +239,24 @@ describe('exit command', () => {
         isMainRepo: false,
       })
 
-      await exit({ shellHelper: true })
+      await exit({ shellHelper: 'bash' })
 
       const output = stdoutSpy.mock.calls[0][0] as string
       expect(output).toContain("cd -- '/O'\\''Brien/repo'")
+    })
+
+    test('handles repo root paths with single quotes (fish)', async () => {
+      mocks.detectWorktree.mockReturnValue({
+        repoRoot: "/O'Brien/repo",
+        worktreePath: "/O'Brien/repo/.port/trees/feature-1",
+        name: 'feature-1',
+        isMainRepo: false,
+      })
+
+      await exit({ shellHelper: 'fish' })
+
+      const output = stdoutSpy.mock.calls[0][0] as string
+      expect(output).toContain("builtin cd '/O\\'Brien/repo'")
     })
   })
 })

@@ -24,6 +24,7 @@ import { branchExists } from './lib/git.ts'
 import * as output from './lib/output.ts'
 
 export const program = new Command()
+program.enablePositionalOptions()
 
 function getReservedCommands(): Set<string> {
   const reserved = new Set<string>(['help'])
@@ -105,8 +106,8 @@ program.command('status').description('Show per-service status for all worktrees
 program
   .command('enter <branch>')
   .description('Enter a worktree by branch name (works even for command-name branches)')
-  .option('--shell-helper', 'Output shell commands to stdout for eval (used by shell-hook)')
-  .action(async (branch: string, options: { shellHelper?: boolean }) => {
+  .option('--shell-helper [shell]', 'Output shell commands to stdout for eval (used by shell-hook)')
+  .action(async (branch: string, options: { shellHelper?: string | boolean }) => {
     await enter(branch, { shellHelper: options.shellHelper })
   })
 
@@ -114,8 +115,8 @@ program
 program
   .command('exit')
   .description('Exit the current worktree and return to the repository root')
-  .option('--shell-helper', 'Output shell commands to stdout for eval (used by shell-hook)')
-  .action(async (options: { shellHelper?: boolean }) => {
+  .option('--shell-helper [shell]', 'Output shell commands to stdout for eval (used by shell-hook)')
+  .action(async (options: { shellHelper?: string | boolean }) => {
     await exit({ shellHelper: options.shellHelper })
   })
 
@@ -205,8 +206,8 @@ program.hook('preAction', async () => {
 
 program
   .argument('[branch]', 'Branch name to enter (creates worktree if needed)')
-  .option('--shell-helper', 'Output shell commands to stdout for eval (used by shell-hook)')
-  .action(async (branch: string | undefined, options: { shellHelper?: boolean }) => {
+  .option('--shell-helper [shell]', 'Output shell commands to stdout for eval (used by shell-hook)')
+  .action(async (branch: string | undefined, options: { shellHelper?: string | boolean }) => {
     if (branch) {
       // Check if it looks like a command that wasn't matched
       if (getReservedCommands().has(branch)) {

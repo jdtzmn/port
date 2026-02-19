@@ -19,17 +19,17 @@ export function shellHook(shell: string): void {
     process.exit(1)
   }
 
-  const hookCode = shell === 'fish' ? generateFishHook() : generatePosixHook()
+  const hookCode = shell === 'fish' ? generateFishHook() : generatePosixHook(shell)
 
   // Write to stdout so it can be eval'd
   process.stdout.write(hookCode + '\n')
 }
 
-function generatePosixHook(): string {
+function generatePosixHook(shell: string): string {
   return `port() {
   if [ "$1" = "enter" ] || [ "$1" = "exit" ]; then
     local __port_output __port_status
-    __port_output="$(command port "$@" --shell-helper 2>/dev/tty)"
+    __port_output="$(command port "$@" --shell-helper ${shell} 2>/dev/tty)"
     __port_status=$?
     if [ $__port_status -eq 0 ] && [ -n "$__port_output" ]; then
       eval "$__port_output"
@@ -44,7 +44,7 @@ function generatePosixHook(): string {
 function generateFishHook(): string {
   return `function port
   if test (count $argv) -gt 0; and begin; test "$argv[1]" = "enter"; or test "$argv[1]" = "exit"; end
-    set -l __port_output (command port $argv --shell-helper 2>/dev/tty)
+    set -l __port_output (command port $argv --shell-helper fish 2>/dev/tty | string collect)
     set -l __port_status $status
     if test $__port_status -eq 0; and test -n "$__port_output"
       eval $__port_output

@@ -1,9 +1,9 @@
 import { detectWorktree } from '../lib/worktree.ts'
 import * as output from '../lib/output.ts'
-import { buildExitCommands } from '../lib/shell.ts'
+import { buildExitCommands, SUPPORTED_SHELLS, type Shell } from '../lib/shell.ts'
 
 interface ExitOptions {
-  shellHelper?: boolean
+  shellHelper?: string | boolean
 }
 
 /**
@@ -34,7 +34,12 @@ export async function exit(options?: ExitOptions): Promise<void> {
 
   // If --shell-helper mode, output shell commands to stdout for eval
   if (options?.shellHelper) {
-    const commands = buildExitCommands('bash', repoRoot)
+    const shell: Shell =
+      typeof options.shellHelper === 'string' &&
+      SUPPORTED_SHELLS.includes(options.shellHelper as Shell)
+        ? (options.shellHelper as Shell)
+        : 'bash'
+    const commands = buildExitCommands(shell, repoRoot)
     process.stdout.write(commands + '\n')
     return
   }

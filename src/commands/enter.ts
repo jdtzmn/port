@@ -10,10 +10,10 @@ import { existsSync } from 'fs'
 import inquirer from 'inquirer'
 import * as output from '../lib/output.ts'
 import { findSimilarCommand } from '../lib/commands.ts'
-import { buildEnterCommands } from '../lib/shell.ts'
+import { buildEnterCommands, SUPPORTED_SHELLS, type Shell } from '../lib/shell.ts'
 
 interface EnterOptions {
-  shellHelper?: boolean
+  shellHelper?: string | boolean
 }
 
 /**
@@ -163,8 +163,12 @@ export async function enter(branch: string, options?: EnterOptions): Promise<voi
 
   // If --shell-helper mode, output shell commands to stdout for eval
   if (options?.shellHelper) {
-    // Default to bash syntax — the shell function detects its own shell
-    const commands = buildEnterCommands('bash', worktreePath, sanitized, repoRoot)
+    const shell: Shell =
+      typeof options.shellHelper === 'string' &&
+      SUPPORTED_SHELLS.includes(options.shellHelper as Shell)
+        ? (options.shellHelper as Shell)
+        : 'bash'
+    const commands = buildEnterCommands(shell, worktreePath, sanitized, repoRoot)
     process.stdout.write(commands + '\n')
     return
   }
