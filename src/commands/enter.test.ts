@@ -31,10 +31,6 @@ describe('parallel worktrees', () => {
       const worktreeBDir = join(sample.dir, './.port/trees/b')
 
       try {
-        // Create worktrees (--no-shell so they exit immediately)
-        await execPortAsync(['A', '--no-shell'], sample.dir)
-        await execPortAsync(['B', '--no-shell'], sample.dir)
-
         // Start worktrees sequentially to avoid concurrent image builds
         await execPortAsync(['up'], worktreeADir)
         await execPortAsync(['up'], worktreeBDir)
