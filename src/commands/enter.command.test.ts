@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   prompt: vi.fn(),
   spawn: vi.fn(),
   findSimilarCommand: vi.fn(),
+  writeEvalFile: vi.fn(),
   success: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -85,6 +86,14 @@ vi.mock('../lib/output.ts', () => ({
   branch: mocks.branch,
   command: mocks.command,
 }))
+
+vi.mock('../lib/shell.ts', async () => {
+  const actual = await vi.importActual<typeof import('../lib/shell.ts')>('../lib/shell.ts')
+  return {
+    ...actual,
+    writeEvalFile: mocks.writeEvalFile,
+  }
+})
 
 import { enter } from './enter.ts'
 
@@ -216,9 +225,9 @@ describe('enter typo confirmation', () => {
   })
 })
 
-describe('enter --shell-helper', () => {
+describe('enter with shell hook eval file', () => {
   let exitSpy: ReturnType<typeof vi.spyOn>
-  let stdoutSpy: ReturnType<typeof vi.spyOn>
+  const originalEnv = { ...process.env }
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -245,56 +254,52 @@ describe('enter --shell-helper', () => {
       throw new Error(`process.exit:${typeof code === 'number' ? code : 0}`)
     })
 
-    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    delete process.env.__PORT_EVAL
+    delete process.env.__PORT_SHELL
   })
 
   afterEach(() => {
     exitSpy.mockRestore()
-    stdoutSpy.mockRestore()
+    process.env = { ...originalEnv }
   })
 
-  test('outputs bash shell commands when --shell-helper is bash', async () => {
-    await enter('feature-1', { shellHelper: 'bash' })
+  test('writes bash shell commands to eval file', async () => {
+    process.env.__PORT_EVAL = '/tmp/test-eval'
+    process.env.__PORT_SHELL = 'bash'
 
-    expect(stdoutSpy).toHaveBeenCalledTimes(1)
-    const output = stdoutSpy.mock.calls[0][0] as string
-
-    expect(output).toContain("cd -- '/repo/.port/trees/feature-1'")
-    expect(output).toContain("export PORT_WORKTREE='feature-1'")
-    expect(output).toContain("export PORT_REPO='/repo'")
-  })
-
-  test('outputs fish shell commands when --shell-helper is fish', async () => {
-    await enter('feature-1', { shellHelper: 'fish' })
-
-    expect(stdoutSpy).toHaveBeenCalledTimes(1)
-    const output = stdoutSpy.mock.calls[0][0] as string
-
-    expect(output).toContain("builtin cd '/repo/.port/trees/feature-1'")
-    expect(output).toContain("set -gx PORT_WORKTREE 'feature-1'")
-    expect(output).toContain("set -gx PORT_REPO '/repo'")
-  })
-
-  test('defaults to bash when --shell-helper is boolean true (backward compat)', async () => {
-    await enter('feature-1', { shellHelper: true })
-
-    expect(stdoutSpy).toHaveBeenCalledTimes(1)
-    const output = stdoutSpy.mock.calls[0][0] as string
-
-    expect(output).toContain("cd -- '/repo/.port/trees/feature-1'")
-    expect(output).toContain("export PORT_WORKTREE='feature-1'")
-    expect(output).toContain("export PORT_REPO='/repo'")
-  })
-
-  test('does not output shell commands without --shell-helper', async () => {
     await enter('feature-1')
 
-    expect(stdoutSpy).not.toHaveBeenCalled()
+    expect(mocks.writeEvalFile).toHaveBeenCalledTimes(1)
+    const commands = mocks.writeEvalFile.mock.calls[0]![0] as string
+
+    expect(commands).toContain("cd -- '/repo/.port/trees/feature-1'")
+    expect(commands).toContain("export PORT_WORKTREE='feature-1'")
+    expect(commands).toContain("export PORT_REPO='/repo'")
+  })
+
+  test('writes fish shell commands to eval file', async () => {
+    process.env.__PORT_EVAL = '/tmp/test-eval'
+    process.env.__PORT_SHELL = 'fish'
+
+    await enter('feature-1')
+
+    expect(mocks.writeEvalFile).toHaveBeenCalledTimes(1)
+    const commands = mocks.writeEvalFile.mock.calls[0]![0] as string
+
+    expect(commands).toContain("builtin cd '/repo/.port/trees/feature-1'")
+    expect(commands).toContain("set -gx PORT_WORKTREE 'feature-1'")
+    expect(commands).toContain("set -gx PORT_REPO '/repo'")
+  })
+
+  test('does not write eval file without __PORT_EVAL', async () => {
+    await enter('feature-1')
+
+    expect(mocks.writeEvalFile).not.toHaveBeenCalled()
     // Should print human-readable hints instead
     expect(mocks.info).toHaveBeenCalledWith('Run: cd /repo/.port/trees/feature-1')
   })
 
-  test('prints shell integration hint without --shell-helper', async () => {
+  test('prints shell integration hint without shell hook', async () => {
     await enter('feature-1')
 
     expect(mocks.dim).toHaveBeenCalledWith(expect.stringContaining('port shell-hook'))

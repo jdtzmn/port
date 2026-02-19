@@ -47,7 +47,7 @@ test('Help includes the cleanup command', async () => {
 test('Help includes the enter command', async () => {
   const { findByText } = await renderCLI(['--help'])
 
-  const instance = await findByText('enter [options] <branch>')
+  const instance = await findByText('enter <branch>')
   expect(instance).toBeInTheConsole()
 })
 

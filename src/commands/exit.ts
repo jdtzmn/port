@@ -1,18 +1,15 @@
 import { detectWorktree } from '../lib/worktree.ts'
 import * as output from '../lib/output.ts'
-import { buildExitCommands, SUPPORTED_SHELLS, type Shell } from '../lib/shell.ts'
-
-interface ExitOptions {
-  shellHelper?: string | boolean
-}
+import { buildExitCommands, getEvalContext, writeEvalFile } from '../lib/shell.ts'
 
 /**
  * Exit a port worktree and return to the repository root.
  *
- * With --shell-helper: outputs shell commands to stdout (cd, unset) for eval by the shell wrapper.
- * Without --shell-helper: prints a human-readable cd command and hint about shell integration.
+ * When the shell hook is active (__PORT_EVAL env var), writes shell commands
+ * (cd, unset) to the eval file for the hook to pick up.
+ * Otherwise, prints a human-readable cd command and hint about shell integration.
  */
-export async function exit(options?: ExitOptions): Promise<void> {
+export async function exit(): Promise<void> {
   let repoRoot: string
   let isMainRepo: boolean
   try {
@@ -32,15 +29,11 @@ export async function exit(options?: ExitOptions): Promise<void> {
     return
   }
 
-  // If --shell-helper mode, output shell commands to stdout for eval
-  if (options?.shellHelper) {
-    const shell: Shell =
-      typeof options.shellHelper === 'string' &&
-      SUPPORTED_SHELLS.includes(options.shellHelper as Shell)
-        ? (options.shellHelper as Shell)
-        : 'bash'
-    const commands = buildExitCommands(shell, repoRoot)
-    process.stdout.write(commands + '\n')
+  // If running inside the shell hook, write eval commands to the sideband file
+  const evalCtx = getEvalContext()
+  if (evalCtx) {
+    const commands = buildExitCommands(evalCtx.shell, repoRoot)
+    writeEvalFile(commands, evalCtx.evalFile)
     return
   }
 

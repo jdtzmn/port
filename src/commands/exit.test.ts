@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   detectWorktree: vi.fn(),
+  writeEvalFile: vi.fn(),
   success: vi.fn(),
   error: vi.fn(),
   info: vi.fn(),
@@ -12,6 +13,14 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../lib/worktree.ts', () => ({
   detectWorktree: mocks.detectWorktree,
 }))
+
+vi.mock('../lib/shell.ts', async () => {
+  const actual = await vi.importActual<typeof import('../lib/shell.ts')>('../lib/shell.ts')
+  return {
+    ...actual,
+    writeEvalFile: mocks.writeEvalFile,
+  }
+})
 
 vi.mock('../lib/output.ts', () => ({
   success: mocks.success,
@@ -25,7 +34,6 @@ import { exit } from './exit.ts'
 
 describe('exit command', () => {
   let exitSpy: ReturnType<typeof vi.spyOn>
-  let stdoutSpy: ReturnType<typeof vi.spyOn>
   const originalEnv = { ...process.env }
 
   beforeEach(() => {
@@ -43,55 +51,54 @@ describe('exit command', () => {
       throw new Error(`process.exit:${typeof code === 'number' ? code : 0}`)
     })
 
-    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
-
-    // Clear PORT_WORKTREE by default
+    // Clear eval env vars by default
+    delete process.env.__PORT_EVAL
+    delete process.env.__PORT_SHELL
     delete process.env.PORT_WORKTREE
     delete process.env.PORT_REPO
   })
 
   afterEach(() => {
     exitSpy.mockRestore()
-    stdoutSpy.mockRestore()
     // Restore original env
     process.env = { ...originalEnv }
   })
 
-  describe('with --shell-helper', () => {
-    test('outputs bash shell commands when --shell-helper is bash', async () => {
-      await exit({ shellHelper: 'bash' })
-
-      expect(stdoutSpy).toHaveBeenCalledTimes(1)
-      const output = stdoutSpy.mock.calls[0][0] as string
-
-      expect(output).toContain("cd -- '/repo'")
-      expect(output).toContain('unset PORT_WORKTREE')
-      expect(output).toContain('unset PORT_REPO')
+  describe('with shell hook active (__PORT_EVAL set)', () => {
+    beforeEach(() => {
+      process.env.__PORT_EVAL = '/tmp/test-eval-file'
     })
 
-    test('outputs fish shell commands when --shell-helper is fish', async () => {
-      await exit({ shellHelper: 'fish' })
+    test('writes bash shell commands to eval file', async () => {
+      process.env.__PORT_SHELL = 'bash'
 
-      expect(stdoutSpy).toHaveBeenCalledTimes(1)
-      const output = stdoutSpy.mock.calls[0][0] as string
+      await exit()
 
-      expect(output).toContain("builtin cd '/repo'")
-      expect(output).toContain('set -e PORT_WORKTREE')
-      expect(output).toContain('set -e PORT_REPO')
+      expect(mocks.writeEvalFile).toHaveBeenCalledTimes(1)
+      const commands = mocks.writeEvalFile.mock.calls[0]![0] as string
+      const evalFile = mocks.writeEvalFile.mock.calls[0]![1] as string
+
+      expect(evalFile).toBe('/tmp/test-eval-file')
+      expect(commands).toContain("cd -- '/repo'")
+      expect(commands).toContain('unset PORT_WORKTREE')
+      expect(commands).toContain('unset PORT_REPO')
     })
 
-    test('defaults to bash when --shell-helper is boolean true (backward compat)', async () => {
-      await exit({ shellHelper: true })
+    test('writes fish shell commands to eval file', async () => {
+      process.env.__PORT_SHELL = 'fish'
 
-      expect(stdoutSpy).toHaveBeenCalledTimes(1)
-      const output = stdoutSpy.mock.calls[0][0] as string
+      await exit()
 
-      expect(output).toContain("cd -- '/repo'")
-      expect(output).toContain('unset PORT_WORKTREE')
-      expect(output).toContain('unset PORT_REPO')
+      expect(mocks.writeEvalFile).toHaveBeenCalledTimes(1)
+      const commands = mocks.writeEvalFile.mock.calls[0]![0] as string
+
+      expect(commands).toContain("builtin cd '/repo'")
+      expect(commands).toContain('set -e PORT_WORKTREE')
+      expect(commands).toContain('set -e PORT_REPO')
     })
 
-    test('outputs shell commands when PORT_WORKTREE is set', async () => {
+    test('writes eval commands when PORT_WORKTREE is set', async () => {
+      process.env.__PORT_SHELL = 'bash'
       process.env.PORT_WORKTREE = 'feature-1'
 
       // Even if git says we're in main repo, PORT_WORKTREE takes precedence
@@ -102,17 +109,17 @@ describe('exit command', () => {
         isMainRepo: true,
       })
 
-      await exit({ shellHelper: 'bash' })
+      await exit()
 
-      expect(stdoutSpy).toHaveBeenCalledTimes(1)
-      const output = stdoutSpy.mock.calls[0][0] as string
-
-      expect(output).toContain("cd -- '/repo'")
-      expect(output).toContain('unset PORT_WORKTREE')
-      expect(output).toContain('unset PORT_REPO')
+      expect(mocks.writeEvalFile).toHaveBeenCalledTimes(1)
+      const commands = mocks.writeEvalFile.mock.calls[0]![0] as string
+      expect(commands).toContain("cd -- '/repo'")
+      expect(commands).toContain('unset PORT_WORKTREE')
     })
 
-    test('does not output shell commands when at repo root', async () => {
+    test('does not write eval file when already at repo root', async () => {
+      process.env.__PORT_SHELL = 'bash'
+
       mocks.detectWorktree.mockReturnValue({
         repoRoot: '/repo',
         worktreePath: '/repo',
@@ -120,30 +127,32 @@ describe('exit command', () => {
         isMainRepo: true,
       })
 
-      await exit({ shellHelper: 'bash' })
+      await exit()
 
-      expect(stdoutSpy).not.toHaveBeenCalled()
+      expect(mocks.writeEvalFile).not.toHaveBeenCalled()
       expect(mocks.info).toHaveBeenCalledWith('Already at the repository root')
     })
 
     test('exits with error when not in a git repository', async () => {
+      process.env.__PORT_SHELL = 'bash'
+
       mocks.detectWorktree.mockImplementation(() => {
         throw new Error('not a git repo')
       })
 
-      await expect(exit({ shellHelper: 'bash' })).rejects.toThrow('process.exit:1')
+      await expect(exit()).rejects.toThrow('process.exit:1')
 
       expect(mocks.error).toHaveBeenCalledWith('Not in a git repository')
       expect(exitSpy).toHaveBeenCalledWith(1)
     })
   })
 
-  describe('without --shell-helper', () => {
+  describe('without shell hook (no __PORT_EVAL)', () => {
     test('prints cd hint when in a worktree', async () => {
       await exit()
 
       expect(mocks.info).toHaveBeenCalledWith('Run: cd /repo')
-      expect(stdoutSpy).not.toHaveBeenCalled()
+      expect(mocks.writeEvalFile).not.toHaveBeenCalled()
     })
 
     test('prints shell integration hint when in a worktree', async () => {
@@ -177,7 +186,7 @@ describe('exit command', () => {
       await exit()
 
       expect(mocks.info).toHaveBeenCalledWith('Already at the repository root')
-      expect(stdoutSpy).not.toHaveBeenCalled()
+      expect(mocks.writeEvalFile).not.toHaveBeenCalled()
     })
 
     test('exits with error when not in a git repository', async () => {
@@ -193,11 +202,17 @@ describe('exit command', () => {
   })
 
   describe('shell command output format', () => {
-    test('outputs bash commands separated by newlines', async () => {
-      await exit({ shellHelper: 'bash' })
+    beforeEach(() => {
+      process.env.__PORT_EVAL = '/tmp/test-eval-file'
+    })
 
-      const output = stdoutSpy.mock.calls[0][0] as string
-      const lines = output.trim().split('\n')
+    test('bash commands are separated by newlines', async () => {
+      process.env.__PORT_SHELL = 'bash'
+
+      await exit()
+
+      const commands = mocks.writeEvalFile.mock.calls[0]![0] as string
+      const lines = commands.trim().split('\n')
 
       expect(lines).toHaveLength(3)
       expect(lines[0]).toBe("cd -- '/repo'")
@@ -205,11 +220,13 @@ describe('exit command', () => {
       expect(lines[2]).toBe('unset PORT_REPO')
     })
 
-    test('outputs fish commands separated by newlines', async () => {
-      await exit({ shellHelper: 'fish' })
+    test('fish commands are separated by newlines', async () => {
+      process.env.__PORT_SHELL = 'fish'
 
-      const output = stdoutSpy.mock.calls[0][0] as string
-      const lines = output.trim().split('\n')
+      await exit()
+
+      const commands = mocks.writeEvalFile.mock.calls[0]![0] as string
+      const lines = commands.trim().split('\n')
 
       expect(lines).toHaveLength(3)
       expect(lines[0]).toBe("builtin cd '/repo'")
@@ -218,6 +235,8 @@ describe('exit command', () => {
     })
 
     test('handles repo root paths with spaces', async () => {
+      process.env.__PORT_SHELL = 'bash'
+
       mocks.detectWorktree.mockReturnValue({
         repoRoot: '/my repo/path',
         worktreePath: '/my repo/path/.port/trees/feature-1',
@@ -225,13 +244,15 @@ describe('exit command', () => {
         isMainRepo: false,
       })
 
-      await exit({ shellHelper: 'bash' })
+      await exit()
 
-      const output = stdoutSpy.mock.calls[0][0] as string
-      expect(output).toContain("cd -- '/my repo/path'")
+      const commands = mocks.writeEvalFile.mock.calls[0]![0] as string
+      expect(commands).toContain("cd -- '/my repo/path'")
     })
 
     test('handles repo root paths with single quotes (bash)', async () => {
+      process.env.__PORT_SHELL = 'bash'
+
       mocks.detectWorktree.mockReturnValue({
         repoRoot: "/O'Brien/repo",
         worktreePath: "/O'Brien/repo/.port/trees/feature-1",
@@ -239,13 +260,15 @@ describe('exit command', () => {
         isMainRepo: false,
       })
 
-      await exit({ shellHelper: 'bash' })
+      await exit()
 
-      const output = stdoutSpy.mock.calls[0][0] as string
-      expect(output).toContain("cd -- '/O'\\''Brien/repo'")
+      const commands = mocks.writeEvalFile.mock.calls[0]![0] as string
+      expect(commands).toContain("cd -- '/O'\\''Brien/repo'")
     })
 
     test('handles repo root paths with single quotes (fish)', async () => {
+      process.env.__PORT_SHELL = 'fish'
+
       mocks.detectWorktree.mockReturnValue({
         repoRoot: "/O'Brien/repo",
         worktreePath: "/O'Brien/repo/.port/trees/feature-1",
@@ -253,10 +276,10 @@ describe('exit command', () => {
         isMainRepo: false,
       })
 
-      await exit({ shellHelper: 'fish' })
+      await exit()
 
-      const output = stdoutSpy.mock.calls[0][0] as string
-      expect(output).toContain("builtin cd '/O\\'Brien/repo'")
+      const commands = mocks.writeEvalFile.mock.calls[0]![0] as string
+      expect(commands).toContain("builtin cd '/O\\'Brien/repo'")
     })
   })
 })

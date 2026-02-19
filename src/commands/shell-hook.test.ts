@@ -41,17 +41,20 @@ describe('shell-hook command', () => {
     // Should use `command port` to avoid recursion
     expect(output).toContain('command port')
 
-    // Should pass --shell-helper bash for enter/exit
-    expect(output).toContain('--shell-helper bash')
+    // Should use temp file sideband with __PORT_EVAL and __PORT_SHELL
+    expect(output).toContain('mktemp')
+    expect(output).toContain('__PORT_EVAL')
+    expect(output).toContain('__PORT_SHELL=bash')
 
-    // Should intercept enter and exit
-    expect(output).toContain('"enter"')
-    expect(output).toContain('"exit"')
-
-    // Should eval the output
+    // Should eval the contents of the eval file
     expect(output).toContain('eval')
+    expect(output).toContain('cat')
 
-    // Should NOT redirect stderr (it passes through naturally in command substitution)
+    // Should clean up the temp file
+    expect(output).toContain('rm -f')
+
+    // Should NOT use --shell-helper flag or 2>/dev/tty
+    expect(output).not.toContain('--shell-helper')
     expect(output).not.toContain('2>/dev/tty')
   })
 
@@ -61,10 +64,9 @@ describe('shell-hook command', () => {
     expect(stdoutSpy).toHaveBeenCalledTimes(1)
     const output = stdoutSpy.mock.calls[0][0] as string
 
-    // zsh uses same format as bash
     expect(output).toContain('port()')
     expect(output).toContain('command port')
-    expect(output).toContain('--shell-helper zsh')
+    expect(output).toContain('__PORT_SHELL=zsh')
   })
 
   test('generates fish hook with port function', () => {
@@ -80,13 +82,13 @@ describe('shell-hook command', () => {
     // Should use `command port` to avoid recursion
     expect(output).toContain('command port')
 
-    // Should pass --shell-helper fish
-    expect(output).toContain('--shell-helper fish')
+    // Should use temp file sideband
+    expect(output).toContain('mktemp')
+    expect(output).toContain('__PORT_EVAL')
+    expect(output).toContain('__PORT_SHELL fish')
 
-    // Should use fish-style test
-    expect(output).toContain('test')
-
-    // Should NOT redirect stderr (it passes through naturally in command substitution)
+    // Should NOT use --shell-helper flag or 2>/dev/tty
+    expect(output).not.toContain('--shell-helper')
     expect(output).not.toContain('2>/dev/tty')
   })
 
@@ -131,7 +133,7 @@ describe('shell-hook command', () => {
 
     // Should check both exit code and non-empty output before eval
     expect(output).toContain('$__port_status -eq 0')
-    expect(output).toContain('-n "$__port_output"')
+    expect(output).toContain('-n "$__port_cmds"')
   })
 
   test('fish hook only evals on success with output', () => {
@@ -141,6 +143,24 @@ describe('shell-hook command', () => {
 
     // Should check both exit code and non-empty output before eval
     expect(output).toContain('test $__port_status -eq 0')
-    expect(output).toContain('test -n "$__port_output"')
+    expect(output).toContain('test -n "$__port_cmds"')
+  })
+
+  test('hook intercepts all commands (no passthrough list)', () => {
+    shellHook('bash')
+    const bashOutput = stdoutSpy.mock.calls[0][0] as string
+
+    // Should NOT contain a case/esac or passthrough list —
+    // the sideband mechanism means all commands go through the hook
+    expect(bashOutput).not.toContain('case')
+    expect(bashOutput).not.toContain('esac')
+
+    stdoutSpy.mockClear()
+    shellHook('fish')
+    const fishOutput = stdoutSpy.mock.calls[0][0] as string
+
+    // Fish hook should not contain a passthrough list
+    expect(fishOutput).not.toContain('__port_passthrough')
+    expect(fishOutput).not.toContain('contains')
   })
 })
