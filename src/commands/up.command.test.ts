@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   startTraefik: vi.fn(),
   isTraefikRunning: vi.fn(),
   restartTraefik: vi.fn(),
+  traefikHasRequiredPorts: vi.fn(),
   checkComposeVersion: vi.fn(),
   parseComposeFile: vi.fn(),
   getAllPorts: vi.fn(),
@@ -62,6 +63,7 @@ vi.mock('../lib/compose.ts', () => ({
   startTraefik: mocks.startTraefik,
   isTraefikRunning: mocks.isTraefikRunning,
   restartTraefik: mocks.restartTraefik,
+  traefikHasRequiredPorts: mocks.traefikHasRequiredPorts,
   checkComposeVersion: mocks.checkComposeVersion,
   parseComposeFile: mocks.parseComposeFile,
   getAllPorts: mocks.getAllPorts,
@@ -108,6 +110,7 @@ describe('up DNS preflight', () => {
     mocks.traefikFilesExist.mockReturnValue(true)
     mocks.ensureTraefikPorts.mockResolvedValue(false)
     mocks.isTraefikRunning.mockResolvedValue(true)
+    mocks.traefikHasRequiredPorts.mockResolvedValue(true)
     mocks.getProjectName.mockReturnValue('repo-main')
     mocks.writeOverrideFile.mockResolvedValue(undefined)
     mocks.runCompose.mockResolvedValue({ exitCode: 0 })

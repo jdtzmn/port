@@ -8,6 +8,7 @@ import {
   startTraefik,
   isTraefikRunning,
   restartTraefik,
+  traefikHasRequiredPorts,
   checkComposeVersion,
   parseComposeFile,
   getAllPorts,
@@ -98,8 +99,10 @@ export async function up(): Promise<void> {
       output.error(`Failed to start Traefik: ${error}`)
       process.exit(1)
     }
-  } else if (configUpdated) {
-    // Restart Traefik if config was updated
+  } else if (configUpdated || !(await traefikHasRequiredPorts(ports))) {
+    // Restart Traefik if config was updated or the running container
+    // is missing required port bindings (can happen when a parallel
+    // process recreated the container from a stale compose file).
     output.info('Restarting Traefik with new configuration...')
     try {
       await restartTraefik()
