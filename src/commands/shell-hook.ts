@@ -9,8 +9,14 @@ import { SUPPORTED_SHELLS, type Shell } from '../lib/shell.ts'
  *   eval "$(port shell-hook zsh)"    # in ~/.zshrc
  *   port shell-hook fish | source    # in ~/.config/fish/config.fish
  *
- * The generated function wraps the `port` binary so that `port enter` and
- * `port exit` can change the current shell's working directory and environment.
+ * The generated function wraps the `port` binary so that commands which
+ * change the shell's working directory or environment (enter, exit, and
+ * the `port <branch>` shorthand) work transparently.
+ *
+ * Signaling uses a temp-file sideband: the hook sets __PORT_EVAL (path)
+ * and __PORT_SHELL (shell type) in the environment.  The binary writes
+ * shell commands to that file when appropriate; other commands ignore it.
+ * This avoids maintaining a subcommand list in the hook.
  */
 export function shellHook(shell: string): void {
   if (!SUPPORTED_SHELLS.includes(shell as Shell)) {
@@ -27,31 +33,31 @@ export function shellHook(shell: string): void {
 
 function generatePosixHook(shell: string): string {
   return `port() {
-  if [ "$1" = "enter" ] || [ "$1" = "exit" ]; then
-    local __port_output __port_status
-    __port_output="$(command port "$@" --shell-helper ${shell} 2>/dev/tty)"
-    __port_status=$?
-    if [ $__port_status -eq 0 ] && [ -n "$__port_output" ]; then
-      eval "$__port_output"
-    fi
-    return $__port_status
-  else
-    command port "$@"
+  local __port_eval __port_status __port_cmds
+  __port_eval="$(mktemp)"
+  __PORT_EVAL="$__port_eval" __PORT_SHELL=${shell} command port "$@"
+  __port_status=$?
+  __port_cmds="$(cat "$__port_eval" 2>/dev/null)"
+  rm -f "$__port_eval"
+  if [ $__port_status -eq 0 ] && [ -n "$__port_cmds" ]; then
+    eval "$__port_cmds"
   fi
+  return $__port_status
 }`
 }
 
 function generateFishHook(): string {
   return `function port
-  if test (count $argv) -gt 0; and begin; test "$argv[1]" = "enter"; or test "$argv[1]" = "exit"; end
-    set -l __port_output (command port $argv --shell-helper fish 2>/dev/tty | string collect)
-    set -l __port_status $status
-    if test $__port_status -eq 0; and test -n "$__port_output"
-      eval $__port_output
-    end
-    return $__port_status
-  else
-    command port $argv
+  set -l __port_eval (mktemp)
+  set -lx __PORT_EVAL $__port_eval
+  set -lx __PORT_SHELL fish
+  command port $argv
+  set -l __port_status $status
+  set -l __port_cmds (cat $__port_eval 2>/dev/null | string collect)
+  rm -f $__port_eval
+  if test $__port_status -eq 0; and test -n "$__port_cmds"
+    eval $__port_cmds
   end
+  return $__port_status
 end`
 }

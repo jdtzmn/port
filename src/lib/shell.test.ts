@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import {
   posixShellQuote,
   fishShellQuote,
@@ -8,6 +8,7 @@ import {
   shellUnset,
   buildEnterCommands,
   buildExitCommands,
+  getEvalContext,
   SUPPORTED_SHELLS,
   type Shell,
 } from './shell.ts'
@@ -202,6 +203,47 @@ describe('buildExitCommands', () => {
     expect(result).toBe(
       ["builtin cd '/repo'", 'set -e PORT_WORKTREE', 'set -e PORT_REPO'].join('\n')
     )
+  })
+})
+
+describe('getEvalContext', () => {
+  const originalEnv = { ...process.env }
+
+  beforeEach(() => {
+    delete process.env.__PORT_EVAL
+    delete process.env.__PORT_SHELL
+  })
+
+  afterEach(() => {
+    process.env = { ...originalEnv }
+  })
+
+  test('returns null when __PORT_EVAL is not set', () => {
+    process.env.__PORT_SHELL = 'bash'
+    expect(getEvalContext()).toBeNull()
+  })
+
+  test('returns null when __PORT_SHELL is not set', () => {
+    process.env.__PORT_EVAL = '/tmp/eval'
+    expect(getEvalContext()).toBeNull()
+  })
+
+  test('returns null when __PORT_SHELL is unsupported', () => {
+    process.env.__PORT_EVAL = '/tmp/eval'
+    process.env.__PORT_SHELL = 'powershell'
+    expect(getEvalContext()).toBeNull()
+  })
+
+  test('returns context for bash', () => {
+    process.env.__PORT_EVAL = '/tmp/eval'
+    process.env.__PORT_SHELL = 'bash'
+    expect(getEvalContext()).toEqual({ shell: 'bash', evalFile: '/tmp/eval' })
+  })
+
+  test('returns context for fish', () => {
+    process.env.__PORT_EVAL = '/tmp/eval'
+    process.env.__PORT_SHELL = 'fish'
+    expect(getEvalContext()).toEqual({ shell: 'fish', evalFile: '/tmp/eval' })
   })
 })
 
