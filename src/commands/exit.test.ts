@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { CliError } from '../lib/cli.ts'
 
 const mocks = vi.hoisted(() => ({
   detectWorktree: vi.fn(),
@@ -33,7 +34,6 @@ vi.mock('../lib/output.ts', () => ({
 import { exit } from './exit.ts'
 
 describe('exit command', () => {
-  let exitSpy: ReturnType<typeof vi.spyOn>
   const originalEnv = { ...process.env }
 
   beforeEach(() => {
@@ -47,10 +47,6 @@ describe('exit command', () => {
       isMainRepo: false,
     })
 
-    exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => {
-      throw new Error(`process.exit:${typeof code === 'number' ? code : 0}`)
-    })
-
     // Clear eval env vars by default
     delete process.env.__PORT_EVAL
     delete process.env.__PORT_SHELL
@@ -59,7 +55,6 @@ describe('exit command', () => {
   })
 
   afterEach(() => {
-    exitSpy.mockRestore()
     // Restore original env
     process.env = { ...originalEnv }
   })
@@ -133,17 +128,15 @@ describe('exit command', () => {
       expect(mocks.info).toHaveBeenCalledWith('Already at the repository root')
     })
 
-    test('exits with error when not in a git repository', async () => {
+    test('throws CliError when not in a git repository', async () => {
       process.env.__PORT_SHELL = 'bash'
 
       mocks.detectWorktree.mockImplementation(() => {
         throw new Error('not a git repo')
       })
 
-      await expect(exit()).rejects.toThrow('process.exit:1')
-
+      await expect(exit()).rejects.toBeInstanceOf(CliError)
       expect(mocks.error).toHaveBeenCalledWith('Not in a git repository')
-      expect(exitSpy).toHaveBeenCalledWith(1)
     })
   })
 
@@ -189,15 +182,13 @@ describe('exit command', () => {
       expect(mocks.writeEvalFile).not.toHaveBeenCalled()
     })
 
-    test('exits with error when not in a git repository', async () => {
+    test('throws CliError when not in a git repository', async () => {
       mocks.detectWorktree.mockImplementation(() => {
         throw new Error('not a git repo')
       })
 
-      await expect(exit()).rejects.toThrow('process.exit:1')
-
+      await expect(exit()).rejects.toBeInstanceOf(CliError)
       expect(mocks.error).toHaveBeenCalledWith('Not in a git repository')
-      expect(exitSpy).toHaveBeenCalledWith(1)
     })
   })
 
