@@ -37,6 +37,11 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Check ONBOARD.md is up to date
+        run: |
+          bun -e "import { generateMarkdown } from './src/commands/onboard.ts'; require('fs').writeFileSync('ONBOARD.md', generateMarkdown());"
+          git diff --exit-code ONBOARD.md || (echo "ONBOARD.md is out of sync — run 'port onboard --md' to regenerate" && exit 1)
+
   linux-integration:
     name: Linux Integration Tests
     runs-on: ubuntu-latest
