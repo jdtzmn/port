@@ -106,18 +106,16 @@ program.command('status').description('Show per-service status for all worktrees
 program
   .command('enter <branch>')
   .description('Enter a worktree by branch name (works even for command-name branches)')
-  .option('--shell-helper [shell]', 'Output shell commands to stdout for eval (used by shell-hook)')
-  .action(async (branch: string, options: { shellHelper?: string | boolean }) => {
-    await enter(branch, { shellHelper: options.shellHelper })
+  .action(async (branch: string) => {
+    await enter(branch)
   })
 
 // port exit
 program
   .command('exit')
   .description('Exit the current worktree and return to the repository root')
-  .option('--shell-helper [shell]', 'Output shell commands to stdout for eval (used by shell-hook)')
-  .action(async (options: { shellHelper?: string | boolean }) => {
-    await exit({ shellHelper: options.shellHelper })
+  .action(async () => {
+    await exit()
   })
 
 // port shell-hook <shell>
@@ -206,15 +204,14 @@ program.hook('preAction', async () => {
 
 program
   .argument('[branch]', 'Branch name to enter (creates worktree if needed)')
-  .option('--shell-helper [shell]', 'Output shell commands to stdout for eval (used by shell-hook)')
-  .action(async (branch: string | undefined, options: { shellHelper?: string | boolean }) => {
+  .action(async (branch: string | undefined) => {
     if (branch) {
       // Check if it looks like a command that wasn't matched
       if (getReservedCommands().has(branch)) {
         program.help()
         return
       }
-      await enter(branch, { shellHelper: options.shellHelper })
+      await enter(branch)
     } else {
       // No argument provided, show help
       program.help()

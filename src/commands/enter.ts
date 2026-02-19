@@ -10,22 +10,18 @@ import { existsSync } from 'fs'
 import inquirer from 'inquirer'
 import * as output from '../lib/output.ts'
 import { findSimilarCommand } from '../lib/commands.ts'
-import { buildEnterCommands, SUPPORTED_SHELLS, type Shell } from '../lib/shell.ts'
-
-interface EnterOptions {
-  shellHelper?: string | boolean
-}
+import { buildEnterCommands, getEvalContext, writeEvalFile } from '../lib/shell.ts'
 
 /**
  * Enter a worktree (create if needed).
  *
- * With --shell-helper: outputs shell commands to stdout (cd, export) for eval by the shell wrapper.
- * Without --shell-helper: does setup work and prints a human-readable hint.
+ * When the shell hook is active (__PORT_EVAL env var), writes shell commands
+ * (cd, export) to the eval file for the hook to pick up.
+ * Otherwise, does setup work and prints a human-readable hint.
  *
  * @param branch - The branch name to enter
- * @param options - Enter options
  */
-export async function enter(branch: string, options?: EnterOptions): Promise<void> {
+export async function enter(branch: string): Promise<void> {
   let repoRoot: string
   try {
     repoRoot = detectWorktree().repoRoot
@@ -161,15 +157,11 @@ export async function enter(branch: string, options?: EnterOptions): Promise<voi
     output.dim('Could not generate .port/override.yml (compose file may not exist yet)')
   }
 
-  // If --shell-helper mode, output shell commands to stdout for eval
-  if (options?.shellHelper) {
-    const shell: Shell =
-      typeof options.shellHelper === 'string' &&
-      SUPPORTED_SHELLS.includes(options.shellHelper as Shell)
-        ? (options.shellHelper as Shell)
-        : 'bash'
-    const commands = buildEnterCommands(shell, worktreePath, sanitized, repoRoot)
-    process.stdout.write(commands + '\n')
+  // If running inside the shell hook, write eval commands to the sideband file
+  const evalCtx = getEvalContext()
+  if (evalCtx) {
+    const commands = buildEnterCommands(evalCtx.shell, worktreePath, sanitized, repoRoot)
+    writeEvalFile(commands, evalCtx.evalFile)
     return
   }
 
@@ -193,10 +185,8 @@ function getForwardedArgs(branch: string): string[] {
     return argv
   }
 
-  // Remove the branch name and --shell-helper flag from forwarded args
-  return [...argv.slice(0, branchIndex), ...argv.slice(branchIndex + 1)].filter(
-    arg => arg !== '--shell-helper'
-  )
+  // Remove the branch name from forwarded args
+  return [...argv.slice(0, branchIndex), ...argv.slice(branchIndex + 1)]
 }
 
 async function promptToRunSuggestedCommand(suggestedCommand: string): Promise<boolean> {
