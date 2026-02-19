@@ -65,7 +65,7 @@ async function maybeWarnCommandBranchCollision(): Promise<void> {
 
 program
   .name('port')
-  .description('Manage git worktrees with automatic Traefik configuration')
+  .description('Manage git worktrees — run parallel Docker Compose stacks without port conflicts')
   .version('0.1.0')
 
 // port init
