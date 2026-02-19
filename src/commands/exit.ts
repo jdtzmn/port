@@ -1,6 +1,7 @@
 import { detectWorktree } from '../lib/worktree.ts'
 import * as output from '../lib/output.ts'
 import { buildExitCommands, getEvalContext, writeEvalFile } from '../lib/shell.ts'
+import { failWithError } from '../lib/cli.ts'
 
 /**
  * Exit a port worktree and return to the repository root.
@@ -17,8 +18,7 @@ export async function exit(): Promise<void> {
     repoRoot = info.repoRoot
     isMainRepo = info.isMainRepo
   } catch {
-    output.error('Not in a git repository')
-    process.exit(1)
+    failWithError('Not in a git repository')
   }
 
   // Check if we're in a worktree (via env var or git detection)
