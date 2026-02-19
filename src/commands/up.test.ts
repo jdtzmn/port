@@ -5,31 +5,44 @@ import { prepareSample, renderCLI } from '../../tests/utils'
 
 const SAMPLES_TIMEOUT = 30_000
 
-async function probePostgresSslResponse(host: string, port: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const socket = createConnection({ host, port })
-    const timeout = setTimeout(() => {
-      socket.destroy()
-      reject(new Error(`Timed out probing Postgres at ${host}:${port}`))
-    }, 8000)
+async function probePostgresSslResponse(
+  host: string,
+  port: number,
+  retries = 5,
+  delayMs = 1000
+): Promise<string> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await new Promise<string>((resolve, reject) => {
+        const socket = createConnection({ host, port })
+        const timeout = setTimeout(() => {
+          socket.destroy()
+          reject(new Error(`Timed out probing Postgres at ${host}:${port}`))
+        }, 8000)
 
-    socket.once('error', error => {
-      clearTimeout(timeout)
-      reject(error)
-    })
+        socket.once('error', error => {
+          clearTimeout(timeout)
+          reject(error)
+        })
 
-    socket.once('connect', () => {
-      // PostgreSQL SSLRequest packet (length=8, code=80877103)
-      socket.write(Buffer.from([0, 0, 0, 8, 4, 210, 22, 47]))
-    })
+        socket.once('connect', () => {
+          // PostgreSQL SSLRequest packet (length=8, code=80877103)
+          socket.write(Buffer.from([0, 0, 0, 8, 4, 210, 22, 47]))
+        })
 
-    socket.once('data', data => {
-      clearTimeout(timeout)
-      const response = data.subarray(0, 1).toString('ascii')
-      socket.end()
-      resolve(response)
-    })
-  })
+        socket.once('data', data => {
+          clearTimeout(timeout)
+          const response = data.subarray(0, 1).toString('ascii')
+          socket.end()
+          resolve(response)
+        })
+      })
+    } catch (error) {
+      if (attempt === retries) throw error
+      await new Promise(r => setTimeout(r, delayMs * attempt))
+    }
+  }
+  throw new Error('unreachable')
 }
 
 describe('samples start', () => {
