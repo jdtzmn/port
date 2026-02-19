@@ -96,7 +96,7 @@ describe('samples start', () => {
         await findByError('Traefik dashboard:', {}, { timeout: SAMPLES_TIMEOUT })
 
         const postgresHost = new URL(sample.urlWithPort(5432)).hostname
-        const sslResponse = await probePostgresSslResponse(postgresHost, 5432)
+        const sslResponse = await probePostgresSslResponse(postgresHost, 5432, 10, 2000)
 
         expect(['S', 'N']).toContain(sslResponse)
 
