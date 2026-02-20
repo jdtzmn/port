@@ -148,7 +148,9 @@ export async function resolveTaskAdapter(
   let configuredId = 'local'
   try {
     const config = await loadConfig(repoRoot)
-    configuredId = config.remote?.adapter ?? 'local'
+    // Adapter resolution will move to per-worker in port-5ep.3;
+    // for now default to 'local' from config if no workers are defined
+    configuredId = 'local'
   } catch {
     configuredId = 'local'
   }

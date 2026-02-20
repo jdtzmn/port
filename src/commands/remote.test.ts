@@ -43,7 +43,7 @@ describe('remote commands', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.detectWorktree.mockReturnValue({ repoRoot: '/repo' })
-    mocks.loadConfig.mockResolvedValue({ remote: { adapter: 'local' } })
+    mocks.loadConfig.mockResolvedValue({ task: {} })
     mocks.listTaskAdapters.mockReturnValue([
       {
         id: 'local',
@@ -84,7 +84,7 @@ describe('remote commands', () => {
     await remoteAdapters()
 
     expect(mocks.header).toHaveBeenCalledWith('Task adapters:')
-    expect(mocks.info).toHaveBeenCalledWith('local (configured)')
+    expect(mocks.info).toHaveBeenCalledWith('local')
   })
 
   test('remote status reports configured and resolved adapters', async () => {
@@ -95,7 +95,7 @@ describe('remote commands', () => {
   })
 
   test('remote doctor warns for stub adapter', async () => {
-    mocks.loadConfig.mockResolvedValue({ remote: { adapter: 'stub-remote' } })
+    mocks.loadConfig.mockResolvedValue({ task: {} })
     mocks.resolveTaskAdapter.mockResolvedValue({
       configuredId: 'stub-remote',
       resolvedId: 'stub-remote',

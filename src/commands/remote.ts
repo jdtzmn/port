@@ -13,16 +13,11 @@ function getRepoRootOrFail(): string {
 }
 
 export async function remoteAdapters(): Promise<void> {
-  const repoRoot = getRepoRootOrFail()
-  const config = await loadConfig(repoRoot)
-  const configured = config.remote?.adapter ?? 'local'
-
   output.header('Task adapters:')
   output.newline()
 
   for (const adapter of listTaskAdapters()) {
-    const marker = adapter.id === configured ? ' (configured)' : ''
-    output.info(`${adapter.id}${marker}`)
+    output.info(adapter.id)
     output.dim(`  kind=${adapter.kind} · ${adapter.description}`)
     output.dim(
       `  caps: checkpoint=${adapter.capabilities.supportsCheckpoint}, restore=${adapter.capabilities.supportsRestore}, attach=${adapter.capabilities.supportsAttachHandoff}, resumeToken=${adapter.capabilities.supportsResumeToken}, transcript=${adapter.capabilities.supportsTranscript}, failedSnapshot=${adapter.capabilities.supportsFailedSnapshot}`
@@ -53,14 +48,17 @@ export async function remoteDoctor(): Promise<void> {
     failWithError('Unable to resolve CLI entrypoint for adapter doctor checks')
   }
 
-  const config = await loadConfig(repoRoot)
-  const configured = config.remote?.adapter ?? 'local'
   const knownAdapters = new Set(listTaskAdapters().map(adapter => adapter.id))
+  const config = await loadConfig(repoRoot)
 
-  if (!knownAdapters.has(configured)) {
-    output.error(`Configured adapter "${configured}" is unknown`)
-    output.info('Fix .port/config.jsonc -> remote.adapter or run with default local adapter')
-    process.exit(1)
+  // Validate that all workers reference known adapter types
+  const workers = config.task?.workers ?? {}
+  for (const [name, worker] of Object.entries(workers)) {
+    if (!knownAdapters.has(worker.adapter)) {
+      output.error(`Worker "${name}" references unknown adapter type "${worker.adapter}"`)
+      output.info('Fix .port/config.jsonc -> task.workers or use a known adapter type')
+      process.exit(1)
+    }
   }
 
   const resolved = await resolveTaskAdapter(repoRoot, scriptPath)

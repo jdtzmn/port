@@ -19,6 +19,55 @@ export interface PortTaskSubscriptionsConfig {
   consumers?: string[]
 }
 
+/** Supported worker types (single source of truth) */
+export const WORKER_TYPES = ['opencode', 'mock'] as const
+export type WorkerType = (typeof WORKER_TYPES)[number]
+
+/** Supported adapter types (single source of truth) */
+export const ADAPTER_TYPES = ['local', 'e2b'] as const
+export type AdapterType = (typeof ADAPTER_TYPES)[number]
+
+/** Config for an OpenCode worker instance */
+export interface OpenCodeWorkerConfig {
+  /** Model in provider/model format (e.g., "anthropic/claude-sonnet-4-20250514") */
+  model?: string
+  /** Path to the opencode binary (defaults to "opencode" on PATH) */
+  binary?: string
+  /** Additional CLI flags passed to opencode run */
+  flags?: string[]
+}
+
+/** Config for a mock worker instance (testing) */
+export interface MockWorkerConfig {
+  /** Sleep duration in ms (overrides [sleep=N] title marker) */
+  sleepMs?: number
+  /** Force failure (overrides [fail] title marker) */
+  shouldFail?: boolean
+}
+
+/** A named worker instance definition (discriminated union on `type`) */
+export type WorkerDefinition =
+  | { type: 'opencode'; adapter: AdapterType; config?: OpenCodeWorkerConfig }
+  | { type: 'mock'; adapter: AdapterType; config?: MockWorkerConfig }
+
+/** Config for a local adapter instance */
+export interface LocalAdapterConfig {
+  // No config needed for local execution (reserved for future use)
+}
+
+/** Config for an E2B remote adapter instance */
+export interface E2bAdapterConfig {
+  /** E2B API key (or use E2B_API_KEY env var) */
+  apiKey?: string
+  /** E2B sandbox template name */
+  template?: string
+}
+
+/** A named adapter instance definition (discriminated union on `type`) */
+export type AdapterDefinition =
+  | { type: 'local'; config?: LocalAdapterConfig }
+  | { type: 'e2b'; config?: E2bAdapterConfig }
+
 export interface PortTaskConfig {
   /** Default task timeout */
   timeoutMinutes?: number
@@ -34,13 +83,12 @@ export interface PortTaskConfig {
   attach?: PortTaskAttachConfig
   /** Event subscription dispatch config */
   subscriptions?: PortTaskSubscriptionsConfig
-}
-
-export interface PortRemoteConfig {
-  /** Active execution adapter */
-  adapter?: string
-  /** Adapter-specific config payload */
-  adapters?: Record<string, Record<string, unknown>>
+  /** Default worker instance name (references a key in workers) */
+  defaultWorker?: string
+  /** Named worker instances */
+  workers?: Record<string, WorkerDefinition>
+  /** Named adapter instances */
+  adapters?: Record<string, AdapterDefinition>
 }
 
 export interface PortConfig {
@@ -50,8 +98,6 @@ export interface PortConfig {
   compose?: string
   /** Task runtime/scheduler configuration */
   task?: PortTaskConfig
-  /** Remote adapter configuration */
-  remote?: PortRemoteConfig
 }
 
 /**

@@ -25,22 +25,27 @@ const CONFIG_TEMPLATE = `{
   // Path to docker-compose file (default: docker-compose.yml)
   "compose": "docker-compose.yml",
 
-  // Background task runtime settings (v2)
+  // Background task runtime settings
   "task": {
     // Daemon auto-stop timeout when idle
     "daemonIdleStopMinutes": 10,
 
-    // Optional event subscribers (adapter-agnostic)
+    // Default worker instance (must match a key in workers)
+    "defaultWorker": "default",
+
+    // Named worker instances
+    "workers": {
+      "default": {
+        "type": "opencode",
+        "adapter": "local"
+      }
+    },
+
+    // Optional event subscribers
     "subscriptions": {
       "enabled": false,
       "consumers": ["opencode"]
     }
-  },
-
-  // Execution adapter settings (v2, remote-ready)
-  "remote": {
-    // Active adapter id
-    "adapter": "local"
   }
 }
 `

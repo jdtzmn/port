@@ -2,12 +2,16 @@ import { readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { parse as parseJsonc, type ParseError } from 'jsonc-parser'
+import { WORKER_TYPES, ADAPTER_TYPES } from '../types.ts'
 import type {
   PortConfig,
   PortTaskConfig,
-  PortRemoteConfig,
   PortTaskAttachConfig,
   PortTaskSubscriptionsConfig,
+  WorkerDefinition,
+  AdapterDefinition,
+  WorkerType,
+  AdapterType,
 } from '../types.ts'
 
 const JSONC_PARSE_OPTIONS = {
@@ -112,13 +116,11 @@ function validateConfig(config: unknown): PortConfig {
   }
 
   const task = validateTaskConfig(c.task)
-  const remote = validateRemoteConfig(c.remote)
 
   return {
     domain,
     compose,
     task,
-    remote,
   }
 }
 
@@ -219,6 +221,23 @@ function validateTaskConfig(value: unknown): PortTaskConfig | undefined {
 
   out.attach = validateTaskAttachConfig(task.attach)
   out.subscriptions = validateTaskSubscriptionsConfig(task.subscriptions)
+
+  if (task.defaultWorker !== undefined) {
+    if (typeof task.defaultWorker !== 'string' || task.defaultWorker.trim() === '') {
+      throw new ConfigError('task.defaultWorker must be a non-empty string')
+    }
+    out.defaultWorker = task.defaultWorker.trim()
+  }
+
+  out.workers = validateWorkersConfig(task.workers)
+  out.adapters = validateAdaptersConfig(task.adapters)
+
+  if (out.defaultWorker && out.workers && !out.workers[out.defaultWorker]) {
+    throw new ConfigError(
+      `task.defaultWorker "${out.defaultWorker}" does not match any key in task.workers`
+    )
+  }
+
   return out
 }
 
@@ -260,37 +279,100 @@ function validateTaskSubscriptionsConfig(value: unknown): PortTaskSubscriptionsC
   return out
 }
 
-function validateRemoteConfig(value: unknown): PortRemoteConfig | undefined {
+function validateEntryConfig(path: string, value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ConfigError(`${path} must be an object`)
+  }
+  return value as Record<string, unknown>
+}
+
+function validateWorkersConfig(value: unknown): Record<string, WorkerDefinition> | undefined {
   if (value === undefined) {
     return undefined
   }
 
-  if (typeof value !== 'object' || value === null) {
-    throw new ConfigError('remote must be an object')
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ConfigError('task.workers must be an object')
   }
 
-  const remote = value as Record<string, unknown>
-  const out: PortRemoteConfig = {}
+  const workers = value as Record<string, unknown>
+  const out: Record<string, WorkerDefinition> = {}
 
-  if (remote.adapter !== undefined) {
-    if (typeof remote.adapter !== 'string' || remote.adapter.trim() === '') {
-      throw new ConfigError('remote.adapter must be a non-empty string')
+  for (const [name, def] of Object.entries(workers)) {
+    if (typeof def !== 'object' || def === null || Array.isArray(def)) {
+      throw new ConfigError(`task.workers.${name} must be an object`)
     }
-    out.adapter = remote.adapter.trim()
-  }
 
-  if (remote.adapters !== undefined) {
+    const d = def as Record<string, unknown>
+
+    if (typeof d.type !== 'string' || !(WORKER_TYPES as readonly string[]).includes(d.type)) {
+      throw new ConfigError(`task.workers.${name}.type must be one of: ${WORKER_TYPES.join(', ')}`)
+    }
+
     if (
-      typeof remote.adapters !== 'object' ||
-      remote.adapters === null ||
-      Array.isArray(remote.adapters)
+      typeof d.adapter !== 'string' ||
+      !(ADAPTER_TYPES as readonly string[]).includes(d.adapter)
     ) {
-      throw new ConfigError('remote.adapters must be an object')
+      throw new ConfigError(
+        `task.workers.${name}.adapter must be one of: ${ADAPTER_TYPES.join(', ')}`
+      )
     }
-    out.adapters = remote.adapters as Record<string, Record<string, unknown>>
+
+    const workerType = d.type as WorkerType
+    const adapterType = d.adapter as AdapterType
+
+    const entry = {
+      type: workerType,
+      adapter: adapterType,
+      ...(d.config !== undefined
+        ? { config: validateEntryConfig(`task.workers.${name}.config`, d.config) }
+        : {}),
+    } as WorkerDefinition
+
+    out[name] = entry
   }
 
-  return out
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+function validateAdaptersConfig(value: unknown): Record<string, AdapterDefinition> | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ConfigError('task.adapters must be an object')
+  }
+
+  const adapters = value as Record<string, unknown>
+  const out: Record<string, AdapterDefinition> = {}
+
+  for (const [name, def] of Object.entries(adapters)) {
+    if (typeof def !== 'object' || def === null || Array.isArray(def)) {
+      throw new ConfigError(`task.adapters.${name} must be an object`)
+    }
+
+    const d = def as Record<string, unknown>
+
+    if (typeof d.type !== 'string' || !(ADAPTER_TYPES as readonly string[]).includes(d.type)) {
+      throw new ConfigError(
+        `task.adapters.${name}.type must be one of: ${ADAPTER_TYPES.join(', ')}`
+      )
+    }
+
+    const adapterType = d.type as AdapterType
+
+    const entry = {
+      type: adapterType,
+      ...(d.config !== undefined
+        ? { config: validateEntryConfig(`task.adapters.${name}.config`, d.config) }
+        : {}),
+    } as AdapterDefinition
+
+    out[name] = entry
+  }
+
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 /**

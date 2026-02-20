@@ -18,22 +18,22 @@ describe('taskAdapterRegistry', () => {
     expect(ids).toContain('stub-remote')
   })
 
-  test('resolves configured adapter without fallback', async () => {
-    mocks.loadConfig.mockResolvedValue({ remote: { adapter: 'stub-remote' } })
+  test('resolves local adapter by default', async () => {
+    mocks.loadConfig.mockResolvedValue({ task: {} })
     const resolved = await resolveTaskAdapter('/repo', '/repo/src/index.ts')
 
-    expect(resolved.configuredId).toBe('stub-remote')
-    expect(resolved.resolvedId).toBe('stub-remote')
+    expect(resolved.configuredId).toBe('local')
+    expect(resolved.resolvedId).toBe('local')
     expect(resolved.fallbackUsed).toBe(false)
   })
 
-  test('falls back to local when adapter is unknown', async () => {
-    mocks.loadConfig.mockResolvedValue({ remote: { adapter: 'does-not-exist' } })
+  test('falls back to local when config load fails', async () => {
+    mocks.loadConfig.mockRejectedValue(new Error('no config'))
     const resolved = await resolveTaskAdapter('/repo', '/repo/src/index.ts')
 
-    expect(resolved.configuredId).toBe('does-not-exist')
+    expect(resolved.configuredId).toBe('local')
     expect(resolved.resolvedId).toBe('local')
-    expect(resolved.fallbackUsed).toBe(true)
+    expect(resolved.fallbackUsed).toBe(false)
   })
 
   test('can instantiate local adapter directly', () => {
