@@ -19,6 +19,7 @@ import { cleanup } from './commands/cleanup.ts'
 import { urls } from './commands/urls.ts'
 import { onboard } from './commands/onboard.ts'
 import { shellHook } from './commands/shell-hook.ts'
+import { completion } from './commands/completion.ts'
 import { detectWorktree } from './lib/worktree.ts'
 import { branchExists } from './lib/git.ts'
 import * as output from './lib/output.ts'
@@ -98,6 +99,7 @@ program
   .command('list')
   .alias('ls')
   .description('List worktrees and host service summary')
+  .option('-n, --names', 'Print only worktree names, one per line')
   .action(list)
 
 // port status
@@ -196,6 +198,12 @@ program
   .command('cleanup')
   .description('Delete archived branches created by port remove (with confirmation)')
   .action(cleanup)
+
+// port completion <shell>
+program
+  .command('completion <shell>')
+  .description('Generate shell completion script (bash, zsh, or fish)')
+  .action(completion)
 
 // port <branch> - default command to enter a worktree
 // This must be last to act as a catch-all for branch names

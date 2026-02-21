@@ -1,15 +1,64 @@
+import { existsSync, readdirSync } from 'fs'
 import { detectWorktree } from '../lib/worktree.ts'
-import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
+import { loadConfig, configExists, getComposeFile, getTreesDir } from '../lib/config.ts'
 import { isTraefikRunning } from '../lib/compose.ts'
 import { getAllHostServices } from '../lib/registry.ts'
 import { isProcessRunning, cleanupStaleHostServices } from '../lib/hostService.ts'
 import { collectWorktreeStatuses } from '../lib/worktreeStatus.ts'
+import { sanitizeFolderName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
+
+/**
+ * Get worktree names from the .port/trees/ directory without any expensive
+ * Docker or Traefik checks. Returns an empty array if not in a port repo.
+ */
+export function getWorktreeNames(repoRoot: string): string[] {
+  const names: string[] = []
+
+  // Add the main repo itself (same logic as collectWorktreeStatuses)
+  const repoName = sanitizeFolderName(repoRoot.split('/').pop() ?? 'main')
+  names.push(repoName)
+
+  const treesDir = getTreesDir(repoRoot)
+  if (!existsSync(treesDir)) {
+    return names
+  }
+
+  const entries = readdirSync(treesDir, { withFileTypes: true })
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      names.push(entry.name)
+    }
+  }
+
+  return names
+}
+
+/**
+ * List worktree names only, one per line. Fast path that skips Docker/Traefik checks.
+ */
+export function listNames(): void {
+  try {
+    const repoRoot = detectWorktree().repoRoot
+    if (!configExists(repoRoot)) return
+    const names = getWorktreeNames(repoRoot)
+    for (const name of names) {
+      console.log(name)
+    }
+  } catch {
+    // Not in a git repo or no port config — output nothing
+  }
+}
 
 /**
  * List concise worktree-level status and host services
  */
-export async function list(): Promise<void> {
+export async function list(options: { names?: boolean } = {}): Promise<void> {
+  if (options.names) {
+    listNames()
+    return
+  }
+
   let worktrees: Array<{ name: string; running: boolean }> = []
 
   try {
