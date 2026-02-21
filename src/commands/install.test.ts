@@ -218,15 +218,7 @@ describe('install command domain handling', () => {
         return { stdout: '/opt/homebrew\n' }
       }
 
-      if (cmd.includes('grep -q "address=/stlabs/127.0.0.1"')) {
-        throw new Error('missing mapping')
-      }
-
-      if (cmd.includes('echo "address=/stlabs/127.0.0.1" >> /opt/homebrew/etc/dnsmasq.conf')) {
-        return { stdout: '' }
-      }
-
-      if (cmd === 'cat /etc/resolver/stlabs 2>/dev/null') {
+      if (cmd === 'cat /etc/resolver/stlabs') {
         throw new Error('missing resolver')
       }
 
@@ -281,11 +273,7 @@ describe('install command domain handling', () => {
         return { stdout: '/opt/homebrew\n' }
       }
 
-      if (cmd.includes('grep -q "address=/stlabs/127.0.0.1"')) {
-        return { stdout: 'found\n' }
-      }
-
-      if (cmd === 'cat /etc/resolver/stlabs 2>/dev/null') {
+      if (cmd === 'cat /etc/resolver/stlabs') {
         throw new Error('missing resolver')
       }
 

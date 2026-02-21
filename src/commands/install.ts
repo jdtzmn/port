@@ -13,6 +13,7 @@ import { detectWorktree } from '../lib/worktree.ts'
 import { configExists, loadConfig } from '../lib/config.ts'
 import * as output from '../lib/output.ts'
 import { execAsync, execPrivileged } from '../lib/exec.ts'
+import { fileOps } from '../lib/fileOps.ts'
 
 /**
  * Check if a command exists
@@ -107,18 +108,20 @@ async function installMacOS(dnsIp: string, domain: string): Promise<boolean> {
   const dnsmasqConf = `${brewPrefix}/etc/dnsmasq.conf`
 
   // Check if already configured
+  let dnsmasqConfigured = false
   try {
-    const { stdout } = await execAsync(
-      `grep -q "address=/${domain}/${dnsIp}" ${dnsmasqConf} && echo "found"`
-    )
-    if (stdout.trim() === 'found') {
-      output.dim(`dnsmasq already configured for .${domain} domain`)
-    }
+    const content = await fileOps.read(dnsmasqConf)
+    dnsmasqConfigured = content.includes(`address=/${domain}/${dnsIp}`)
   } catch {
-    // Not configured yet, add it
+    // File doesn't exist or can't be read
+  }
+
+  if (dnsmasqConfigured) {
+    output.dim(`dnsmasq already configured for .${domain} domain`)
+  } else {
     output.info(`Configuring dnsmasq for .${domain} domain...`)
     try {
-      await execAsync(`echo "address=/${domain}/${dnsIp}" >> ${dnsmasqConf}`)
+      await fileOps.append(dnsmasqConf, `address=/${domain}/${dnsIp}`)
       output.success('dnsmasq configured')
     } catch (error) {
       output.error(`Failed to configure dnsmasq: ${error}`)
@@ -133,20 +136,20 @@ async function installMacOS(dnsIp: string, domain: string): Promise<boolean> {
   let resolverOk = true
   try {
     // Check if /etc/resolver already contains the correct config
-    const { stdout } = await execAsync(`cat /etc/resolver/${domain} 2>/dev/null`)
-    if (stdout.includes(`nameserver ${dnsIp}`)) {
+    const content = await fileOps.read(`/etc/resolver/${domain}`)
+    if (content.includes(`nameserver ${dnsIp}`)) {
       output.dim(`Resolver already configured at /etc/resolver/${domain}`)
     } else {
       // File exists but has wrong content — overwrite it
-      await execPrivileged(`echo "nameserver ${dnsIp}" > /etc/resolver/${domain}`)
+      await fileOps.write(`/etc/resolver/${domain}`, `nameserver ${dnsIp}`, { privileged: true })
       output.success(`Resolver updated at /etc/resolver/${domain}`)
     }
   } catch {
     // File doesn't exist or can't be read — create it
     output.info(`Creating resolver for .${domain} domain...`)
     try {
-      await execPrivileged('mkdir -p /etc/resolver')
-      await execPrivileged(`echo "nameserver ${dnsIp}" > /etc/resolver/${domain}`)
+      await fileOps.mkdir('/etc/resolver', { privileged: true })
+      await fileOps.write(`/etc/resolver/${domain}`, `nameserver ${dnsIp}`, { privileged: true })
       output.success(`Resolver created at /etc/resolver/${domain}`)
     } catch (error) {
       output.error(`Failed to create resolver: ${error}`)
@@ -237,20 +240,26 @@ async function installLinuxDualMode(dnsIp: string, domain: string): Promise<bool
   // 2. Configure dnsmasq on port 5354
   output.info(`Configuring dnsmasq on port ${DNSMASQ_ALT_PORT}...`)
   try {
-    await execPrivileged('mkdir -p /etc/dnsmasq.d/')
+    await fileOps.mkdir('/etc/dnsmasq.d/', { privileged: true })
 
     // Write the port setting to a shared config so it is only declared once,
     // even when multiple domains are installed (each gets its own address-only file).
-    await execPrivileged(`echo "port=${DNSMASQ_ALT_PORT}" > /etc/dnsmasq.d/port-global.conf`)
+    await fileOps.write('/etc/dnsmasq.d/port-global.conf', `port=${DNSMASQ_ALT_PORT}`, {
+      privileged: true,
+    })
 
     // If running in Docker, forward non-port queries to Docker's DNS
     if (inDocker) {
-      await execPrivileged(`echo "server=127.0.0.11" >> /etc/dnsmasq.d/port-global.conf`)
+      await fileOps.append('/etc/dnsmasq.d/port-global.conf', 'server=127.0.0.11', {
+        privileged: true,
+      })
       output.dim('Added Docker DNS (127.0.0.11) as upstream server')
     }
 
     // Per-domain file only contains the address mapping
-    await execPrivileged(`echo "address=/${domain}/${dnsIp}" > /etc/dnsmasq.d/${domain}.conf`)
+    await fileOps.write(`/etc/dnsmasq.d/${domain}.conf`, `address=/${domain}/${dnsIp}`, {
+      privileged: true,
+    })
 
     output.success('dnsmasq configured')
   } catch (error) {
@@ -271,18 +280,22 @@ async function installLinuxDualMode(dnsIp: string, domain: string): Promise<bool
   // 4. Configure systemd-resolved to use dnsmasq
   output.info('Configuring systemd-resolved...')
   try {
-    await execPrivileged('mkdir -p /etc/systemd/resolved.conf.d/')
-    await execPrivileged(`echo "[Resolve]" > /etc/systemd/resolved.conf.d/${domain}.conf`)
-    await execPrivileged(
-      `echo "DNS=127.0.0.1:${DNSMASQ_ALT_PORT}" >> /etc/systemd/resolved.conf.d/${domain}.conf`
+    await fileOps.mkdir('/etc/systemd/resolved.conf.d/', { privileged: true })
+    await fileOps.write(`/etc/systemd/resolved.conf.d/${domain}.conf`, '[Resolve]', {
+      privileged: true,
+    })
+    await fileOps.append(
+      `/etc/systemd/resolved.conf.d/${domain}.conf`,
+      `DNS=127.0.0.1:${DNSMASQ_ALT_PORT}`,
+      { privileged: true }
     )
 
     // For non-Docker Linux, use routing domain so systemd-resolved
     // only sends wildcard-domain queries to dnsmasq (keeps default DNS for other queries)
     if (!inDocker) {
-      await execPrivileged(
-        `echo "Domains=~${domain}" >> /etc/systemd/resolved.conf.d/${domain}.conf`
-      )
+      await fileOps.append(`/etc/systemd/resolved.conf.d/${domain}.conf`, `Domains=~${domain}`, {
+        privileged: true,
+      })
     }
 
     await execPrivileged('systemctl restart systemd-resolved')
@@ -319,8 +332,10 @@ async function installLinuxStandalone(dnsIp: string, domain: string): Promise<bo
   // 2. Configure dnsmasq on port 53 (standard)
   output.info('Configuring dnsmasq...')
   try {
-    await execPrivileged('mkdir -p /etc/dnsmasq.d/')
-    await execPrivileged(`echo "address=/${domain}/${dnsIp}" > /etc/dnsmasq.d/${domain}.conf`)
+    await fileOps.mkdir('/etc/dnsmasq.d/', { privileged: true })
+    await fileOps.write(`/etc/dnsmasq.d/${domain}.conf`, `address=/${domain}/${dnsIp}`, {
+      privileged: true,
+    })
     output.success('dnsmasq configured')
   } catch (error) {
     output.error(`Failed to configure dnsmasq: ${error}`)
