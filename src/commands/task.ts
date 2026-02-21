@@ -1,6 +1,7 @@
 import { existsSync } from 'fs'
 import { readFile, readdir, rm } from 'fs/promises'
 import { join } from 'path'
+import inquirer from 'inquirer'
 import * as output from '../lib/output.ts'
 import { detectWorktree } from '../lib/worktree.ts'
 import { failWithError } from '../lib/cli.ts'
@@ -39,6 +40,8 @@ import {
 import { consumeGlobalTaskEvents, readGlobalTaskEvents } from '../lib/taskEventStream.ts'
 import { resolveTaskAdapter } from '../lib/taskAdapterRegistry.ts'
 import { resolveTaskRef } from '../lib/taskId.ts'
+import { resolveTaskWorker } from '../lib/taskWorker.ts'
+import { loadConfig } from '../lib/config.ts'
 
 function getRepoRootOrFail(): string {
   try {
@@ -103,24 +106,108 @@ async function resolveTaskOrFail(repoRoot: string, taskRef: string): Promise<Por
 
 export async function taskStart(
   title: string,
-  options: { mode?: PortTaskMode; branch?: string } = {}
+  options: { mode?: PortTaskMode; branch?: string; worker?: string } = {}
 ): Promise<void> {
   if (!title.trim()) {
     failWithError('Task title must be a non-empty string')
   }
 
   const repoRoot = getRepoRootOrFail()
+
+  // Resolve the worker name: CLI flag > config default > prompt/error
+  let workerName = options.worker
+  if (!workerName) {
+    workerName = await resolveWorkerName(repoRoot)
+  }
+
   const task = await createTask(repoRoot, {
     title: title.trim(),
     mode: options.mode,
     branch: options.branch,
+    worker: workerName,
   })
 
   await ensureTaskDaemon(repoRoot)
 
   output.success(`Queued ${output.branch(taskDisplayLabel(task))} (${task.mode})`)
-  output.dim(task.id)
+  output.dim(`${task.id} · worker: ${workerName}`)
   output.dim(task.title)
+}
+
+async function resolveWorkerName(repoRoot: string): Promise<string> {
+  let config
+  try {
+    config = await loadConfig(repoRoot)
+  } catch {
+    failWithError('No .port/config.jsonc found. Run "port init" first.')
+  }
+
+  const workers = config.task?.workers
+  if (!workers || Object.keys(workers).length === 0) {
+    failWithError(
+      'No workers configured in .port/config.jsonc.\n' +
+        'Add task.workers to your config. Example:\n\n' +
+        '  "task": {\n' +
+        '    "workers": {\n' +
+        '      "default": { "type": "opencode", "adapter": "local" }\n' +
+        '    }\n' +
+        '  }'
+    )
+  }
+
+  // If defaultWorker is set and valid, use it
+  const defaultWorker = config.task?.defaultWorker
+  if (defaultWorker && workers[defaultWorker]) {
+    return defaultWorker
+  }
+
+  // Build choices sorted by most recently used
+  const tasks = await listTasks(repoRoot)
+  const lastUsedByWorker = new Map<string, string>()
+  for (const t of tasks) {
+    if (
+      t.worker &&
+      (!lastUsedByWorker.has(t.worker) || t.createdAt > lastUsedByWorker.get(t.worker)!)
+    ) {
+      lastUsedByWorker.set(t.worker, t.createdAt)
+    }
+  }
+
+  const workerNames = Object.keys(workers)
+  workerNames.sort((a, b) => {
+    const aUsed = lastUsedByWorker.get(a) ?? ''
+    const bUsed = lastUsedByWorker.get(b) ?? ''
+    return bUsed.localeCompare(aUsed) // most recently used first
+  })
+
+  const choices = workerNames.map(name => {
+    const def = workers[name]!
+    const lastUsed = lastUsedByWorker.get(name)
+    const ago = lastUsed ? `used ${lastUsed}` : 'never used'
+    return {
+      name: `${name} (${def.type}, ${def.adapter}) — ${ago}`,
+      value: name,
+    }
+  })
+
+  if (process.stdin.isTTY) {
+    const response = await inquirer.prompt<{ worker: string }>([
+      {
+        type: 'list',
+        name: 'worker',
+        message: 'Choose a worker:',
+        choices,
+      },
+    ])
+    return response.worker
+  }
+
+  // Non-interactive: show available workers and fail with guidance
+  const workerList = choices.map(c => `  ${c.name}`).join('\n')
+  failWithError(
+    `No default worker configured.\n\nAvailable workers:\n${workerList}\n\n` +
+      'Use --worker <name> or set task.defaultWorker in .port/config.jsonc'
+  )
 }
 
 export async function taskList(): Promise<void> {
@@ -1012,6 +1099,7 @@ export async function taskWorker(options: {
   taskId: string
   repo: string
   worktree: string
+  worker?: string
 }): Promise<void> {
   const task = await getTask(options.repo, options.taskId)
   if (!task) {
@@ -1021,20 +1109,25 @@ export async function taskWorker(options: {
   await updateTaskStatus(options.repo, options.taskId, 'running', 'Worker started')
   await appendTaskStdout(options.repo, options.taskId, 'worker:started')
 
+  // Resolve the worker: CLI flag > task record > config default > error
+  const workerName = options.worker ?? task.worker
+  if (!workerName) {
+    failWithError('No worker specified. Set task.defaultWorker in config or use --worker.')
+  }
+
+  const worker = await resolveTaskWorker(options.repo, workerName)
+  let commitRefs: string[] = []
+
   try {
-    const sleepMs = parseSleepHint(task.title)
+    const result = await worker.execute({
+      task,
+      repoRoot: options.repo,
+      worktreePath: options.worktree,
+      appendStdout: (line: string) => appendTaskStdout(options.repo, options.taskId, line),
+      appendStderr: (line: string) => appendTaskStderr(options.repo, options.taskId, line),
+    })
 
-    // Validate worktree git context and simulate deterministic execution.
-    await execFileAsync('git', ['status', '--short'], { cwd: options.worktree })
-    await new Promise(resolve => setTimeout(resolve, sleepMs))
-
-    if (task.title.includes('[fail]')) {
-      throw new Error('Task requested failure via [fail] marker')
-    }
-
-    if (task.mode === 'write' && task.title.includes('[edit]')) {
-      await execFileAsync('git', ['status', '--short'], { cwd: options.worktree })
-    }
+    commitRefs = result.commitRefs
 
     const latestTaskForSuccess = await getTask(options.repo, options.taskId)
 
@@ -1053,7 +1146,7 @@ export async function taskWorker(options: {
       },
       {
         type: 'task.worker.finished',
-        message: 'Worker exited successfully',
+        message: `Worker exited successfully (${worker.type}/${worker.id})`,
       }
     )
     await updateTaskStatus(
@@ -1090,7 +1183,7 @@ export async function taskWorker(options: {
   } finally {
     const finalTask = await getTask(options.repo, options.taskId)
     if (finalTask?.mode === 'write') {
-      await writeTaskCommitRefs(options.repo, options.taskId, [])
+      await writeTaskCommitRefs(options.repo, options.taskId, commitRefs)
       await writeTaskPatchFromWorktree(options.repo, options.taskId, options.worktree)
       await writeTaskMetadata(options.repo, finalTask)
     }

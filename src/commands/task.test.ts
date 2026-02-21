@@ -31,6 +31,8 @@ const mocks = vi.hoisted(() => ({
   consumeGlobalTaskEvents: vi.fn(),
   resolveTaskAdapter: vi.fn(),
   resolveTaskRef: vi.fn(),
+  resolveTaskWorker: vi.fn(),
+  loadConfig: vi.fn(),
   success: vi.fn(),
   dim: vi.fn(),
   info: vi.fn(),
@@ -84,6 +86,14 @@ vi.mock('../lib/taskAdapterRegistry.ts', () => ({
 
 vi.mock('../lib/taskId.ts', () => ({
   resolveTaskRef: mocks.resolveTaskRef,
+}))
+
+vi.mock('../lib/taskWorker.ts', () => ({
+  resolveTaskWorker: mocks.resolveTaskWorker,
+}))
+
+vi.mock('../lib/config.ts', () => ({
+  loadConfig: mocks.loadConfig,
 }))
 
 vi.mock('../lib/taskDaemon.ts', () => ({
@@ -217,6 +227,19 @@ describe('task command', () => {
       resolvedId: 'local',
       fallbackUsed: false,
     })
+    mocks.resolveTaskWorker.mockResolvedValue({
+      id: 'default',
+      type: 'mock',
+      execute: vi.fn().mockResolvedValue({ commitRefs: [] }),
+    })
+    mocks.loadConfig.mockResolvedValue({
+      task: {
+        defaultWorker: 'default',
+        workers: {
+          default: { type: 'mock', adapter: 'local' },
+        },
+      },
+    })
   })
 
   test('task start queues a task and ensures daemon', async () => {
@@ -233,10 +256,11 @@ describe('task command', () => {
       title: 'hello',
       mode: undefined,
       branch: undefined,
+      worker: 'default',
     })
     expect(mocks.ensureTaskDaemon).toHaveBeenCalledWith('/repo')
     expect(mocks.success).toHaveBeenCalledWith('Queued #12 (write)')
-    expect(mocks.dim).toHaveBeenCalledWith('task-abc12345')
+    expect(mocks.dim).toHaveBeenCalledWith('task-abc12345 · worker: default')
   })
 
   test('task list prints no tasks message when empty', async () => {
@@ -419,13 +443,24 @@ describe('task command', () => {
   })
 
   test('task worker marks completed when execution succeeds', async () => {
-    mocks.getTask.mockResolvedValue({ id: 'task-1', title: 'hello', mode: 'write', runtime: {} })
+    mocks.getTask.mockResolvedValue({
+      id: 'task-1',
+      title: 'hello',
+      mode: 'write',
+      worker: 'default',
+      runtime: {},
+    })
     mocks.updateTaskStatus.mockResolvedValue(undefined)
     mocks.patchTask.mockResolvedValue(undefined)
-    mocks.execFileAsync.mockResolvedValue({ stdout: '', stderr: '' })
 
-    await taskWorker({ taskId: 'task-1', repo: '/repo', worktree: '/repo/.port/trees/task-1' })
+    await taskWorker({
+      taskId: 'task-1',
+      repo: '/repo',
+      worktree: '/repo/.port/trees/task-1',
+      worker: 'default',
+    })
 
+    expect(mocks.resolveTaskWorker).toHaveBeenCalledWith('/repo', 'default')
     expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
       '/repo',
       'task-1',
@@ -452,12 +487,22 @@ describe('task command', () => {
       id: 'task-2',
       title: 'boom [fail]',
       mode: 'write',
+      worker: 'default',
       runtime: {},
     })
-    mocks.execFileAsync.mockResolvedValue({ stdout: '', stderr: '' })
+    mocks.resolveTaskWorker.mockResolvedValue({
+      id: 'default',
+      type: 'mock',
+      execute: vi.fn().mockRejectedValue(new Error('Task requested failure via [fail] marker')),
+    })
 
     await expect(
-      taskWorker({ taskId: 'task-2', repo: '/repo', worktree: '/repo/.port/trees/task-2' })
+      taskWorker({
+        taskId: 'task-2',
+        repo: '/repo',
+        worktree: '/repo/.port/trees/task-2',
+        worker: 'default',
+      })
     ).rejects.toThrow('Task requested failure')
 
     expect(mocks.updateTaskStatus).toHaveBeenCalledWith(

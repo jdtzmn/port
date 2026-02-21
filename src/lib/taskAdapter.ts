@@ -183,26 +183,28 @@ export class LocalTaskExecutionAdapter implements TaskExecutionAdapter {
     taskId: string,
     worktreePath: string,
     branch: string,
-    runId: string
+    runId: string,
+    workerName?: string
   ): Promise<TaskRunHandle> {
-    const child = spawn(
-      process.execPath,
-      [
-        this.scriptPath,
-        'task',
-        'worker',
-        '--task-id',
-        taskId,
-        '--repo',
-        repoRoot,
-        '--worktree',
-        worktreePath,
-      ],
-      {
-        cwd: worktreePath,
-        stdio: 'ignore',
-      }
-    )
+    const args = [
+      this.scriptPath,
+      'task',
+      'worker',
+      '--task-id',
+      taskId,
+      '--repo',
+      repoRoot,
+      '--worktree',
+      worktreePath,
+    ]
+    if (workerName) {
+      args.push('--worker', workerName)
+    }
+
+    const child = spawn(process.execPath, args, {
+      cwd: worktreePath,
+      stdio: 'ignore',
+    })
 
     if (!child.pid) {
       throw new Error(`Failed to start worker for task ${taskId}`)
@@ -239,7 +241,8 @@ export class LocalTaskExecutionAdapter implements TaskExecutionAdapter {
       task.id,
       prepared.worktreePath,
       prepared.branch,
-      prepared.runId
+      prepared.runId,
+      task.worker
     )
   }
 
@@ -295,7 +298,7 @@ export class LocalTaskExecutionAdapter implements TaskExecutionAdapter {
       worktreePath = await createWorktree(repoRoot, branch)
     }
 
-    return this.spawnWorker(repoRoot, task.id, worktreePath, branch, randomUUID())
+    return this.spawnWorker(repoRoot, task.id, worktreePath, branch, randomUUID(), task.worker)
   }
 
   async requestHandoff(handle: TaskRunHandle): Promise<AttachHandoffReady> {

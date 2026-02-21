@@ -104,9 +104,15 @@ taskCommand
   .description('Queue a background task and ensure daemon is running')
   .option('--mode <mode>', 'Task mode: read or write', 'write')
   .option('--branch <branch>', 'Optional branch lock key for write task routing')
-  .action(async (title: string, options: { mode: 'read' | 'write'; branch?: string }) => {
-    await taskStart(title, { mode: options.mode, branch: options.branch })
-  })
+  .option('--worker <name>', 'Worker instance name (from task.workers config)')
+  .action(
+    async (
+      title: string,
+      options: { mode: 'read' | 'write'; branch?: string; worker?: string }
+    ) => {
+      await taskStart(title, { mode: options.mode, branch: options.branch, worker: options.worker })
+    }
+  )
 
 taskCommand.command('list').alias('ls').description('List persisted tasks').action(taskList)
 
@@ -222,17 +228,21 @@ taskCommand
   .option('--task-id <id>', 'Task id')
   .option('--repo <path>', 'Repository root')
   .option('--worktree <path>', 'Ephemeral worktree path')
-  .action(async (options: { taskId?: string; repo?: string; worktree?: string }) => {
-    if (!options.taskId || !options.repo || !options.worktree) {
-      throw new Error('task worker requires --task-id, --repo, and --worktree')
-    }
+  .option('--worker <name>', 'Worker instance name')
+  .action(
+    async (options: { taskId?: string; repo?: string; worktree?: string; worker?: string }) => {
+      if (!options.taskId || !options.repo || !options.worktree) {
+        throw new Error('task worker requires --task-id, --repo, and --worktree')
+      }
 
-    await taskWorker({
-      taskId: options.taskId,
-      repo: options.repo,
-      worktree: options.worktree,
-    })
-  })
+      await taskWorker({
+        taskId: options.taskId,
+        repo: options.repo,
+        worktree: options.worktree,
+        worker: options.worker,
+      })
+    }
+  )
 
 // port install
 program
