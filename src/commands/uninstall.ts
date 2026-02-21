@@ -126,6 +126,15 @@ async function uninstallLinuxDualMode(domain: string): Promise<boolean> {
     output.dim(`No dnsmasq configuration found at /etc/dnsmasq.d/${domain}.conf`)
   }
 
+  // Clean up the shared port-global.conf when no other domain configs remain
+  const remaining = (await fileOps.list('/etc/dnsmasq.d/')).filter(
+    f => f.endsWith('.conf') && f !== 'port-global.conf'
+  )
+  if (remaining.length === 0 && (await fileOps.exists('/etc/dnsmasq.d/port-global.conf'))) {
+    await fileOps.delete('/etc/dnsmasq.d/port-global.conf', { privileged: true })
+    output.success('Removed /etc/dnsmasq.d/port-global.conf')
+  }
+
   // Restart dnsmasq if it's running
   if (await commandExists('dnsmasq')) {
     try {

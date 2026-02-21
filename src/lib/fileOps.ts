@@ -36,6 +36,9 @@ export interface FileOps {
 
   /** Create a directory (and parents). */
   mkdir(path: string, opts?: { privileged?: boolean }): Promise<void>
+
+  /** Return filenames in a directory (non-recursive). */
+  list(directory: string): Promise<string[]>
 }
 
 // ---------------------------------------------------------------------------
@@ -86,6 +89,18 @@ export const fileOps: FileOps = {
     const exec = opts?.privileged ? execPrivileged : execAsync
     await exec(`mkdir -p ${path}`)
   },
+
+  async list(directory) {
+    try {
+      const { stdout } = await execAsync(`ls -1 ${directory}`)
+      return stdout
+        .split('\n')
+        .map(f => f.trim())
+        .filter(Boolean)
+    } catch {
+      return []
+    }
+  },
 }
 
 // ---------------------------------------------------------------------------
@@ -129,5 +144,12 @@ export class MapFileOps implements FileOps {
 
   async mkdir(): Promise<void> {
     // no-op — directories are implicit in a flat map
+  }
+
+  async list(directory: string): Promise<string[]> {
+    const prefix = directory.endsWith('/') ? directory : directory + '/'
+    return [...this.map.keys()]
+      .filter(key => key.startsWith(prefix) && !key.slice(prefix.length).includes('/'))
+      .map(key => key.slice(prefix.length))
   }
 }
