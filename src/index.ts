@@ -43,7 +43,7 @@ function getReservedCommands(): Set<string> {
 async function maybeWarnCommandBranchCollision(): Promise<void> {
   const token = process.argv[2]
 
-  if (!token || token.startsWith('-') || token === 'enter') {
+  if (!token || token.startsWith('-') || token === 'enter' || token === 'shell-hook') {
     return
   }
 
