@@ -12,7 +12,8 @@ import {
 import { detectWorktree } from '../lib/worktree.ts'
 import { configExists, loadConfig } from '../lib/config.ts'
 import * as output from '../lib/output.ts'
-import { execAsync } from '../lib/exec.ts'
+import { execAsync, execPrivileged } from '../lib/exec.ts'
+import { fileOps } from '../lib/fileOps.ts'
 
 /**
  * Check if a command exists
@@ -107,18 +108,20 @@ async function installMacOS(dnsIp: string, domain: string): Promise<boolean> {
   const dnsmasqConf = `${brewPrefix}/etc/dnsmasq.conf`
 
   // Check if already configured
+  let dnsmasqConfigured = false
   try {
-    const { stdout } = await execAsync(
-      `grep -q "address=/${domain}/${dnsIp}" ${dnsmasqConf} && echo "found"`
-    )
-    if (stdout.trim() === 'found') {
-      output.dim(`dnsmasq already configured for .${domain} domain`)
-    }
+    const content = await fileOps.read(dnsmasqConf)
+    dnsmasqConfigured = content.includes(`address=/${domain}/${dnsIp}`)
   } catch {
-    // Not configured yet, add it
+    // File doesn't exist or can't be read
+  }
+
+  if (dnsmasqConfigured) {
+    output.dim(`dnsmasq already configured for .${domain} domain`)
+  } else {
     output.info(`Configuring dnsmasq for .${domain} domain...`)
     try {
-      await execAsync(`echo "address=/${domain}/${dnsIp}" >> ${dnsmasqConf}`)
+      await fileOps.append(dnsmasqConf, `address=/${domain}/${dnsIp}`)
       output.success('dnsmasq configured')
     } catch (error) {
       output.error(`Failed to configure dnsmasq: ${error}`)
@@ -126,7 +129,39 @@ async function installMacOS(dnsIp: string, domain: string): Promise<boolean> {
     }
   }
 
-  // Check if dnsmasq is already running
+  // Set up resolver first — this is what makes macOS dscacheutil (and
+  // therefore checkDns / `port up`) work.  Without /etc/resolver/<domain>,
+  // DNS resolution for *.<domain> won't use dnsmasq at all, even if the
+  // service is running correctly.
+  let resolverOk = true
+  try {
+    // Check if /etc/resolver already contains the correct config
+    const content = await fileOps.read(`/etc/resolver/${domain}`)
+    if (content.includes(`nameserver ${dnsIp}`)) {
+      output.dim(`Resolver already configured at /etc/resolver/${domain}`)
+    } else {
+      // File exists but has wrong content — overwrite it
+      await fileOps.write(`/etc/resolver/${domain}`, `nameserver ${dnsIp}`, { privileged: true })
+      output.success(`Resolver updated at /etc/resolver/${domain}`)
+    }
+  } catch {
+    // File doesn't exist or can't be read — create it
+    output.info(`Creating resolver for .${domain} domain...`)
+    try {
+      await fileOps.mkdir('/etc/resolver', { privileged: true })
+      await fileOps.write(`/etc/resolver/${domain}`, `nameserver ${dnsIp}`, { privileged: true })
+      output.success(`Resolver created at /etc/resolver/${domain}`)
+    } catch (error) {
+      output.error(`Failed to create resolver: ${error}`)
+      output.info('You can try running these commands manually:')
+      output.info('  sudo mkdir -p /etc/resolver')
+      output.info(`  echo "nameserver ${dnsIp}" | sudo tee /etc/resolver/${domain}`)
+      resolverOk = false
+    }
+  }
+
+  // Start or restart dnsmasq so it picks up any config changes
+  let serviceOk = true
   let dnsmasqRunning = false
   try {
     await execAsync('pgrep dnsmasq')
@@ -135,62 +170,27 @@ async function installMacOS(dnsIp: string, domain: string): Promise<boolean> {
     // pgrep returns non-zero if no process found
   }
 
+  const serviceCommand = dnsmasqRunning
+    ? `${brewPrefix}/bin/brew services restart dnsmasq`
+    : `${brewPrefix}/bin/brew services start dnsmasq`
+
   if (dnsmasqRunning) {
     output.info('Reloading dnsmasq service...')
-    try {
-      await execAsync('sudo brew services restart dnsmasq')
-      output.success('dnsmasq service reloaded')
-    } catch (error) {
-      output.error(`Failed to reload dnsmasq: ${error}`)
-      output.info('You can try running this command manually:')
-      output.info('  sudo brew services restart dnsmasq')
-      return false
-    }
   } else {
-    // Start dnsmasq service
     output.info('Starting dnsmasq service...')
-    try {
-      await execAsync('sudo brew services restart dnsmasq')
-      output.success('dnsmasq service started')
-    } catch (error) {
-      output.error(`Failed to start dnsmasq: ${error}`)
-      output.info('You can try running this command manually:')
-      output.info('  sudo brew services start dnsmasq')
-      return false
-    }
   }
 
-  // Check if resolver is already configured
-  let resolverConfigured = false
   try {
-    // Check if /etc/resolver exists and contains the correct config
-    const { stdout } = await execAsync(`cat /etc/resolver/${domain} 2>/dev/null`)
-    if (stdout.includes(`nameserver ${dnsIp}`)) {
-      resolverConfigured = true
-    }
-  } catch {
-    // File doesn't exist or can't be read
+    await execPrivileged(serviceCommand)
+    output.success(dnsmasqRunning ? 'dnsmasq service reloaded' : 'dnsmasq service started')
+  } catch (error) {
+    output.error(`Failed to ${dnsmasqRunning ? 'reload' : 'start'} dnsmasq: ${error}`)
+    output.info('Run this command as an admin user:')
+    output.info(`  sudo ${serviceCommand}`)
+    serviceOk = false
   }
 
-  if (resolverConfigured) {
-    output.dim(`Resolver already configured at /etc/resolver/${domain}`)
-  } else {
-    // Create resolver directory and file
-    output.info(`Creating resolver for .${domain} domain...`)
-    try {
-      await execAsync('sudo mkdir -p /etc/resolver')
-      await execAsync(`echo "nameserver ${dnsIp}" | sudo tee /etc/resolver/${domain} > /dev/null`)
-      output.success(`Resolver created at /etc/resolver/${domain}`)
-    } catch (error) {
-      output.error(`Failed to create resolver: ${error}`)
-      output.info('You can try running these commands manually:')
-      output.info('  sudo mkdir -p /etc/resolver')
-      output.info(`  echo "nameserver ${dnsIp}" | sudo tee /etc/resolver/${domain}`)
-      return false
-    }
-  }
-
-  return true
+  return resolverOk && serviceOk
 }
 
 /**
@@ -224,7 +224,7 @@ async function installLinuxDualMode(dnsIp: string, domain: string): Promise<bool
   if (!(await commandExists('dnsmasq'))) {
     output.info('Installing dnsmasq...')
     try {
-      await execAsync('sudo apt-get update && sudo apt-get install -y dnsmasq')
+      await execPrivileged('apt-get update && apt-get install -y dnsmasq')
       output.success('dnsmasq installed')
     } catch (error) {
       output.error(`Failed to install dnsmasq: ${error}`)
@@ -240,21 +240,26 @@ async function installLinuxDualMode(dnsIp: string, domain: string): Promise<bool
   // 2. Configure dnsmasq on port 5354
   output.info(`Configuring dnsmasq on port ${DNSMASQ_ALT_PORT}...`)
   try {
-    await execAsync('sudo mkdir -p /etc/dnsmasq.d/')
-    await execAsync(
-      `echo "port=${DNSMASQ_ALT_PORT}" | sudo tee /etc/dnsmasq.d/${domain}.conf > /dev/null`
-    )
-    await execAsync(
-      `echo "address=/${domain}/${dnsIp}" | sudo tee -a /etc/dnsmasq.d/${domain}.conf > /dev/null`
-    )
+    await fileOps.mkdir('/etc/dnsmasq.d/', { privileged: true })
 
-    // If running in Docker, configure dnsmasq to forward non-.port queries to Docker's DNS
+    // Write the port setting to a shared config so it is only declared once,
+    // even when multiple domains are installed (each gets its own address-only file).
+    await fileOps.write('/etc/dnsmasq.d/port-global.conf', `port=${DNSMASQ_ALT_PORT}`, {
+      privileged: true,
+    })
+
+    // If running in Docker, forward non-port queries to Docker's DNS
     if (inDocker) {
-      await execAsync(
-        `echo "server=127.0.0.11" | sudo tee -a /etc/dnsmasq.d/${domain}.conf > /dev/null`
-      )
+      await fileOps.append('/etc/dnsmasq.d/port-global.conf', 'server=127.0.0.11', {
+        privileged: true,
+      })
       output.dim('Added Docker DNS (127.0.0.11) as upstream server')
     }
+
+    // Per-domain file only contains the address mapping
+    await fileOps.write(`/etc/dnsmasq.d/${domain}.conf`, `address=/${domain}/${dnsIp}`, {
+      privileged: true,
+    })
 
     output.success('dnsmasq configured')
   } catch (error) {
@@ -265,7 +270,7 @@ async function installLinuxDualMode(dnsIp: string, domain: string): Promise<bool
   // 3. Restart dnsmasq via systemctl (will use port 5354 from config)
   output.info('Restarting dnsmasq...')
   try {
-    await execAsync('sudo systemctl restart dnsmasq')
+    await execPrivileged('systemctl restart dnsmasq')
     output.success(`dnsmasq restarted on port ${DNSMASQ_ALT_PORT}`)
   } catch (error) {
     output.error(`Failed to restart dnsmasq: ${error}`)
@@ -275,23 +280,25 @@ async function installLinuxDualMode(dnsIp: string, domain: string): Promise<bool
   // 4. Configure systemd-resolved to use dnsmasq
   output.info('Configuring systemd-resolved...')
   try {
-    await execAsync('sudo mkdir -p /etc/systemd/resolved.conf.d/')
-    await execAsync(
-      `echo "[Resolve]" | sudo tee /etc/systemd/resolved.conf.d/${domain}.conf > /dev/null`
-    )
-    await execAsync(
-      `echo "DNS=127.0.0.1:${DNSMASQ_ALT_PORT}" | sudo tee -a /etc/systemd/resolved.conf.d/${domain}.conf > /dev/null`
+    await fileOps.mkdir('/etc/systemd/resolved.conf.d/', { privileged: true })
+    await fileOps.write(`/etc/systemd/resolved.conf.d/${domain}.conf`, '[Resolve]', {
+      privileged: true,
+    })
+    await fileOps.append(
+      `/etc/systemd/resolved.conf.d/${domain}.conf`,
+      `DNS=127.0.0.1:${DNSMASQ_ALT_PORT}`,
+      { privileged: true }
     )
 
     // For non-Docker Linux, use routing domain so systemd-resolved
     // only sends wildcard-domain queries to dnsmasq (keeps default DNS for other queries)
     if (!inDocker) {
-      await execAsync(
-        `echo "Domains=~${domain}" | sudo tee -a /etc/systemd/resolved.conf.d/${domain}.conf > /dev/null`
-      )
+      await fileOps.append(`/etc/systemd/resolved.conf.d/${domain}.conf`, `Domains=~${domain}`, {
+        privileged: true,
+      })
     }
 
-    await execAsync('sudo systemctl restart systemd-resolved')
+    await execPrivileged('systemctl restart systemd-resolved')
     output.success('systemd-resolved configured')
   } catch (error) {
     output.error(`Failed to configure systemd-resolved: ${error}`)
@@ -312,7 +319,7 @@ async function installLinuxStandalone(dnsIp: string, domain: string): Promise<bo
   if (!(await commandExists('dnsmasq'))) {
     output.info('Installing dnsmasq...')
     try {
-      await execAsync('sudo apt-get update && sudo apt-get install -y dnsmasq')
+      await execPrivileged('apt-get update && apt-get install -y dnsmasq')
       output.success('dnsmasq installed')
     } catch (error) {
       output.error(`Failed to install dnsmasq: ${error}`)
@@ -325,10 +332,10 @@ async function installLinuxStandalone(dnsIp: string, domain: string): Promise<bo
   // 2. Configure dnsmasq on port 53 (standard)
   output.info('Configuring dnsmasq...')
   try {
-    await execAsync('sudo mkdir -p /etc/dnsmasq.d/')
-    await execAsync(
-      `echo "address=/${domain}/${dnsIp}" | sudo tee /etc/dnsmasq.d/${domain}.conf > /dev/null`
-    )
+    await fileOps.mkdir('/etc/dnsmasq.d/', { privileged: true })
+    await fileOps.write(`/etc/dnsmasq.d/${domain}.conf`, `address=/${domain}/${dnsIp}`, {
+      privileged: true,
+    })
     output.success('dnsmasq configured')
   } catch (error) {
     output.error(`Failed to configure dnsmasq: ${error}`)
@@ -338,7 +345,7 @@ async function installLinuxStandalone(dnsIp: string, domain: string): Promise<bo
   // 3. Restart dnsmasq service
   output.info('Restarting dnsmasq...')
   try {
-    await execAsync('sudo systemctl restart dnsmasq')
+    await execPrivileged('systemctl restart dnsmasq')
     output.success('dnsmasq restarted')
   } catch (error) {
     output.error(`Failed to restart dnsmasq: ${error}`)

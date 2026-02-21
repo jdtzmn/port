@@ -1,8 +1,17 @@
 import { join } from 'path'
-import { execPortAsync, prepareSample } from '@tests/utils'
+import { execPortAsync, fetchWithTimeout, prepareSample } from '@tests/utils'
 import { describe, test, expect } from 'vitest'
 
-const TIMEOUT = 60000
+const TIMEOUT = 180000
+const POLL_TIMEOUT = 120000
+
+async function safeDown(worktreePath: string): Promise<void> {
+  try {
+    await execPortAsync(['down', '-y'], worktreePath)
+  } catch {
+    // Best-effort cleanup for failed tests.
+  }
+}
 
 describe('parallel worktrees', () => {
   test(
@@ -12,55 +21,56 @@ describe('parallel worktrees', () => {
         initWithConfig: true,
       })
 
-      // Create worktrees (--no-shell so they exit immediately)
-      await execPortAsync(['A', '--no-shell'], sample.dir)
-      await execPortAsync(['B', '--no-shell'], sample.dir)
+      // Create worktrees
+      await execPortAsync(['enter', 'A'], sample.dir)
+      await execPortAsync(['enter', 'B'], sample.dir)
 
       // Navigate to the worktree directories and run `up`
       // Note: branch names are lowercased by sanitizeBranchName
       const worktreeADir = join(sample.dir, './.port/trees/a')
       const worktreeBDir = join(sample.dir, './.port/trees/b')
 
-      await execPortAsync(['up'], worktreeADir)
-      await execPortAsync(['up'], worktreeBDir)
+      try {
+        // Start worktrees sequentially to avoid concurrent image builds
+        await execPortAsync(['up'], worktreeADir)
+        await execPortAsync(['up'], worktreeBDir)
 
-      // Wait for both pages to load and have different content
-      const aURL = 'http://a.port:3000'
-      const bURL = 'http://b.port:3000'
+        // Wait for both pages to load and have different content
+        const aURL = 'http://a.port:3000'
+        const bURL = 'http://b.port:3000'
 
-      await new Promise<void>((resolve, reject) => {
-        const maxWaitTime = 30000
+        const maxWaitTime = POLL_TIMEOUT
         const startTime = Date.now()
+        let textA = ''
+        let textB = ''
+        let ready = false
 
-        const intervalId = setInterval(async () => {
-          // Check for timeout
-          if (Date.now() - startTime > maxWaitTime) {
-            clearInterval(intervalId)
-            reject(new Error('Timed out waiting for services to respond'))
-            return
-          }
-
+        while (Date.now() - startTime < maxWaitTime) {
           try {
-            const resA = await fetch(aURL)
-            const resB = await fetch(bURL)
+            const [resA, resB] = await Promise.all([fetchWithTimeout(aURL), fetchWithTimeout(bURL)])
 
             if (resA.status === 200 && resB.status === 200) {
-              clearInterval(intervalId)
-
-              expect(await resA.text()).not.toEqual(await resB.text())
-              resolve()
+              textA = await resA.text()
+              textB = await resB.text()
+              ready = true
+              break
             }
           } catch {
             // Services not ready yet, continue polling
           }
-        }, 1000)
-      })
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        }
 
-      // End the sample (use -y to skip Traefik confirmation prompt)
-      await execPortAsync(['down', '-y'], worktreeADir)
-      await execPortAsync(['down', '-y'], worktreeBDir)
+        if (!ready) {
+          throw new Error('Timed out waiting for services to respond')
+        }
 
-      await sample.cleanup()
+        expect(textA).not.toEqual(textB)
+      } finally {
+        await safeDown(worktreeADir)
+        await safeDown(worktreeBDir)
+        await sample.cleanup()
+      }
     },
     TIMEOUT + 1000
   )

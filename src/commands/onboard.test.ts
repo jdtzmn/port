@@ -6,6 +6,15 @@ const mocks = vi.hoisted(() => ({
   info: vi.fn(),
   dim: vi.fn(),
   command: vi.fn(),
+  success: vi.fn(),
+}))
+
+const fsMocks = vi.hoisted(() => ({
+  writeFile: vi.fn(),
+}))
+
+const worktreeMocks = vi.hoisted(() => ({
+  detectWorktree: vi.fn(),
 }))
 
 vi.mock('../lib/output.ts', () => ({
@@ -14,9 +23,18 @@ vi.mock('../lib/output.ts', () => ({
   info: mocks.info,
   dim: mocks.dim,
   command: mocks.command,
+  success: mocks.success,
 }))
 
-import { onboard } from './onboard.ts'
+vi.mock('fs/promises', () => ({
+  writeFile: fsMocks.writeFile,
+}))
+
+vi.mock('../lib/worktree.ts', () => ({
+  detectWorktree: worktreeMocks.detectWorktree,
+}))
+
+import { onboard, generateMarkdown } from './onboard.ts'
 
 describe('onboard command', () => {
   beforeEach(() => {
@@ -28,10 +46,15 @@ describe('onboard command', () => {
     await onboard()
 
     expect(mocks.header).toHaveBeenCalledWith('Port onboarding')
+    expect(mocks.dim).toHaveBeenCalledWith(
+      expect.stringContaining('Port is a CLI for managing git worktrees')
+    )
     expect(mocks.info).toHaveBeenCalledWith('Recommended flow:')
     expect(mocks.header).toHaveBeenCalledWith('1. port init')
-    expect(mocks.header).toHaveBeenCalledWith('3. port enter <branch>')
-    expect(mocks.header).toHaveBeenCalledWith('8. port remove <branch>')
+    expect(mocks.header).toHaveBeenCalledWith('3. port shell-hook <bash|zsh|fish>')
+    expect(mocks.header).toHaveBeenCalledWith('4. port enter <branch>')
+    expect(mocks.header).toHaveBeenCalledWith('9. port exit')
+    expect(mocks.header).toHaveBeenCalledWith('10. port remove <branch>')
     expect(mocks.dim).toHaveBeenCalledWith(
       '   How: Use explicit enter, especially when branch names match commands.'
     )
@@ -39,5 +62,55 @@ describe('onboard command', () => {
       '   Why: Stops project services and offers Traefik shutdown when appropriate.'
     )
     expect(mocks.info).toHaveBeenCalledWith('Useful checks:')
+  })
+
+  test('does not write file when --md is not passed', async () => {
+    await onboard()
+
+    expect(fsMocks.writeFile).not.toHaveBeenCalled()
+  })
+
+  describe('--md flag', () => {
+    beforeEach(() => {
+      worktreeMocks.detectWorktree.mockReturnValue({
+        repoRoot: '/fake/repo',
+        worktreePath: '/fake/repo',
+        name: 'repo',
+        isMainRepo: true,
+      })
+      fsMocks.writeFile.mockResolvedValue(undefined)
+    })
+
+    test('writes ONBOARD.md to repo root', async () => {
+      await onboard({ md: true })
+
+      expect(fsMocks.writeFile).toHaveBeenCalledWith('/fake/repo/ONBOARD.md', expect.any(String))
+      expect(mocks.success).toHaveBeenCalledWith('Wrote /fake/repo/ONBOARD.md')
+    })
+
+    test('does not print terminal output when --md is passed', async () => {
+      await onboard({ md: true })
+
+      expect(mocks.header).not.toHaveBeenCalled()
+      expect(mocks.info).not.toHaveBeenCalled()
+      expect(mocks.dim).not.toHaveBeenCalled()
+      expect(mocks.newline).not.toHaveBeenCalled()
+    })
+
+    test('written markdown matches snapshot', async () => {
+      await onboard({ md: true })
+
+      const call = fsMocks.writeFile.mock.calls[0]
+      expect(call).toBeDefined()
+      const writtenContent = call![1] as string
+
+      expect(writtenContent).toMatchSnapshot()
+    })
+  })
+
+  describe('generateMarkdown', () => {
+    test('matches snapshot', () => {
+      expect(generateMarkdown()).toMatchSnapshot()
+    })
   })
 })

@@ -440,7 +440,11 @@ export function generateOverrideContent(
       }
 
       serviceOverride.ports = [] // Will be prefixed with !override in output
-      serviceOverride.networks = [TRAEFIK_NETWORK]
+      // Keep the default project network for inter-service DNS resolution
+      // (e.g. app -> postgres) and add traefik-network for external routing.
+      // Without "default", all services share only traefik-network, causing
+      // DNS alias collisions when multiple projects use the same service names.
+      serviceOverride.networks = ['default', TRAEFIK_NETWORK]
       serviceOverride.labels = labels
     }
 
@@ -618,6 +622,42 @@ export async function composePs(
 }
 
 /**
+ * Wait until Traefik is accepting TCP connections on port 80.
+ * This ensures the proxy is fully ready before services start registering.
+ */
+async function waitForTraefikReady(timeoutMs = 15000): Promise<void> {
+  const { createConnection } = await import('net')
+  const startTime = Date.now()
+
+  while (Date.now() - startTime < timeoutMs) {
+    const connected = await new Promise<boolean>(resolve => {
+      const socket = createConnection({ host: '127.0.0.1', port: 80 })
+      const timer = setTimeout(() => {
+        socket.destroy()
+        resolve(false)
+      }, 2000)
+
+      socket.once('connect', () => {
+        clearTimeout(timer)
+        socket.destroy()
+        resolve(true)
+      })
+      socket.once('error', () => {
+        clearTimeout(timer)
+        socket.destroy()
+        resolve(false)
+      })
+    })
+
+    if (connected) return
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+
+  // Don't throw — Traefik may still become ready momentarily; callers have
+  // their own polling so a hard failure here would be overly strict.
+}
+
+/**
  * Start Traefik container
  *
  * This function handles concurrent starts gracefully - if another process
@@ -649,6 +689,7 @@ export async function startTraefik(): Promise<void> {
 
       while (Date.now() - startTime < maxWaitTime) {
         if (await isTraefikRunning()) {
+          await waitForTraefikReady()
           return // Traefik started successfully by another process
         }
         await new Promise(resolve => setTimeout(resolve, pollInterval))
@@ -659,6 +700,8 @@ export async function startTraefik(): Promise<void> {
 
     throw new ComposeError(`Failed to start Traefik: ${error}`)
   }
+
+  await waitForTraefikReady()
 }
 
 /**
@@ -692,17 +735,62 @@ export async function isTraefikRunning(): Promise<boolean> {
 }
 
 /**
- * Restart Traefik container (needed after config changes)
+ * Check which host port bindings the running Traefik container actually has.
+ *
+ * Parses the `Ports` column from `docker inspect` and returns the set of
+ * published host ports.
+ */
+export async function getTraefikBoundPorts(): Promise<number[]> {
+  try {
+    // Returns port bindings like "0.0.0.0:80->80/tcp, 0.0.0.0:3000->3000/tcp"
+    const { stdout } = await execAsync(
+      'docker inspect --format "{{range $p, $conf := .NetworkSettings.Ports}}{{(index $conf 0).HostPort}} {{end}}" port-traefik'
+    )
+
+    const ports: number[] = []
+    for (const token of stdout.trim().split(/\s+/)) {
+      const port = parseInt(token, 10)
+      if (Number.isFinite(port) && port > 0) {
+        ports.push(port)
+      }
+    }
+
+    return ports
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Check if the running Traefik container has all the required ports bound.
+ *
+ * @param requiredPorts - Ports that must be bound on the host
+ * @returns true if all required ports are bound
+ */
+export async function traefikHasRequiredPorts(requiredPorts: number[]): Promise<boolean> {
+  const boundPorts = new Set(await getTraefikBoundPorts())
+  return requiredPorts.every(port => boundPorts.has(port))
+}
+
+/**
+ * Restart Traefik container (needed after config changes).
+ *
+ * Uses `up -d` instead of `restart` so the container is recreated when the
+ * compose file changes (e.g. new port mappings or volume mounts). A plain
+ * `restart` only stops/starts the existing container, leaving stale port
+ * bindings in place.
  */
 export async function restartTraefik(): Promise<void> {
   const cmd = await getComposeCommandParts()
 
   try {
-    await execFileAsync(cmd.bin, [...cmd.baseArgs, 'restart'], {
+    await execFileAsync(cmd.bin, [...cmd.baseArgs, 'up', '-d'], {
       cwd: TRAEFIK_DIR,
       timeout: 60000,
     })
   } catch (error) {
     throw new ComposeError(`Failed to restart Traefik: ${error}`)
   }
+
+  await waitForTraefikReady()
 }

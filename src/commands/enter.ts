@@ -10,18 +10,18 @@ import { existsSync } from 'fs'
 import inquirer from 'inquirer'
 import * as output from '../lib/output.ts'
 import { findSimilarCommand } from '../lib/commands.ts'
-
-interface EnterOptions {
-  noShell?: boolean
-}
+import { buildEnterCommands, getEvalContext, writeEvalFile } from '../lib/shell.ts'
 
 /**
- * Enter a worktree (create if needed) and spawn a subshell
+ * Enter a worktree (create if needed).
+ *
+ * When the shell hook is active (__PORT_EVAL env var), writes shell commands
+ * (cd, export) to the eval file for the hook to pick up.
+ * Otherwise, does setup work and prints a human-readable hint.
  *
  * @param branch - The branch name to enter
- * @param options - Enter options
  */
-export async function enter(branch: string, options?: EnterOptions): Promise<void> {
+export async function enter(branch: string): Promise<void> {
   let repoRoot: string
   try {
     repoRoot = detectWorktree().repoRoot
@@ -157,44 +157,24 @@ export async function enter(branch: string, options?: EnterOptions): Promise<voi
     output.dim('Could not generate .port/override.yml (compose file may not exist yet)')
   }
 
-  // Skip subshell if --no-shell flag is passed
-  if (options?.noShell) {
+  // If running inside the shell hook, write eval commands to the sideband file
+  const evalCtx = getEvalContext()
+  if (evalCtx) {
+    const commands = buildEnterCommands(evalCtx.shell, worktreePath, sanitized, repoRoot)
+    writeEvalFile(commands, evalCtx.evalFile)
     return
   }
 
-  // Show service URLs
+  // Without shell integration — print human-readable output with hint
   output.newline()
-  output.success(`Entered worktree: ${output.branch(sanitized)}`)
-
+  output.success(`Worktree ready: ${output.branch(sanitized)}`)
   output.newline()
-  output.info(`Run ${output.command("'port up'")} to start services`)
-  output.info("Type 'exit' to return to parent shell")
+  output.info(`Run: cd ${worktreePath}`)
   output.newline()
-
-  // Spawn subshell
-  const shell = process.env.SHELL || '/bin/bash'
-
-  const child = spawn(shell, [], {
-    cwd: worktreePath,
-    stdio: 'inherit',
-    env: {
-      ...process.env,
-      PORT_WORKTREE: sanitized,
-      PORT_REPO: repoRoot,
-    },
-  })
-
-  // Wait for shell to exit
-  child.on('exit', code => {
-    output.newline()
-    output.dim(`Exited worktree: ${sanitized}`)
-    process.exit(code ?? 0)
-  })
-
-  child.on('error', error => {
-    output.error(`Failed to spawn shell: ${error}`)
-    process.exit(1)
-  })
+  output.dim('Tip: Add shell integration for automatic cd:')
+  output.dim('  eval "$(port shell-hook bash)"   # in ~/.bashrc')
+  output.dim('  eval "$(port shell-hook zsh)"    # in ~/.zshrc')
+  output.dim('  port shell-hook fish | source    # in ~/.config/fish/config.fish')
 }
 
 function getForwardedArgs(branch: string): string[] {
@@ -205,6 +185,7 @@ function getForwardedArgs(branch: string): string[] {
     return argv
   }
 
+  // Remove the branch name from forwarded args
   return [...argv.slice(0, branchIndex), ...argv.slice(branchIndex + 1)]
 }
 

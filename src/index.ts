@@ -5,6 +5,7 @@ import { init } from './commands/init.ts'
 import { list } from './commands/list.ts'
 import { install } from './commands/install.ts'
 import { enter } from './commands/enter.ts'
+import { exit } from './commands/exit.ts'
 import { up } from './commands/up.ts'
 import { down } from './commands/down.ts'
 import { remove } from './commands/remove.ts'
@@ -36,34 +37,24 @@ import {
   taskWatch,
   taskWorker,
 } from './commands/task.ts'
+import { shellHook } from './commands/shell-hook.ts'
+import { completion } from './commands/completion.ts'
+import { isReservedCommand } from './lib/commands.ts'
 import { detectWorktree } from './lib/worktree.ts'
 import { branchExists } from './lib/git.ts'
 import * as output from './lib/output.ts'
 
 export const program = new Command()
-
-function getReservedCommands(): Set<string> {
-  const reserved = new Set<string>(['help'])
-
-  for (const command of program.commands) {
-    reserved.add(command.name())
-
-    for (const alias of command.aliases()) {
-      reserved.add(alias)
-    }
-  }
-
-  return reserved
-}
+program.enablePositionalOptions()
 
 async function maybeWarnCommandBranchCollision(): Promise<void> {
   const token = process.argv[2]
 
-  if (!token || token.startsWith('-') || token === 'enter') {
+  if (!token || token.startsWith('-') || token === 'enter' || token === 'shell-hook') {
     return
   }
 
-  if (!getReservedCommands().has(token)) {
+  if (!isReservedCommand(token)) {
     return
   }
 
@@ -81,7 +72,7 @@ async function maybeWarnCommandBranchCollision(): Promise<void> {
 
 program
   .name('port')
-  .description('Manage git worktrees with automatic Traefik configuration')
+  .description('Manage git worktrees — run parallel Docker Compose stacks without port conflicts')
   .version('0.1.0')
 
 // port init
@@ -94,6 +85,7 @@ program
 program
   .command('onboard')
   .description('Show recommended Port workflow and command guide')
+  .option('--md', 'Write an ONBOARD.md file to the repo root')
   .action(onboard)
 
 // port task
@@ -261,6 +253,7 @@ program
   .command('list')
   .alias('ls')
   .description('List worktrees and host service summary')
+  .option('-n, --names', 'Print only worktree names, one per line')
   .action(list)
 
 // port status
@@ -270,13 +263,23 @@ program.command('status').description('Show per-service status for all worktrees
 program
   .command('enter <branch>')
   .description('Enter a worktree by branch name (works even for command-name branches)')
-  .option('--no-shell', 'Skip spawning a subshell (useful for CI/scripting)')
-  .action(async (branch: string, options: { shell?: boolean }, command: Command) => {
-    const commandShell = options.shell
-    const parentShell = command.parent?.opts<{ shell?: boolean }>().shell
-    const shellEnabled = commandShell ?? parentShell ?? true
-    await enter(branch, { noShell: !shellEnabled })
+  .action(async (branch: string) => {
+    await enter(branch)
   })
+
+// port exit
+program
+  .command('exit')
+  .description('Exit the current worktree and return to the repository root')
+  .action(async () => {
+    await exit()
+  })
+
+// port shell-hook <shell>
+program
+  .command('shell-hook <shell>')
+  .description('Print shell integration code for automatic cd (bash, zsh, or fish)')
+  .action(shellHook)
 
 // port urls [service]
 program
@@ -350,6 +353,12 @@ program
   .description('Delete archived branches created by port remove (with confirmation)')
   .action(cleanup)
 
+// port completion <shell>
+program
+  .command('completion <shell>')
+  .description('Generate shell completion script (bash, zsh, or fish)')
+  .action(completion)
+
 // port <branch> - default command to enter a worktree
 // This must be last to act as a catch-all for branch names
 program.hook('preAction', async () => {
@@ -358,15 +367,14 @@ program.hook('preAction', async () => {
 
 program
   .argument('[branch]', 'Branch name to enter (creates worktree if needed)')
-  .option('--no-shell', 'Skip spawning a subshell (useful for CI/scripting)')
-  .action(async (branch: string | undefined, options: { shell: boolean }) => {
+  .action(async (branch: string | undefined) => {
     if (branch) {
       // Check if it looks like a command that wasn't matched
-      if (getReservedCommands().has(branch)) {
+      if (isReservedCommand(branch)) {
         program.help()
         return
       }
-      await enter(branch, { noShell: !options.shell })
+      await enter(branch)
     } else {
       // No argument provided, show help
       program.help()

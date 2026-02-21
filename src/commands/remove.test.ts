@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { CliError } from '../lib/cli.ts'
 
 const mocks = vi.hoisted(() => ({
@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   isTraefikRunning: vi.fn(),
   getProjectName: vi.fn(),
   existsSync: vi.fn(),
+  exit: vi.fn(),
   success: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -72,6 +73,10 @@ vi.mock('fs', () => ({
   existsSync: mocks.existsSync,
 }))
 
+vi.mock('./exit.ts', () => ({
+  exit: mocks.exit,
+}))
+
 vi.mock('../lib/output.ts', () => ({
   success: mocks.success,
   warn: mocks.warn,
@@ -85,9 +90,13 @@ vi.mock('../lib/output.ts', () => ({
 import { remove } from './remove.ts'
 
 describe('remove command', () => {
+  const originalEnv = { ...process.env }
+
   beforeEach(() => {
     vi.clearAllMocks()
+    delete process.env.PORT_WORKTREE
 
+    mocks.exit.mockResolvedValue(undefined)
     mocks.detectWorktree.mockReturnValue({
       repoRoot: '/repo',
       worktreePath: '/repo',
@@ -117,6 +126,10 @@ describe('remove command', () => {
 
     mocks.existsSync.mockReturnValue(true)
     mocks.branch.mockImplementation((name: string) => name)
+  })
+
+  afterEach(() => {
+    process.env = { ...originalEnv }
   })
 
   test('removes a standard worktree path', async () => {
@@ -213,5 +226,29 @@ describe('remove command', () => {
 
     await expect(remove('demo-2')).rejects.toBeInstanceOf(CliError)
     expect(mocks.error).toHaveBeenCalledWith('Worktree not found: demo-2')
+  })
+
+  test('exits worktree before removing when user is inside it', async () => {
+    process.env.PORT_WORKTREE = 'demo-2'
+
+    await remove('demo-2')
+
+    expect(mocks.exit).toHaveBeenCalled()
+    // Verify exit was called before worktree removal
+    const exitOrder = mocks.exit.mock.invocationCallOrder[0]!
+    const removeOrder = mocks.removeWorktree.mock.invocationCallOrder[0]!
+    expect(exitOrder).toBeLessThan(removeOrder)
+
+    // Verify the rest of the removal still completes
+    expect(mocks.removeWorktree).toHaveBeenCalledWith('/repo', 'demo-2', true)
+  })
+
+  test('does not exit when user is not inside the target worktree', async () => {
+    delete process.env.PORT_WORKTREE
+
+    await remove('demo-2')
+
+    expect(mocks.exit).not.toHaveBeenCalled()
+    expect(mocks.removeWorktree).toHaveBeenCalledWith('/repo', 'demo-2', true)
   })
 })

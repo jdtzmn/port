@@ -47,7 +47,7 @@ test('Help includes the cleanup command', async () => {
 test('Help includes the enter command', async () => {
   const { findByText } = await renderCLI(['--help'])
 
-  const instance = await findByText('enter [options] <branch>')
+  const instance = await findByText('enter <branch>')
   expect(instance).toBeInTheConsole()
 })
 
@@ -93,17 +93,38 @@ test('Task help includes logs/watch/wait/cancel/artifacts commands', async () =>
   expect(await findByText('events [options]')).toBeInTheConsole()
 })
 
+test('Help includes the shell-hook command', async () => {
+  const { findByText } = await renderCLI(['--help'])
+
+  const instance = await findByText('shell-hook')
+  expect(instance).toBeInTheConsole()
+})
+
 test('Shows a hint when command name collides with a branch', async () => {
   const sample = await prepareSample('simple-server', { initWithConfig: true })
 
   try {
     await execAsync('git branch status', { cwd: sample.dir })
 
-    const { findByText } = await renderCLI(['status'], sample.dir)
-    const instance = await findByText(
+    const { findByError } = await renderCLI(['status'], sample.dir)
+    const instance = await findByError(
       'Hint: branch "status" matches a command. Use "port enter status".'
     )
     expect(instance).toBeInTheConsole()
+  } finally {
+    await sample.cleanup()
+  }
+})
+
+test('Does not show collision hint for shell-hook command', async () => {
+  const sample = await prepareSample('simple-server', { initWithConfig: true })
+
+  try {
+    await execAsync('git branch shell-hook', { cwd: sample.dir })
+
+    const result = await renderCLI(['shell-hook', 'fish'], sample.dir)
+    const instance = result.queryByError('Hint: branch "shell-hook"')
+    expect(instance).toBeNull()
   } finally {
     await sample.cleanup()
   }

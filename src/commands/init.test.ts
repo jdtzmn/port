@@ -21,9 +21,9 @@ describe('Git repo detection tests', () => {
       gitInit: true,
     })
 
-    const { findByText } = await renderCLI(['init'], sample.dir)
+    const { findByError } = await renderCLI(['init'], sample.dir)
 
-    const instance = await findByText('Initialization complete', {}, { timeout: 10000 })
+    const instance = await findByError('Initialization complete', {}, { timeout: 10000 })
     expect(instance).toBeInTheConsole()
     await sample.cleanup()
   })
@@ -46,17 +46,17 @@ describe('Directory creation tests', () => {
 
   test('should create the `.port` directory', async () => {
     expect(existsSync(path.join(sampleDir, '.port'))).toBeFalsy()
-    const { findByText } = await renderCLI(['init'], sampleDir)
+    const { findByError } = await renderCLI(['init'], sampleDir)
 
-    await findByText('Initialization complete', {}, { timeout: 10000 })
+    await findByError('Initialization complete', {}, { timeout: 10000 })
     expect(existsSync(path.join(sampleDir, '.port'))).toBeTruthy()
   })
 
   test('should create the user override compose scaffold', async () => {
     expect(existsSync(path.join(sampleDir, '.port', 'override-compose.yml'))).toBeFalsy()
 
-    const { findByText } = await renderCLI(['init'], sampleDir)
-    await findByText('Initialization complete', {}, { timeout: 10000 })
+    const { findByError } = await renderCLI(['init'], sampleDir)
+    await findByError('Initialization complete', {}, { timeout: 10000 })
 
     expect(existsSync(path.join(sampleDir, '.port', 'override-compose.yml'))).toBeTruthy()
   })

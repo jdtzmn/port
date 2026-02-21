@@ -14,6 +14,7 @@ import { runCompose, stopTraefik, isTraefikRunning, getProjectName } from '../li
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
 import { failWithError } from '../lib/cli.ts'
+import { exit } from './exit.ts'
 
 interface RemoveOptions {
   force?: boolean
@@ -76,6 +77,11 @@ export async function remove(branch: string, options: RemoveOptions = {}): Promi
       }
     }
   }
+  // If the user is currently inside the worktree being removed, exit first
+  if (process.env.PORT_WORKTREE === sanitized) {
+    await exit()
+  }
+
   const worktreePathExists = existsSync(worktreePath)
 
   // Load config

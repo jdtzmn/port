@@ -3,7 +3,8 @@ import { checkDns, isSystemdResolvedRunning, DEFAULT_DNS_IP, DEFAULT_DOMAIN } fr
 import { detectWorktree } from '../lib/worktree.ts'
 import { configExists, loadConfig } from '../lib/config.ts'
 import * as output from '../lib/output.ts'
-import { execAsync } from '../lib/exec.ts'
+import { execAsync, execPrivileged } from '../lib/exec.ts'
+import { fileOps } from '../lib/fileOps.ts'
 
 /**
  * Check if a command exists
@@ -31,10 +32,6 @@ async function isDnsmasqRunning(): Promise<boolean> {
 
 function normalizeDomain(domain: string): string {
   return domain.trim().toLowerCase()
-}
-
-function escapeRegex(input: string): string {
-  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 async function resolveUninstallDomain(explicitDomain?: string): Promise<string> {
@@ -78,14 +75,10 @@ async function uninstallMacOS(domain: string): Promise<boolean> {
   // Remove the domain configuration from dnsmasq.conf
   output.info(`Removing .${domain} configuration from dnsmasq...`)
   try {
-    const domainPattern = escapeRegex(domain)
-    // Check if dnsmasq.conf exists and has our config
-    const { stdout } = await execAsync(
-      `grep "address=/${domainPattern}/" ${dnsmasqConf} 2>/dev/null || true`
-    )
-    if (stdout.trim()) {
+    const content = await fileOps.read(dnsmasqConf)
+    if (content.includes(`address=/${domain}/`)) {
       // Remove lines containing address=/<domain>/
-      await execAsync(`sudo sed -i '' '/address=\\/${domainPattern}\\//d' ${dnsmasqConf}`)
+      await fileOps.removeLines(dnsmasqConf, `address=/${domain}/`)
       output.success(`Removed .${domain} configuration from dnsmasq.conf`)
     } else {
       output.dim(`No .${domain} configuration found in dnsmasq.conf`)
@@ -97,8 +90,8 @@ async function uninstallMacOS(domain: string): Promise<boolean> {
   // Remove the resolver file
   output.info(`Removing resolver for .${domain} domain...`)
   try {
-    await execAsync(`test -f /etc/resolver/${domain}`)
-    await execAsync(`sudo rm /etc/resolver/${domain}`)
+    if (!(await fileOps.exists(`/etc/resolver/${domain}`))) throw new Error('not found')
+    await fileOps.delete(`/etc/resolver/${domain}`, { privileged: true })
     output.success(`Removed /etc/resolver/${domain}`)
   } catch {
     output.dim(`No resolver file found at /etc/resolver/${domain}`)
@@ -108,7 +101,7 @@ async function uninstallMacOS(domain: string): Promise<boolean> {
   if (await isDnsmasqRunning()) {
     output.info('Restarting dnsmasq to apply changes...')
     try {
-      await execAsync('sudo brew services restart dnsmasq')
+      await execPrivileged(`${brewPrefix}/bin/brew services restart dnsmasq`)
       output.success('dnsmasq restarted')
     } catch (error) {
       output.warn(`Could not restart dnsmasq: ${error}`)
@@ -126,11 +119,20 @@ async function uninstallLinuxDualMode(domain: string): Promise<boolean> {
   // Remove dnsmasq configuration
   output.info('Removing dnsmasq configuration...')
   try {
-    await execAsync(`test -f /etc/dnsmasq.d/${domain}.conf`)
-    await execAsync(`sudo rm /etc/dnsmasq.d/${domain}.conf`)
+    if (!(await fileOps.exists(`/etc/dnsmasq.d/${domain}.conf`))) throw new Error('not found')
+    await fileOps.delete(`/etc/dnsmasq.d/${domain}.conf`, { privileged: true })
     output.success(`Removed /etc/dnsmasq.d/${domain}.conf`)
   } catch {
     output.dim(`No dnsmasq configuration found at /etc/dnsmasq.d/${domain}.conf`)
+  }
+
+  // Clean up the shared port-global.conf when no other domain configs remain
+  const remaining = (await fileOps.list('/etc/dnsmasq.d/')).filter(
+    f => f.endsWith('.conf') && f !== 'port-global.conf'
+  )
+  if (remaining.length === 0 && (await fileOps.exists('/etc/dnsmasq.d/port-global.conf'))) {
+    await fileOps.delete('/etc/dnsmasq.d/port-global.conf', { privileged: true })
+    output.success('Removed /etc/dnsmasq.d/port-global.conf')
   }
 
   // Restart dnsmasq if it's running
@@ -138,7 +140,7 @@ async function uninstallLinuxDualMode(domain: string): Promise<boolean> {
     try {
       await execAsync('systemctl is-active dnsmasq')
       output.info('Restarting dnsmasq...')
-      await execAsync('sudo systemctl restart dnsmasq')
+      await execPrivileged('systemctl restart dnsmasq')
       output.success('dnsmasq restarted')
     } catch {
       output.dim('dnsmasq service is not running')
@@ -148,13 +150,14 @@ async function uninstallLinuxDualMode(domain: string): Promise<boolean> {
   // Remove systemd-resolved configuration
   output.info('Removing systemd-resolved configuration...')
   try {
-    await execAsync(`test -f /etc/systemd/resolved.conf.d/${domain}.conf`)
-    await execAsync(`sudo rm /etc/systemd/resolved.conf.d/${domain}.conf`)
+    if (!(await fileOps.exists(`/etc/systemd/resolved.conf.d/${domain}.conf`)))
+      throw new Error('not found')
+    await fileOps.delete(`/etc/systemd/resolved.conf.d/${domain}.conf`, { privileged: true })
     output.success(`Removed /etc/systemd/resolved.conf.d/${domain}.conf`)
 
     // Restart systemd-resolved to apply changes
     output.info('Restarting systemd-resolved...')
-    await execAsync('sudo systemctl restart systemd-resolved')
+    await execPrivileged('systemctl restart systemd-resolved')
     output.success('systemd-resolved restarted')
   } catch {
     output.dim(
@@ -173,8 +176,8 @@ async function uninstallLinuxStandalone(domain: string): Promise<boolean> {
   // Remove dnsmasq configuration
   output.info('Removing dnsmasq configuration...')
   try {
-    await execAsync(`test -f /etc/dnsmasq.d/${domain}.conf`)
-    await execAsync(`sudo rm /etc/dnsmasq.d/${domain}.conf`)
+    if (!(await fileOps.exists(`/etc/dnsmasq.d/${domain}.conf`))) throw new Error('not found')
+    await fileOps.delete(`/etc/dnsmasq.d/${domain}.conf`, { privileged: true })
     output.success(`Removed /etc/dnsmasq.d/${domain}.conf`)
   } catch {
     output.dim(`No dnsmasq configuration found at /etc/dnsmasq.d/${domain}.conf`)
@@ -185,7 +188,7 @@ async function uninstallLinuxStandalone(domain: string): Promise<boolean> {
     try {
       await execAsync('systemctl is-active dnsmasq')
       output.info('Restarting dnsmasq...')
-      await execAsync('sudo systemctl restart dnsmasq')
+      await execPrivileged('systemctl restart dnsmasq')
       output.success('dnsmasq restarted')
     } catch {
       output.dim('dnsmasq service is not running')
@@ -203,13 +206,7 @@ async function uninstallLinux(domain: string): Promise<boolean> {
   const systemdResolvedActive = await isSystemdResolvedRunning()
 
   // Check if we have systemd-resolved config (indicates dual-mode was used)
-  let hasDualModeConfig = false
-  try {
-    await execAsync(`test -f /etc/systemd/resolved.conf.d/${domain}.conf`)
-    hasDualModeConfig = true
-  } catch {
-    // No dual-mode config
-  }
+  const hasDualModeConfig = await fileOps.exists(`/etc/systemd/resolved.conf.d/${domain}.conf`)
 
   if (systemdResolvedActive && hasDualModeConfig) {
     output.info('Detected dual-mode configuration (dnsmasq + systemd-resolved)')
