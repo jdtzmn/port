@@ -58,6 +58,41 @@ test('Help includes the onboard command', async () => {
   expect(instance).toBeInTheConsole()
 })
 
+test('Help includes the task command', async () => {
+  const { findByText } = await renderCLI(['--help'])
+
+  const instance = await findByText('task')
+  expect(instance).toBeInTheConsole()
+})
+
+test('Help includes the remote command', async () => {
+  const { findByText } = await renderCLI(['--help'])
+
+  const instance = await findByText('remote')
+  expect(instance).toBeInTheConsole()
+})
+
+test('Task help includes apply command', async () => {
+  const { findByText } = await renderCLI(['task', '--help'])
+
+  const instance = await findByText('apply [options] <task-ref>')
+  expect(instance).toBeInTheConsole()
+})
+
+test('Task help includes logs/watch/wait/cancel/artifacts commands', async () => {
+  const { findByText } = await renderCLI(['task', '--help'])
+
+  expect(await findByText('list|ls')).toBeInTheConsole()
+  expect(await findByText('attach [options] <task-ref>')).toBeInTheConsole()
+  expect(await findByText('logs [options] <task-ref>')).toBeInTheConsole()
+  expect(await findByText('watch [options]')).toBeInTheConsole()
+  expect(await findByText('wait [options] <task-ref>')).toBeInTheConsole()
+  expect(await findByText('resume <task-ref>')).toBeInTheConsole()
+  expect(await findByText('cancel <task-ref>')).toBeInTheConsole()
+  expect(await findByText('artifacts <task-ref>')).toBeInTheConsole()
+  expect(await findByText('events [options]')).toBeInTheConsole()
+})
+
 test('Help includes the shell-hook command', async () => {
   const { findByText } = await renderCLI(['--help'])
 

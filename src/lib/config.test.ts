@@ -73,4 +73,86 @@ describe('loadConfig', () => {
 
     expect(config.domain).toBe(DEFAULT_DOMAIN)
   })
+
+  test('parses task config with workers and adapters', async () => {
+    const configPath = join(repoRoot, PORT_DIR, CONFIG_FILE)
+    await writeFile(
+      configPath,
+      [
+        '{',
+        '  "task": {',
+        '    "daemonIdleStopMinutes": 10,',
+        '    "lockMode": "branch",',
+        '    "defaultWorker": "main",',
+        '    "workers": {',
+        '      "main": { "type": "opencode", "adapter": "local" },',
+        '      "fast": { "type": "opencode", "adapter": "local", "config": { "model": "fast-model" } }',
+        '    },',
+        '    "adapters": {',
+        '      "sandbox": { "type": "e2b", "config": { "template": "opencode-v2" } }',
+        '    },',
+        '    "attach": { "enabled": true, "client": "configured" },',
+        '    "subscriptions": { "enabled": true, "consumers": ["opencode"] }',
+        '  }',
+        '}',
+      ].join('\n')
+    )
+
+    const config = await loadConfig(repoRoot)
+    expect(config.task?.daemonIdleStopMinutes).toBe(10)
+    expect(config.task?.defaultWorker).toBe('main')
+    expect(config.task?.workers?.main?.type).toBe('opencode')
+    expect(config.task?.workers?.main?.adapter).toBe('local')
+    expect(config.task?.workers?.fast?.config).toEqual({ model: 'fast-model' })
+    expect(config.task?.adapters?.sandbox?.type).toBe('e2b')
+    expect(config.task?.adapters?.sandbox?.config).toEqual({ template: 'opencode-v2' })
+    expect(config.task?.attach?.enabled).toBe(true)
+    expect(config.task?.subscriptions?.enabled).toBe(true)
+  })
+
+  test('rejects defaultWorker that does not match a worker key', async () => {
+    const configPath = join(repoRoot, PORT_DIR, CONFIG_FILE)
+    await writeFile(
+      configPath,
+      [
+        '{',
+        '  "task": {',
+        '    "defaultWorker": "nonexistent",',
+        '    "workers": {',
+        '      "main": { "type": "opencode", "adapter": "local" }',
+        '    }',
+        '  }',
+        '}',
+      ].join('\n')
+    )
+
+    await expect(loadConfig(repoRoot)).rejects.toBeInstanceOf(ConfigError)
+  })
+
+  test('rejects invalid worker type', async () => {
+    const configPath = join(repoRoot, PORT_DIR, CONFIG_FILE)
+    await writeFile(
+      configPath,
+      '{ "task": { "workers": { "bad": { "type": "invalid", "adapter": "local" } } } }'
+    )
+
+    await expect(loadConfig(repoRoot)).rejects.toBeInstanceOf(ConfigError)
+  })
+
+  test('rejects invalid adapter type in worker', async () => {
+    const configPath = join(repoRoot, PORT_DIR, CONFIG_FILE)
+    await writeFile(
+      configPath,
+      '{ "task": { "workers": { "bad": { "type": "opencode", "adapter": "unknown" } } } }'
+    )
+
+    await expect(loadConfig(repoRoot)).rejects.toBeInstanceOf(ConfigError)
+  })
+
+  test('rejects invalid task lock mode', async () => {
+    const configPath = join(repoRoot, PORT_DIR, CONFIG_FILE)
+    await writeFile(configPath, '{ "task": { "lockMode": "invalid" } }')
+
+    await expect(loadConfig(repoRoot)).rejects.toBeInstanceOf(ConfigError)
+  })
 })

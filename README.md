@@ -219,26 +219,58 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 
 ## Commands
 
-| Command                                          | Description                                           |
-| ------------------------------------------------ | ----------------------------------------------------- |
-| `port init`                                      | Initialize `.port/` directory structure               |
-| `port onboard`                                   | Print recommended workflow and command usage guide    |
-| `port install [--dns-ip IP] [--domain DOMAIN]`   | Set up DNS for wildcard domain (default from config)  |
-| `port shell-hook <bash\|zsh\|fish>`              | Print shell integration code for automatic cd         |
-| `port enter <branch>`                            | Enter a worktree explicitly (including command names) |
-| `port <branch>`                                  | Enter a worktree (creates if doesn't exist)           |
-| `port exit`                                      | Exit the current worktree and return to repo root     |
-| `port up`                                        | Start docker-compose services in current worktree     |
-| `port down`                                      | Stop docker-compose services and host processes       |
-| `port run <port> -- <command...>`                | Run a host process with Traefik routing               |
-| `port kill [port]`                               | Stop host services (optionally by logical port)       |
-| `port remove <branch> [--force] [--keep-branch]` | Remove worktree and archive local branch              |
-| `port compose <args...>`                         | Run docker compose with auto `-f` flags               |
-| `port list`                                      | List worktree and host-service summary                |
-| `port status`                                    | Show per-service status by worktree                   |
-| `port urls [service]`                            | Show service URLs for current worktree                |
-| `port cleanup`                                   | Delete archived local branches with confirmation      |
-| `port uninstall [--yes] [--domain DOMAIN]`       | Remove DNS configuration for wildcard domain          |
+| Command                                          | Description                                             |
+| ------------------------------------------------ | ------------------------------------------------------- |
+| `port init`                                      | Initialize `.port/` directory structure                 |
+| `port onboard`                                   | Print recommended workflow and command usage guide      |
+| `port install [--dns-ip IP] [--domain DOMAIN]`   | Set up DNS for wildcard domain (default from config)    |
+| `port shell-hook <bash\|zsh\|fish>`              | Print shell integration code for automatic cd           |
+| `port enter <branch>`                            | Enter a worktree explicitly (including command names)   |
+| `port <branch>`                                  | Enter a worktree (creates if doesn't exist)             |
+| `port exit`                                      | Exit the current worktree and return to repo root       |
+| `port up`                                        | Start docker-compose services in current worktree       |
+| `port down`                                      | Stop docker-compose services and host processes         |
+| `port run <port> -- <command...>`                | Run a host process with Traefik routing                 |
+| `port kill [port]`                               | Stop host services (optionally by logical port)         |
+| `port remove <branch> [--force] [--keep-branch]` | Remove worktree and archive local branch                |
+| `port compose <args...>`                         | Run docker compose with auto `-f` flags                 |
+| `port list`                                      | List worktree and host-service summary                  |
+| `port status`                                    | Show per-service status by worktree                     |
+| `port urls [service]`                            | Show service URLs for current worktree                  |
+| `port task start <title>`                        | Queue a background task                                 |
+| `port task list`                                 | List persisted background tasks                         |
+| `port task read <task-ref>`                      | Show task details                                       |
+| `port task attach <task-ref>`                    | Revive task from checkpoint and attach continuation run |
+| `port task logs <task-ref>`                      | Show task logs (stdout by default)                      |
+| `port task watch [--logs <task-ref>]`            | Watch live task table or tail task logs                 |
+| `port task events [--consumer ID]`               | Stream adapter-agnostic task events                     |
+| `port task wait <task-ref>`                      | Wait for task to finish                                 |
+| `port task resume <task-ref>`                    | Resume non-terminal task execution from checkpoints     |
+| `port task cancel <task-ref>`                    | Cancel a running or queued task                         |
+| `port task artifacts <task-ref>`                 | Show required artifact paths and presence               |
+| `port task apply <task-ref>`                     | Apply task output with CP->bundle->patch fallback       |
+| `port task cleanup`                              | Clean task runtime and stop idle daemon                 |
+| `port remote adapters`                           | List available task execution adapters                  |
+| `port remote status`                             | Show configured and resolved adapter                    |
+| `port remote doctor`                             | Diagnose adapter configuration health                   |
+| `port cleanup`                                   | Delete archived local branches with confirmation        |
+| `port uninstall [--yes] [--domain DOMAIN]`       | Remove DNS configuration for wildcard domain            |
+
+### Task Event Stream Notes
+
+Task commands accept a `<task-ref>` value. The preferred format is numeric display ID shown by `port task list` (for example `port task read 12`). Canonical task IDs (`task-abc12345`) and unique canonical prefixes remain supported for backward compatibility.
+
+`port task events` reads an append-only, adapter-agnostic event log at `.port/jobs/events/all.jsonl`.
+
+- Events are written in append order and replay in the same order.
+- Subscriber cursors (`--consumer <id>`) only advance after handlers run, so events are replay-safe.
+- A second read with the same consumer returns only new events since its last cursor position.
+- Checkpoint/revive lifecycle events include entries like:
+  - `task.checkpoint.updated`
+  - `task.run.continuation_started`
+  - `task.attach.revive_started`
+  - `task.attach.revive_succeeded`
+  - `task.attach.revive_failed`
 
 ## How It Works
 

@@ -1,4 +1,4 @@
-import { mkdir, writeFile, chmod } from 'fs/promises'
+import { mkdir, writeFile, chmod, readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { detectWorktree } from '../lib/worktree.ts'
@@ -23,7 +23,30 @@ const CONFIG_TEMPLATE = `{
   "domain": "port",
 
   // Path to docker-compose file (default: docker-compose.yml)
-  "compose": "docker-compose.yml"
+  "compose": "docker-compose.yml",
+
+  // Background task runtime settings
+  "task": {
+    // Daemon auto-stop timeout when idle
+    "daemonIdleStopMinutes": 10,
+
+    // Default worker instance (must match a key in workers)
+    "defaultWorker": "default",
+
+    // Named worker instances
+    "workers": {
+      "default": {
+        "type": "opencode",
+        "adapter": "local"
+      }
+    },
+
+    // Optional event subscribers
+    "subscriptions": {
+      "enabled": false,
+      "consumers": ["opencode"]
+    }
+  }
 }
 `
 
@@ -37,7 +60,39 @@ override.user.yml
 
 # Hook logs
 logs/
+
+# Task runtime state and artifacts
+jobs/
 `
+
+const REQUIRED_GITIGNORE_LINES = ['trees/', 'override.yml', 'override.user.yml', 'logs/', 'jobs/']
+
+async function ensureGitignoreEntries(
+  gitignorePath: string
+): Promise<'created' | 'updated' | 'unchanged'> {
+  if (!existsSync(gitignorePath)) {
+    await writeFile(gitignorePath, GITIGNORE_CONTENT)
+    return 'created'
+  }
+
+  const content = await readFile(gitignorePath, 'utf-8')
+  const existing = new Set(
+    content
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+  )
+
+  const missing = REQUIRED_GITIGNORE_LINES.filter(line => !existing.has(line))
+  if (missing.length === 0) {
+    return 'unchanged'
+  }
+
+  const suffix = content.endsWith('\n') ? '' : '\n'
+  const block = `${suffix}\n# Added by port init\n${missing.join('\n')}\n`
+  await writeFile(gitignorePath, content + block)
+  return 'updated'
+}
 
 /** Post-create hook template */
 const POST_CREATE_HOOK_TEMPLATE = `#!/bin/bash
@@ -165,10 +220,14 @@ export async function init(): Promise<void> {
     output.dim(`${PORT_DIR}/${CONFIG_FILE} already exists`)
   }
 
-  // Create .gitignore if it doesn't exist
-  if (!existsSync(gitignorePath)) {
-    await writeFile(gitignorePath, GITIGNORE_CONTENT)
+  // Ensure .gitignore includes required local-only directories/files
+  const gitignoreState = await ensureGitignoreEntries(gitignorePath)
+  if (gitignoreState === 'created') {
     output.success(`Created ${PORT_DIR}/.gitignore`)
+  } else if (gitignoreState === 'updated') {
+    output.success(`Updated ${PORT_DIR}/.gitignore`)
+  } else {
+    output.dim(`${PORT_DIR}/.gitignore already configured`)
   }
 
   // Check DNS configuration

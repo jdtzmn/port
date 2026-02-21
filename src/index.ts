@@ -18,6 +18,25 @@ import { status } from './commands/status.ts'
 import { cleanup } from './commands/cleanup.ts'
 import { urls } from './commands/urls.ts'
 import { onboard } from './commands/onboard.ts'
+import { remoteAdapters, remoteDoctor, remoteStatus } from './commands/remote.ts'
+import {
+  taskArtifacts,
+  taskAttach,
+  taskCleanup,
+  taskDaemon,
+  taskApply,
+  taskCancel,
+  taskList,
+  taskEvents,
+  taskLogs,
+  taskPause,
+  taskRead,
+  taskResume,
+  taskStart,
+  taskWait,
+  taskWatch,
+  taskWorker,
+} from './commands/task.ts'
 import { shellHook } from './commands/shell-hook.ts'
 import { completion } from './commands/completion.ts'
 import { isReservedCommand } from './lib/commands.ts'
@@ -68,6 +87,154 @@ program
   .description('Show recommended Port workflow and command guide')
   .option('--md', 'Write an ONBOARD.md file to the repo root')
   .action(onboard)
+
+// port task
+const taskCommand = program.command('task').description('Manage background tasks')
+
+taskCommand
+  .command('start <title>')
+  .description('Queue a background task and ensure daemon is running')
+  .option('--mode <mode>', 'Task mode: read or write', 'write')
+  .option('--branch <branch>', 'Optional branch lock key for write task routing')
+  .option('--worker <name>', 'Worker instance name (from task.workers config)')
+  .action(
+    async (
+      title: string,
+      options: { mode: 'read' | 'write'; branch?: string; worker?: string }
+    ) => {
+      await taskStart(title, { mode: options.mode, branch: options.branch, worker: options.worker })
+    }
+  )
+
+taskCommand.command('list').alias('ls').description('List persisted tasks').action(taskList)
+
+taskCommand.command('read <task-ref>').description('Show details for a task').action(taskRead)
+
+taskCommand
+  .command('attach <task-ref>')
+  .description('Revive task from checkpoint and attach continuation run')
+  .option('--force', 'Force takeover when another owner holds attach lock', false)
+  .action((taskRef: string, options: { force?: boolean }) => taskAttach(taskRef, options))
+
+taskCommand
+  .command('artifacts <task-ref>')
+  .description('List task artifact paths and presence')
+  .action(taskArtifacts)
+
+taskCommand
+  .command('logs <task-ref>')
+  .description('Show task logs (stdout by default)')
+  .option('--stderr', 'Show stderr log stream', false)
+  .option('--follow', 'Follow log output continuously', false)
+  .action((taskRef: string, options: { stderr?: boolean; follow?: boolean }) =>
+    taskLogs(taskRef, options)
+  )
+
+taskCommand
+  .command('wait <task-ref>')
+  .description('Wait until task reaches a terminal state')
+  .option('--timeout-seconds <seconds>', 'Fail if task does not finish in time')
+  .action((taskRef: string, options: { timeoutSeconds?: string }) => {
+    const timeoutSeconds = options.timeoutSeconds
+      ? Number.parseInt(options.timeoutSeconds, 10)
+      : undefined
+    return taskWait(taskRef, { timeoutSeconds })
+  })
+
+taskCommand
+  .command('resume <task-ref>')
+  .description('Resume a non-terminal task from checkpoints')
+  .action(taskResume)
+
+taskCommand
+  .command('pause <task-ref>')
+  .description('Pause a running task (daemon stops managing it)')
+  .action(taskPause)
+
+taskCommand
+  .command('cancel <task-ref>')
+  .description('Cancel a running or queued task')
+  .action(taskCancel)
+
+taskCommand
+  .command('watch')
+  .description('Live task table view with optional log tail mode')
+  .option('--logs <task-ref>', 'Tail logs for a single task instead of table mode')
+  .option('--once', 'Print one snapshot and exit', false)
+  .action((options: { logs?: string; once?: boolean }) => taskWatch(options))
+
+taskCommand
+  .command('events')
+  .description('Read task event stream (optionally with subscriber cursor)')
+  .option('--consumer <id>', 'Consume events with stored cursor for this subscriber id')
+  .option('--follow', 'Continue polling for new events', false)
+  .option('--once', 'In follow mode, exit after first poll tick', false)
+  .action((options: { consumer?: string; follow?: boolean; once?: boolean }) => taskEvents(options))
+
+// port remote
+const remoteCommand = program
+  .command('remote')
+  .description('Inspect and diagnose task execution adapters')
+
+remoteCommand.command('adapters').description('List known task adapters').action(remoteAdapters)
+
+remoteCommand
+  .command('status')
+  .description('Show configured and resolved task adapter')
+  .action(remoteStatus)
+
+remoteCommand
+  .command('doctor')
+  .description('Run diagnostics for remote/task adapter configuration')
+  .action(remoteDoctor)
+
+taskCommand
+  .command('apply <task-ref>')
+  .description('Apply task output to current branch (cherry-pick -> bundle -> patch)')
+  .option('--method <method>', 'Apply method: auto, cherry-pick, bundle, patch', 'auto')
+  .option('--squash', 'Squash multiple commits into one commit', false)
+  .action(
+    async (
+      taskRef: string,
+      options: { method: 'auto' | 'cherry-pick' | 'bundle' | 'patch'; squash: boolean }
+    ) => {
+      await taskApply(taskRef, options)
+    }
+  )
+
+taskCommand
+  .command('cleanup')
+  .description('Clean task runtime state and stop daemon if idle')
+  .action(taskCleanup)
+
+taskCommand
+  .command('daemon')
+  .description('Internal daemon control command')
+  .option('--serve', 'Run daemon loop', false)
+  .option('--repo <path>', 'Repository root for daemon state')
+  .action(taskDaemon)
+
+taskCommand
+  .command('worker')
+  .description('Internal task worker command')
+  .option('--task-id <id>', 'Task id')
+  .option('--repo <path>', 'Repository root')
+  .option('--worktree <path>', 'Ephemeral worktree path')
+  .option('--worker <name>', 'Worker instance name')
+  .action(
+    async (options: { taskId?: string; repo?: string; worktree?: string; worker?: string }) => {
+      if (!options.taskId || !options.repo || !options.worktree) {
+        throw new Error('task worker requires --task-id, --repo, and --worktree')
+      }
+
+      await taskWorker({
+        taskId: options.taskId,
+        repo: options.repo,
+        worktree: options.worktree,
+        worker: options.worker,
+      })
+    }
+  )
 
 // port install
 program

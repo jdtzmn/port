@@ -4,7 +4,7 @@ import { basename, join } from 'path'
 import { stringify as yamlStringify } from 'yaml'
 import type { ParsedComposeFile, ParsedComposeService } from '../types.ts'
 import { TRAEFIK_NETWORK, TRAEFIK_DIR } from './traefik.ts'
-import { execAsync, execWithStdio } from './exec.ts'
+import { execAsync, execFileAsync, execWithArgs } from './exec.ts'
 import { sanitizeFolderName } from './sanitize.ts'
 
 /** Override file name */
@@ -253,13 +253,17 @@ export async function parseComposeFile(
   cwd: string,
   composeFile: string = 'docker-compose.yml'
 ): Promise<ParsedComposeFile> {
-  const cmd = await getComposeCommand()
+  const cmd = await getComposeCommandParts()
 
   try {
-    const { stdout } = await execAsync(`${cmd} -f ${composeFile} config --format json`, {
-      cwd,
-      timeout: 30000,
-    })
+    const { stdout } = await execFileAsync(
+      cmd.bin,
+      [...cmd.baseArgs, '-f', composeFile, 'config', '--format', 'json'],
+      {
+        cwd,
+        timeout: 30000,
+      }
+    )
 
     return JSON.parse(stdout) as ParsedComposeFile
   } catch (error) {
@@ -501,6 +505,15 @@ export async function getComposeCommand(): Promise<string> {
   }
 }
 
+async function getComposeCommandParts(): Promise<{ bin: string; baseArgs: string[] }> {
+  const command = await getComposeCommand()
+  if (command === 'docker compose') {
+    return { bin: 'docker', baseArgs: ['compose'] }
+  }
+
+  return { bin: 'docker-compose', baseArgs: [] }
+}
+
 /**
  * Run a docker compose command with the appropriate -p and -f flags
  *
@@ -522,7 +535,7 @@ export async function runCompose(
   args: string[],
   runtimeContext?: ComposeRuntimeContext
 ): Promise<{ exitCode: number }> {
-  const cmd = await getComposeCommand()
+  const cmd = await getComposeCommandParts()
   const renderedUserOverride = runtimeContext
     ? await renderUserOverrideFile({
         repoRoot: runtimeContext.repoRoot,
@@ -536,16 +549,14 @@ export async function runCompose(
   const composeFiles = getComposeFileStack(composeFile, renderedUserOverride)
 
   // Build the full command with -p and -f flags
-  const fullArgs = ['-p', projectName]
+  const fullArgs = [...cmd.baseArgs, '-p', projectName]
 
   for (const file of composeFiles) {
     fullArgs.push('-f', file)
   }
 
   fullArgs.push(...args)
-  const fullCommand = `${cmd} ${fullArgs.join(' ')}`
-
-  return execWithStdio(fullCommand, { cwd })
+  return execWithArgs(cmd.bin, fullArgs, { cwd })
 }
 
 /**
@@ -562,7 +573,7 @@ export async function composePs(
   projectName: string,
   runtimeContext?: ComposeRuntimeContext
 ): Promise<Array<{ name: string; status: string; running: boolean }>> {
-  const cmd = await getComposeCommand()
+  const cmd = await getComposeCommandParts()
   const renderedUserOverride = runtimeContext
     ? await renderUserOverrideFile({
         repoRoot: runtimeContext.repoRoot,
@@ -574,11 +585,12 @@ export async function composePs(
       })
     : null
   const composeFiles = getComposeFileStack(composeFile, renderedUserOverride)
-  const composeFileFlags = composeFiles.map(file => `-f ${file}`).join(' ')
+  const composeFileFlags = composeFiles.flatMap(file => ['-f', file])
 
   try {
-    const { stdout } = await execAsync(
-      `${cmd} -p ${projectName} ${composeFileFlags} ps --format json`,
+    const { stdout } = await execFileAsync(
+      cmd.bin,
+      [...cmd.baseArgs, '-p', projectName, ...composeFileFlags, 'ps', '--format', 'json'],
       { cwd }
     )
 
@@ -652,13 +664,17 @@ async function waitForTraefikReady(timeoutMs = 15000): Promise<void> {
  * is already starting Traefik, we wait for it to complete rather than failing.
  */
 export async function startTraefik(): Promise<void> {
-  const cmd = await getComposeCommand()
+  const cmd = await getComposeCommandParts()
 
   try {
     // Ensure the network exists
-    await execAsync(`docker network create ${TRAEFIK_NETWORK} 2>/dev/null || true`)
+    try {
+      await execFileAsync('docker', ['network', 'create', TRAEFIK_NETWORK])
+    } catch {
+      // Network already exists (or docker returned a non-fatal error)
+    }
 
-    await execAsync(`${cmd} up -d`, {
+    await execFileAsync(cmd.bin, [...cmd.baseArgs, 'up', '-d'], {
       cwd: TRAEFIK_DIR,
       timeout: 60000,
     })
@@ -692,10 +708,10 @@ export async function startTraefik(): Promise<void> {
  * Stop Traefik container
  */
 export async function stopTraefik(): Promise<void> {
-  const cmd = await getComposeCommand()
+  const cmd = await getComposeCommandParts()
 
   try {
-    await execAsync(`${cmd} down`, {
+    await execFileAsync(cmd.bin, [...cmd.baseArgs, 'down'], {
       cwd: TRAEFIK_DIR,
       timeout: 60000,
     })
@@ -765,10 +781,10 @@ export async function traefikHasRequiredPorts(requiredPorts: number[]): Promise<
  * bindings in place.
  */
 export async function restartTraefik(): Promise<void> {
-  const cmd = await getComposeCommand()
+  const cmd = await getComposeCommandParts()
 
   try {
-    await execAsync(`${cmd} up -d`, {
+    await execFileAsync(cmd.bin, [...cmd.baseArgs, 'up', '-d'], {
       cwd: TRAEFIK_DIR,
       timeout: 60000,
     })

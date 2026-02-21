@@ -6,3 +6,6 @@ override.yml
 
 # Hook logs
 logs/
+
+# Task runtime state and artifacts
+jobs/
