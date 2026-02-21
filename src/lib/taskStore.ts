@@ -29,6 +29,7 @@ export interface PortTask {
   mode: PortTaskMode
   status: PortTaskStatus
   branch?: string
+  worker?: string
   adapter: string
   capabilities: {
     supportsCheckpoint?: boolean
@@ -444,7 +445,7 @@ export async function ensureTaskStorage(repoRoot: string): Promise<void> {
 
 export async function createTask(
   repoRoot: string,
-  input: { title: string; mode?: PortTaskMode; branch?: string }
+  input: { title: string; mode?: PortTaskMode; branch?: string; worker?: string }
 ): Promise<PortTask> {
   await ensureTaskStorage(repoRoot)
   const lockPath = getTaskIndexLockPath(repoRoot)
@@ -459,6 +460,7 @@ export async function createTask(
       mode: input.mode ?? 'write',
       status: 'queued',
       branch: input.branch,
+      worker: input.worker,
       adapter: 'local',
       capabilities: {
         supportsCheckpoint: false,
