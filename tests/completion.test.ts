@@ -319,6 +319,70 @@ describe('shell completion', () => {
       TIMEOUT
     )
   })
+
+  // ── Original (unsanitized) branch name completions ────────────────────
+
+  describe('original branch name completions', () => {
+    /**
+     * Create a sample project with a real git worktree whose branch name
+     * contains `/` characters. This ensures `git worktree list --porcelain`
+     * returns the original name alongside the sanitized directory name.
+     */
+    async function prepareSampleWithSlashBranch() {
+      const sample = await prepareSample('db-and-server', { initWithConfig: true })
+      // Create a real git worktree with a slash-containing branch name
+      execSync(
+        `git worktree add "${join(sample.dir, '.port', 'trees', 'jacob-test-sanitation')}" -b jacob/test/sanitation`,
+        { cwd: sample.dir, encoding: 'utf-8' }
+      )
+      return sample
+    }
+
+    test(
+      'bash: completes both sanitized and original branch names',
+      async () => {
+        const sample = await prepareSampleWithSlashBranch()
+        try {
+          const completions = bashComplete(env, sample.dir, 'port', 'enter', '')
+          expect(completions).toContain('jacob-test-sanitation')
+          expect(completions).toContain('jacob/test/sanitation')
+        } finally {
+          await sample.cleanup()
+        }
+      },
+      TIMEOUT
+    )
+
+    test(
+      'zsh: completes both sanitized and original branch names',
+      async () => {
+        const sample = await prepareSampleWithSlashBranch()
+        try {
+          const completions = zshComplete(env, sample.dir, 'port enter ')
+          expect(completions).toContain('jacob-test-sanitation')
+          expect(completions).toContain('jacob/test/sanitation')
+        } finally {
+          await sample.cleanup()
+        }
+      },
+      TIMEOUT
+    )
+
+    test(
+      'fish: completes both sanitized and original branch names',
+      async () => {
+        const sample = await prepareSampleWithSlashBranch()
+        try {
+          const completions = fishComplete(env, sample.dir, 'port enter ')
+          expect(completions).toContain('jacob-test-sanitation')
+          expect(completions).toContain('jacob/test/sanitation')
+        } finally {
+          await sample.cleanup()
+        }
+      },
+      TIMEOUT
+    )
+  })
 })
 
 // ── Helpers ──────────────────────────────────────────────────────────────

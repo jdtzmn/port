@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   getAllHostServices: vi.fn(),
   isProcessRunning: vi.fn(),
   isTraefikRunning: vi.fn(),
+  listWorktrees: vi.fn(),
   header: vi.fn(),
   newline: vi.fn(),
   branch: vi.fn(),
@@ -50,6 +51,10 @@ vi.mock('../lib/compose.ts', () => ({
   isTraefikRunning: mocks.isTraefikRunning,
 }))
 
+vi.mock('../lib/git.ts', () => ({
+  listWorktrees: mocks.listWorktrees,
+}))
+
 vi.mock('../lib/output.ts', () => ({
   header: mocks.header,
   newline: mocks.newline,
@@ -70,7 +75,7 @@ vi.mock('fs', async importOriginal => {
   }
 })
 
-import { list, getWorktreeNames } from './list.ts'
+import { list, getWorktreeNames, getWorktreeNamesWithOriginals } from './list.ts'
 
 describe('list command', () => {
   beforeEach(() => {
@@ -173,6 +178,7 @@ describe('list --names', () => {
     mocks.detectWorktree.mockReturnValue({ repoRoot: '/repo' })
     mocks.configExists.mockReturnValue(true)
     mocks.getTreesDir.mockReturnValue('/repo/.port/trees')
+    mocks.listWorktrees.mockResolvedValue([])
   })
 
   test('prints worktree names one per line', async () => {
@@ -195,6 +201,52 @@ describe('list --names', () => {
     expect(mocks.collectWorktreeStatuses).not.toHaveBeenCalled()
     expect(mocks.cleanupStaleHostServices).not.toHaveBeenCalled()
     expect(mocks.isTraefikRunning).not.toHaveBeenCalled()
+    logSpy.mockRestore()
+  })
+
+  test('includes original unsanitized branch names', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    vi.mocked(existsSync).mockReturnValue(true)
+    vi.mocked(readdirSync).mockReturnValue([
+      { name: 'jacob-test-sanitation', isDirectory: () => true },
+    ] as unknown as ReturnType<typeof readdirSync>)
+    mocks.listWorktrees.mockResolvedValue([
+      { path: '/repo', branch: 'main', isMain: true },
+      {
+        path: '/repo/.port/trees/jacob-test-sanitation',
+        branch: 'jacob/test/sanitation',
+        isMain: false,
+      },
+    ])
+
+    await list({ names: true })
+
+    const outputLines = logSpy.mock.calls.map(call => call[0])
+    expect(outputLines).toContain('jacob-test-sanitation')
+    expect(outputLines).toContain('jacob/test/sanitation')
+    logSpy.mockRestore()
+  })
+
+  test('does not duplicate names when branch is already sanitized', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    vi.mocked(existsSync).mockReturnValue(true)
+    vi.mocked(readdirSync).mockReturnValue([
+      { name: 'my-feature', isDirectory: () => true },
+    ] as unknown as ReturnType<typeof readdirSync>)
+    mocks.listWorktrees.mockResolvedValue([
+      { path: '/repo', branch: 'main', isMain: true },
+      {
+        path: '/repo/.port/trees/my-feature',
+        branch: 'my-feature',
+        isMain: false,
+      },
+    ])
+
+    await list({ names: true })
+
+    const outputLines = logSpy.mock.calls.map(call => call[0])
+    const myFeatureCount = outputLines.filter((l: string) => l === 'my-feature').length
+    expect(myFeatureCount).toBe(1)
     logSpy.mockRestore()
   })
 
@@ -228,7 +280,24 @@ describe('list --names', () => {
 
     const outputLines = logSpy.mock.calls.map(call => call[0])
     expect(outputLines).toContain('repo')
-    expect(outputLines).toHaveLength(1)
+    logSpy.mockRestore()
+  })
+
+  test('falls back to directory names when git worktree list fails', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    vi.mocked(existsSync).mockReturnValue(true)
+    vi.mocked(readdirSync).mockReturnValue([
+      { name: 'jacob-test-sanitation', isDirectory: () => true },
+    ] as unknown as ReturnType<typeof readdirSync>)
+    mocks.listWorktrees.mockRejectedValue(new Error('git not available'))
+
+    await list({ names: true })
+
+    const outputLines = logSpy.mock.calls.map(call => call[0])
+    expect(outputLines).toContain('repo')
+    expect(outputLines).toContain('jacob-test-sanitation')
+    // Original name not available since git failed
+    expect(outputLines).not.toContain('jacob/test/sanitation')
     logSpy.mockRestore()
   })
 })
@@ -266,5 +335,119 @@ describe('getWorktreeNames', () => {
 
     const names = getWorktreeNames('/my/repo')
     expect(names).toEqual(['repo', 'valid-branch'])
+  })
+})
+
+describe('getWorktreeNamesWithOriginals', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.getTreesDir.mockReturnValue('/repo/.port/trees')
+    mocks.listWorktrees.mockResolvedValue([])
+  })
+
+  test('includes both sanitized and original branch names', async () => {
+    vi.mocked(existsSync).mockReturnValue(true)
+    vi.mocked(readdirSync).mockReturnValue([
+      { name: 'jacob-test-sanitation', isDirectory: () => true },
+    ] as unknown as ReturnType<typeof readdirSync>)
+    mocks.listWorktrees.mockResolvedValue([
+      { path: '/repo', branch: 'main', isMain: true },
+      {
+        path: '/repo/.port/trees/jacob-test-sanitation',
+        branch: 'jacob/test/sanitation',
+        isMain: false,
+      },
+    ])
+
+    const names = await getWorktreeNamesWithOriginals('/repo')
+    expect(names).toContain('jacob-test-sanitation')
+    expect(names).toContain('jacob/test/sanitation')
+  })
+
+  test('does not duplicate when branch name equals sanitized name', async () => {
+    vi.mocked(existsSync).mockReturnValue(true)
+    vi.mocked(readdirSync).mockReturnValue([
+      { name: 'my-feature', isDirectory: () => true },
+    ] as unknown as ReturnType<typeof readdirSync>)
+    mocks.listWorktrees.mockResolvedValue([
+      { path: '/repo', branch: 'main', isMain: true },
+      { path: '/repo/.port/trees/my-feature', branch: 'my-feature', isMain: false },
+    ])
+
+    const names = await getWorktreeNamesWithOriginals('/repo')
+    const count = names.filter(n => n === 'my-feature').length
+    expect(count).toBe(1)
+  })
+
+  test('handles multiple branches with different sanitization', async () => {
+    vi.mocked(existsSync).mockReturnValue(true)
+    vi.mocked(readdirSync).mockReturnValue([
+      { name: 'feature-auth-api', isDirectory: () => true },
+      { name: 'fix-bug-123', isDirectory: () => true },
+      { name: 'clean-branch', isDirectory: () => true },
+    ] as unknown as ReturnType<typeof readdirSync>)
+    mocks.listWorktrees.mockResolvedValue([
+      { path: '/repo', branch: 'main', isMain: true },
+      {
+        path: '/repo/.port/trees/feature-auth-api',
+        branch: 'feature/auth-api',
+        isMain: false,
+      },
+      {
+        path: '/repo/.port/trees/fix-bug-123',
+        branch: 'fix/bug#123',
+        isMain: false,
+      },
+      {
+        path: '/repo/.port/trees/clean-branch',
+        branch: 'clean-branch',
+        isMain: false,
+      },
+    ])
+
+    const names = await getWorktreeNamesWithOriginals('/repo')
+    // Sanitized names
+    expect(names).toContain('feature-auth-api')
+    expect(names).toContain('fix-bug-123')
+    expect(names).toContain('clean-branch')
+    // Original names (only when different)
+    expect(names).toContain('feature/auth-api')
+    expect(names).toContain('fix/bug#123')
+  })
+
+  test('falls back to directory names when git fails', async () => {
+    vi.mocked(existsSync).mockReturnValue(true)
+    vi.mocked(readdirSync).mockReturnValue([
+      { name: 'some-branch', isDirectory: () => true },
+    ] as unknown as ReturnType<typeof readdirSync>)
+    mocks.listWorktrees.mockRejectedValue(new Error('git not found'))
+
+    const names = await getWorktreeNamesWithOriginals('/repo')
+    expect(names).toContain('repo')
+    expect(names).toContain('some-branch')
+  })
+
+  test('ignores worktrees not under .port/trees/', async () => {
+    vi.mocked(existsSync).mockReturnValue(true)
+    vi.mocked(readdirSync).mockReturnValue([
+      { name: 'managed-branch', isDirectory: () => true },
+    ] as unknown as ReturnType<typeof readdirSync>)
+    mocks.listWorktrees.mockResolvedValue([
+      { path: '/repo', branch: 'main', isMain: true },
+      {
+        path: '/repo/.port/trees/managed-branch',
+        branch: 'managed/branch',
+        isMain: false,
+      },
+      {
+        path: '/some/other/location',
+        branch: 'external/branch',
+        isMain: false,
+      },
+    ])
+
+    const names = await getWorktreeNamesWithOriginals('/repo')
+    expect(names).toContain('managed/branch')
+    expect(names).not.toContain('external/branch')
   })
 })
