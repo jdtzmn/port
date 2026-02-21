@@ -20,26 +20,13 @@ import { urls } from './commands/urls.ts'
 import { onboard } from './commands/onboard.ts'
 import { shellHook } from './commands/shell-hook.ts'
 import { completion } from './commands/completion.ts'
+import { isReservedCommand } from './lib/commands.ts'
 import { detectWorktree } from './lib/worktree.ts'
 import { branchExists } from './lib/git.ts'
 import * as output from './lib/output.ts'
 
 export const program = new Command()
 program.enablePositionalOptions()
-
-function getReservedCommands(): Set<string> {
-  const reserved = new Set<string>(['help'])
-
-  for (const command of program.commands) {
-    reserved.add(command.name())
-
-    for (const alias of command.aliases()) {
-      reserved.add(alias)
-    }
-  }
-
-  return reserved
-}
 
 async function maybeWarnCommandBranchCollision(): Promise<void> {
   const token = process.argv[2]
@@ -48,7 +35,7 @@ async function maybeWarnCommandBranchCollision(): Promise<void> {
     return
   }
 
-  if (!getReservedCommands().has(token)) {
+  if (!isReservedCommand(token)) {
     return
   }
 
@@ -216,7 +203,7 @@ program
   .action(async (branch: string | undefined) => {
     if (branch) {
       // Check if it looks like a command that wasn't matched
-      if (getReservedCommands().has(branch)) {
+      if (isReservedCommand(branch)) {
         program.help()
         return
       }

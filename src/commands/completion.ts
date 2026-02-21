@@ -1,4 +1,12 @@
 import { SUPPORTED_SHELLS, type Shell } from '../lib/shell.ts'
+import {
+  getSubcommands,
+  getBranchCommands,
+  getShellCommands,
+  getCommandFlags,
+  getGlobalFlags,
+  getCommandDescriptions,
+} from '../lib/commands.ts'
 import * as output from '../lib/output.ts'
 
 /**
@@ -9,6 +17,9 @@ import * as output from '../lib/output.ts'
  * - Complete per-command flags
  * - Dynamically complete branch names via `command port list --names`
  *   (uses `command` to bypass the shell-hook wrapper function)
+ *
+ * All command metadata is introspected from the Commander.js program
+ * object at generation time — nothing is hard-coded here.
  */
 export function completion(shell: string): void {
   if (!SUPPORTED_SHELLS.includes(shell as Shell)) {
@@ -35,65 +46,41 @@ export function completion(shell: string): void {
   process.stdout.write(script + '\n')
 }
 
-// -- Subcommands and their metadata ------------------------------------------
-
-/** All subcommands (name + aliases) */
-const SUBCOMMANDS = [
-  'init',
-  'onboard',
-  'install',
-  'list',
-  'ls',
-  'status',
-  'enter',
-  'exit',
-  'shell-hook',
-  'urls',
-  'up',
-  'down',
-  'remove',
-  'rm',
-  'uninstall',
-  'compose',
-  'dc',
-  'run',
-  'kill',
-  'cleanup',
-  'completion',
-  'help',
-]
-
-/** Commands that take a branch name as their first argument */
-const BRANCH_COMMANDS = ['enter', 'remove', 'rm']
-
-/** Per-command flags */
-const COMMAND_FLAGS: Record<string, string[]> = {
-  onboard: ['--md'],
-  install: ['-y', '--yes', '--dns-ip', '--domain'],
-  list: ['-n', '--names'],
-  down: ['-y', '--yes'],
-  remove: ['-f', '--force', '--keep-branch'],
-  rm: ['-f', '--force', '--keep-branch'],
-  uninstall: ['-y', '--yes', '--domain'],
-}
-
-/** Global flags available on all commands */
-const GLOBAL_FLAGS = ['-V', '--version', '-h', '--help']
-
 // -- Bash completion ---------------------------------------------------------
 
 function generateBashCompletion(): string {
-  const subcommandList = SUBCOMMANDS.join(' ')
-  const branchCommands = BRANCH_COMMANDS.join('|')
-  const globalFlagList = GLOBAL_FLAGS.join(' ')
+  const subcommands = getSubcommands()
+  const branchCommands = getBranchCommands()
+  const shellCommands = getShellCommands()
+  const commandFlags = getCommandFlags()
+  const globalFlags = getGlobalFlags()
+
+  const subcommandList = subcommands.join(' ')
+  const branchCommandsPattern = branchCommands.join('|')
+  const globalFlagList = globalFlags.join(' ')
+  const shellList = SUPPORTED_SHELLS.join(' ')
 
   // Build the per-command flag cases
-  const flagCases = Object.entries(COMMAND_FLAGS)
+  const flagCases = Object.entries(commandFlags)
     .map(
       ([cmd, flags]) =>
         '      ' + cmd + ') COMPREPLY=($(compgen -W "' + flags.join(' ') + '" -- "$cur")) ;;'
     )
     .join('\n')
+
+  // Build shell-name completion blocks
+  const shellBlocks = shellCommands
+    .map(cmd =>
+      [
+        '',
+        '  # ' + cmd + ' takes a shell name',
+        '  if [[ "${words[1]}" == "' + cmd + '" && $cword -eq 2 ]]; then',
+        '    COMPREPLY=($(compgen -W "' + shellList + '" -- "$cur"))',
+        '    return',
+        '  fi',
+      ].join('\n')
+    )
+    .join('')
 
   const lines = [
     '# bash completion for port',
@@ -134,25 +121,14 @@ function generateBashCompletion(): string {
     '',
     '  # If the previous word is a branch-accepting command, offer branch names',
     '  case "$prev" in',
-    '    ' + branchCommands + ')',
+    '    ' + branchCommandsPattern + ')',
     '      local branches',
     '      branches="$(command port list --names 2>/dev/null)"',
     '      COMPREPLY=($(compgen -W "$branches" -- "$cur"))',
     '      return',
     '      ;;',
     '  esac',
-    '',
-    '  # shell-hook takes a shell name',
-    '  if [[ "${words[1]}" == "shell-hook" && $cword -eq 2 ]]; then',
-    '    COMPREPLY=($(compgen -W "bash zsh fish" -- "$cur"))',
-    '    return',
-    '  fi',
-    '',
-    '  # completion takes a shell name',
-    '  if [[ "${words[1]}" == "completion" && $cword -eq 2 ]]; then',
-    '    COMPREPLY=($(compgen -W "bash zsh fish" -- "$cur"))',
-    '    return',
-    '  fi',
+    shellBlocks,
     '}',
     '',
     'complete -F _port_completions port',
@@ -164,17 +140,27 @@ function generateBashCompletion(): string {
 // -- Zsh completion ----------------------------------------------------------
 
 function generateZshCompletion(): string {
-  const quotedSubcommands = SUBCOMMANDS.map(s => "'" + s + "'").join(' ')
-  const quotedGlobalFlags = GLOBAL_FLAGS.map(f => "'" + f + "'").join(' ')
-  const branchCommands = BRANCH_COMMANDS.join('|')
+  const subcommands = getSubcommands()
+  const branchCommands = getBranchCommands()
+  const shellCommands = getShellCommands()
+  const commandFlags = getCommandFlags()
+  const globalFlags = getGlobalFlags()
+
+  const quotedSubcommands = subcommands.map(s => "'" + s + "'").join(' ')
+  const quotedGlobalFlags = globalFlags.map(f => "'" + f + "'").join(' ')
+  const branchCommandsPattern = branchCommands.join('|')
+  const shellList = SUPPORTED_SHELLS.join(' ')
 
   // Build the per-command flag cases
-  const flagCases = Object.entries(COMMAND_FLAGS)
+  const flagCases = Object.entries(commandFlags)
     .map(([cmd, flags]) => {
       const flagList = flags.map(f => "'" + f + "'").join(' ')
       return '      ' + cmd + ') compadd -- ' + flagList + ' ;;'
     })
     .join('\n')
+
+  // Build shell-command condition
+  const shellCondition = shellCommands.map(c => '"$cmd" == "' + c + '"').join(' || ')
 
   const lines = [
     '#compdef port',
@@ -206,7 +192,7 @@ function generateZshCompletion(): string {
     '',
     '  # Branch-accepting commands: complete with branch names',
     '  case "$cmd" in',
-    '    ' + branchCommands + ')',
+    '    ' + branchCommandsPattern + ')',
     '      if (( CURRENT == 3 )); then',
     '        local -a branches',
     '        branches=(${(f)"$(command port list --names 2>/dev/null)"})',
@@ -216,9 +202,9 @@ function generateZshCompletion(): string {
     '      ;;',
     '  esac',
     '',
-    '  # shell-hook / completion take a shell name',
-    '  if [[ "$cmd" == "shell-hook" || "$cmd" == "completion" ]] && (( CURRENT == 3 )); then',
-    '    compadd -- bash zsh fish',
+    '  # Shell-accepting commands: complete with shell names',
+    '  if [[ ' + shellCondition + ' ]] && (( CURRENT == 3 )); then',
+    '    compadd -- ' + shellList,
     '    return',
     '  fi',
     '}',
@@ -232,6 +218,12 @@ function generateZshCompletion(): string {
 // -- Fish completion ---------------------------------------------------------
 
 function generateFishCompletion(): string {
+  const subcommands = getSubcommands()
+  const branchCommands = getBranchCommands()
+  const shellCommands = getShellCommands()
+  const commandFlags = getCommandFlags()
+  const descriptions = getCommandDescriptions()
+
   const lines: string[] = [
     '# fish completion for port',
     '# Install: port completion fish | source',
@@ -241,7 +233,7 @@ function generateFishCompletion(): string {
     '',
     '# Helper: check if no subcommand has been given yet',
     'function __port_no_subcommand',
-    '  set -l cmds ' + SUBCOMMANDS.join(' '),
+    '  set -l cmds ' + subcommands.join(' '),
     '  set -l tokens (commandline -opc)',
     '  for t in $tokens[2..]',
     '    if contains -- $t $cmds',
@@ -254,7 +246,7 @@ function generateFishCompletion(): string {
     '# Helper: check if current subcommand matches',
     'function __port_using_subcommand',
     '  set -l cmd $argv[1]',
-    '  set -l cmds ' + SUBCOMMANDS.join(' '),
+    '  set -l cmds ' + subcommands.join(' '),
     '  set -l tokens (commandline -opc)',
     '  for t in $tokens[2..]',
     '    if test "$t" = "$cmd"',
@@ -269,33 +261,7 @@ function generateFishCompletion(): string {
     '# Subcommand completions (when no subcommand given yet)',
   ]
 
-  // Static subcommand completions
-  const descriptions: Record<string, string> = {
-    init: 'Initialize .port/ directory',
-    onboard: 'Show recommended workflow guide',
-    install: 'Set up DNS for wildcard domain',
-    list: 'List worktrees and services',
-    ls: 'List worktrees and services',
-    status: 'Show per-service status',
-    enter: 'Enter a worktree by branch name',
-    exit: 'Exit the current worktree',
-    'shell-hook': 'Print shell integration code',
-    urls: 'Show service URLs',
-    up: 'Start docker-compose services',
-    down: 'Stop docker-compose services',
-    remove: 'Remove a worktree',
-    rm: 'Remove a worktree',
-    uninstall: 'Remove DNS configuration',
-    compose: 'Run docker compose',
-    dc: 'Run docker compose',
-    run: 'Run a host process with Traefik',
-    kill: 'Stop host services',
-    cleanup: 'Delete archived branches',
-    completion: 'Generate shell completion script',
-    help: 'Display help',
-  }
-
-  for (const cmd of SUBCOMMANDS) {
+  for (const cmd of subcommands) {
     const desc = descriptions[cmd] ?? cmd
     lines.push("complete -c port -n __port_no_subcommand -a '" + cmd + "' -d '" + desc + "'")
   }
@@ -306,10 +272,10 @@ function generateFishCompletion(): string {
     "complete -c port -n __port_no_subcommand -a '(command port list --names 2>/dev/null)' -d 'branch'"
   )
 
-  // Branch completions for enter, remove, rm
+  // Branch completions for branch-accepting commands
   lines.push('')
   lines.push('# Branch name completions for branch-accepting commands')
-  for (const cmd of BRANCH_COMMANDS) {
+  for (const cmd of branchCommands) {
     lines.push(
       "complete -c port -n '__port_using_subcommand " +
         cmd +
@@ -320,7 +286,7 @@ function generateFishCompletion(): string {
   // Per-command flags
   lines.push('')
   lines.push('# Per-command flag completions')
-  for (const [cmd, flags] of Object.entries(COMMAND_FLAGS)) {
+  for (const [cmd, flags] of Object.entries(commandFlags)) {
     for (const flag of flags) {
       if (flag.startsWith('--')) {
         lines.push(
@@ -334,11 +300,12 @@ function generateFishCompletion(): string {
     }
   }
 
-  // shell-hook and completion take shell names
+  // Shell-accepting commands
   lines.push('')
-  lines.push('# Shell name completions for shell-hook and completion commands')
-  for (const cmd of ['shell-hook', 'completion']) {
-    lines.push("complete -c port -n '__port_using_subcommand " + cmd + "' -a 'bash zsh fish'")
+  lines.push('# Shell name completions for shell-accepting commands')
+  const shellList = SUPPORTED_SHELLS.join(' ')
+  for (const cmd of shellCommands) {
+    lines.push("complete -c port -n '__port_using_subcommand " + cmd + "' -a '" + shellList + "'")
   }
 
   return lines.join('\n')
