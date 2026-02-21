@@ -238,14 +238,19 @@ async function installLinuxDualMode(dnsIp: string, domain: string): Promise<bool
   output.info(`Configuring dnsmasq on port ${DNSMASQ_ALT_PORT}...`)
   try {
     await execPrivileged('mkdir -p /etc/dnsmasq.d/')
-    await execPrivileged(`echo "port=${DNSMASQ_ALT_PORT}" > /etc/dnsmasq.d/${domain}.conf`)
-    await execPrivileged(`echo "address=/${domain}/${dnsIp}" >> /etc/dnsmasq.d/${domain}.conf`)
 
-    // If running in Docker, configure dnsmasq to forward non-.port queries to Docker's DNS
+    // Write the port setting to a shared config so it is only declared once,
+    // even when multiple domains are installed (each gets its own address-only file).
+    await execPrivileged(`echo "port=${DNSMASQ_ALT_PORT}" > /etc/dnsmasq.d/port-global.conf`)
+
+    // If running in Docker, forward non-port queries to Docker's DNS
     if (inDocker) {
-      await execPrivileged(`echo "server=127.0.0.11" >> /etc/dnsmasq.d/${domain}.conf`)
+      await execPrivileged(`echo "server=127.0.0.11" >> /etc/dnsmasq.d/port-global.conf`)
       output.dim('Added Docker DNS (127.0.0.11) as upstream server')
     }
+
+    // Per-domain file only contains the address mapping
+    await execPrivileged(`echo "address=/${domain}/${dnsIp}" > /etc/dnsmasq.d/${domain}.conf`)
 
     output.success('dnsmasq configured')
   } catch (error) {
