@@ -107,9 +107,14 @@ describe('samples start', () => {
 
         await findByError('Traefik dashboard:', {}, { timeout: SAMPLES_TIMEOUT })
 
-        // Confirm that the custom domain is reachable
-        const res = await fetch(sample.urlWithPort(3000))
-        expect(res.status).toBe(200)
+        // Confirm that the custom domain is reachable (retry until Traefik routes are ready)
+        await waitFor(
+          async () => {
+            const res = await fetch(sample.urlWithPort(3000))
+            expect(res.status).toBe(200)
+          },
+          { timeout: SAMPLES_TIMEOUT }
+        )
 
         const downInstance = await renderCLI(['down', '-y'], sample.dir)
         await waitFor(() => expect(downInstance.hasExit()).toMatchObject({ exitCode: 0 }), {
