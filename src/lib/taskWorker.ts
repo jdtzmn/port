@@ -2,6 +2,7 @@ import type { PortTask } from './taskStore.ts'
 import type { WorkerDefinition, WorkerType } from '../types.ts'
 import { loadConfig } from './config.ts'
 import { MockTaskWorker } from './workers/mockWorker.ts'
+import { OpenCodeTaskWorker } from './workers/opencodeWorker.ts'
 
 /**
  * Metadata from an OpenCode session checkpoint, used for --continue support.
@@ -64,11 +65,7 @@ export interface TaskWorker {
 export function createTaskWorker(instanceName: string, definition: WorkerDefinition): TaskWorker {
   switch (definition.type) {
     case 'opencode':
-      // OpenCode worker will be implemented in port-5ep.4.
-      // For now, fall through to mock to avoid import cycle until the file exists.
-      throw new Error(
-        `Worker type "opencode" is not yet implemented. Use "mock" or wait for port-5ep.4.`
-      )
+      return new OpenCodeTaskWorker(instanceName, definition.config)
     case 'mock':
       return new MockTaskWorker(instanceName, definition.config)
     default: {

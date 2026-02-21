@@ -31,10 +31,22 @@ describe('taskWorker registry', () => {
     expect(worker.id).toBe('slow')
   })
 
-  test('createTaskWorker throws for opencode type (not yet implemented)', () => {
-    expect(() => createTaskWorker('main', { type: 'opencode', adapter: 'local' })).toThrow(
-      'not yet implemented'
-    )
+  test('createTaskWorker creates an OpenCodeTaskWorker for type opencode', () => {
+    const worker = createTaskWorker('main', { type: 'opencode', adapter: 'local' })
+
+    expect(worker.id).toBe('main')
+    expect(worker.type).toBe('opencode')
+  })
+
+  test('createTaskWorker passes config to OpenCodeTaskWorker', () => {
+    const worker = createTaskWorker('deep', {
+      type: 'opencode',
+      adapter: 'local',
+      config: { model: 'anthropic/claude-opus-4-6' },
+    })
+
+    expect(worker.id).toBe('deep')
+    expect(worker.type).toBe('opencode')
   })
 
   test('resolveTaskWorker resolves from config', async () => {
