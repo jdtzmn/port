@@ -144,11 +144,6 @@ export function WorktreeView({
             .finally(() => setBusy(false))
         }
         break
-      case 'k': {
-        // Already handled by navigation above. For killing host services,
-        // we could add a different key. Using 'x' for kill.
-        break
-      }
       case 'x': {
         const selected = services[selectedIndex]
         if (selected?.type === 'host' && selected.hostService) {
