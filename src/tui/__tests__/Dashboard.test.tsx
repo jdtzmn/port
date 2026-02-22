@@ -37,6 +37,27 @@ const mockActions = {
   archiveWorktree: noopAsync,
 }
 
+/** Common Dashboard props with defaults for testing */
+function props(overrides: Record<string, unknown> = {}) {
+  return {
+    repoRoot: '/repo',
+    repoName: 'myapp',
+    worktrees: mockWorktrees,
+    hostServices: [] as HostService[],
+    traefikRunning: true,
+    config: mockConfig,
+    onSelectWorktree: noop,
+    onOpenWorktree: noop,
+    activeWorktreeName: 'myapp',
+    actions: mockActions,
+    refresh: noop,
+    loading: false,
+    statusMessage: null,
+    showStatus: noop,
+    ...overrides,
+  }
+}
+
 let currentRenderer: TestRenderer | null = null
 
 afterEach(() => {
@@ -49,20 +70,7 @@ afterEach(() => {
 describe('Dashboard', () => {
   test('renders repo name and worktree list', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
-      <Dashboard
-        repoRoot="/repo"
-        repoName="myapp"
-        worktrees={mockWorktrees}
-        hostServices={[]}
-        traefikRunning={true}
-        config={mockConfig}
-        onSelectWorktree={noop}
-        actions={mockActions}
-        refresh={noop}
-        loading={false}
-        statusMessage={null}
-        showStatus={noop}
-      />,
+      <Dashboard {...props()} />,
       { width: 60, height: 20 }
     )
     currentRenderer = renderer
@@ -78,22 +86,9 @@ describe('Dashboard', () => {
     expect(frame).toContain('feature-auth')
   })
 
-  test('shows root indicator on first worktree', async () => {
+  test('shows active indicator on active worktree', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
-      <Dashboard
-        repoRoot="/repo"
-        repoName="myapp"
-        worktrees={mockWorktrees}
-        hostServices={[]}
-        traefikRunning={false}
-        config={mockConfig}
-        onSelectWorktree={noop}
-        actions={mockActions}
-        refresh={noop}
-        loading={false}
-        statusMessage={null}
-        showStatus={noop}
-      />,
+      <Dashboard {...props({ activeWorktreeName: 'myapp', traefikRunning: false })} />,
       { width: 60, height: 20 }
     )
     currentRenderer = renderer
@@ -107,20 +102,7 @@ describe('Dashboard', () => {
 
   test('shows service status indicators', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
-      <Dashboard
-        repoRoot="/repo"
-        repoName="myapp"
-        worktrees={mockWorktrees}
-        hostServices={[]}
-        traefikRunning={true}
-        config={mockConfig}
-        onSelectWorktree={noop}
-        actions={mockActions}
-        refresh={noop}
-        loading={false}
-        statusMessage={null}
-        showStatus={noop}
-      />,
+      <Dashboard {...props()} />,
       { width: 60, height: 20 }
     )
     currentRenderer = renderer
@@ -128,27 +110,13 @@ describe('Dashboard', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    // Running services show ●, stopped show ○
     expect(frame).toContain('●')
     expect(frame).toContain('○')
   })
 
-  test('shows key hints', async () => {
+  test('shows key hints including enter and inspect', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
-      <Dashboard
-        repoRoot="/repo"
-        repoName="myapp"
-        worktrees={mockWorktrees}
-        hostServices={[]}
-        traefikRunning={true}
-        config={mockConfig}
-        onSelectWorktree={noop}
-        actions={mockActions}
-        refresh={noop}
-        loading={false}
-        statusMessage={null}
-        showStatus={noop}
-      />,
+      <Dashboard {...props()} />,
       { width: 80, height: 20 }
     )
     currentRenderer = renderer
@@ -157,6 +125,9 @@ describe('Dashboard', () => {
     const frame = captureCharFrame()
 
     expect(frame).toContain('[Enter]')
+    expect(frame).toContain('inspect')
+    expect(frame).toContain('[o]')
+    expect(frame).toContain('enter')
     expect(frame).toContain('[u]')
     expect(frame).toContain('[d]')
     expect(frame).toContain('[a]')
@@ -166,38 +137,19 @@ describe('Dashboard', () => {
 
   test('j/k navigates worktree list', async () => {
     const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
-      <Dashboard
-        repoRoot="/repo"
-        repoName="myapp"
-        worktrees={mockWorktrees}
-        hostServices={[]}
-        traefikRunning={true}
-        config={mockConfig}
-        onSelectWorktree={noop}
-        actions={mockActions}
-        refresh={noop}
-        loading={false}
-        statusMessage={null}
-        showStatus={noop}
-      />,
+      <Dashboard {...props()} />,
       { width: 60, height: 20 }
     )
     currentRenderer = renderer
 
     await renderOnce()
     const frame1 = captureCharFrame()
-
-    // Initially first item selected — has > indicator
-    // The first worktree row should have >
     expect(frame1).toContain('> ')
 
-    // Move down
     mockInput.pressKey('j')
     await renderOnce()
     const frame2 = captureCharFrame()
 
-    // After pressing j, the selection should have moved
-    // The output should still contain both worktree names
     expect(frame2).toContain('myapp')
     expect(frame2).toContain('feature-auth')
   })
@@ -209,49 +161,72 @@ describe('Dashboard', () => {
     }
 
     const { renderer, mockInput, renderOnce } = await testRender(
-      <Dashboard
-        repoRoot="/repo"
-        repoName="myapp"
-        worktrees={mockWorktrees}
-        hostServices={[]}
-        traefikRunning={true}
-        config={mockConfig}
-        onSelectWorktree={onSelect}
-        actions={mockActions}
-        refresh={noop}
-        loading={false}
-        statusMessage={null}
-        showStatus={noop}
-      />,
+      <Dashboard {...props({ onSelectWorktree: onSelect })} />,
       { width: 60, height: 20 }
     )
     currentRenderer = renderer
 
     await renderOnce()
-
-    // Press Enter to select first worktree
     mockInput.pressEnter()
     await renderOnce()
 
     expect(selectedName).toBe('myapp')
   })
 
+  test('o calls onOpenWorktree with selected worktree', async () => {
+    let openedName = ''
+    const onOpen = (name: string) => {
+      openedName = name
+    }
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <Dashboard {...props({ onOpenWorktree: onOpen })} />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+
+    // Move to second worktree and press o
+    mockInput.pressKey('j')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    mockInput.pressKey('o')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    expect(openedName).toBe('feature-auth')
+  })
+
+  test('star indicator follows activeWorktreeName', async () => {
+    // Active worktree is feature-auth, not the root
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props({ activeWorktreeName: 'feature-auth' })} />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+
+    // Split into lines to check which row has the star
+    const lines = frame.split('\n')
+    const rootLine = lines.find(l => l.includes('(root)'))
+    const authLine = lines.find(l => l.includes('feature-auth'))
+
+    // Root should NOT have star
+    expect(rootLine).toBeDefined()
+    expect(rootLine!).not.toContain('★')
+
+    // feature-auth SHOULD have star
+    expect(authLine).toBeDefined()
+    expect(authLine!).toContain('★')
+  })
+
   test('shows loading state', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
-      <Dashboard
-        repoRoot="/repo"
-        repoName="myapp"
-        worktrees={[]}
-        hostServices={[]}
-        traefikRunning={false}
-        config={mockConfig}
-        onSelectWorktree={noop}
-        actions={mockActions}
-        refresh={noop}
-        loading={true}
-        statusMessage={null}
-        showStatus={noop}
-      />,
+      <Dashboard {...props({ worktrees: [], traefikRunning: false, loading: true })} />,
       { width: 60, height: 20 }
     )
     currentRenderer = renderer

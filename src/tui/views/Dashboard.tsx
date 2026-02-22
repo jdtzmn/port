@@ -21,6 +21,8 @@ interface DashboardProps {
   traefikRunning: boolean
   config: PortConfig
   onSelectWorktree: (name: string) => void
+  onOpenWorktree: (name: string) => void
+  activeWorktreeName: string
   actions: Actions
   refresh: () => void
   loading: boolean
@@ -35,6 +37,8 @@ export function Dashboard({
   worktrees,
   traefikRunning,
   onSelectWorktree,
+  onOpenWorktree,
+  activeWorktreeName,
   actions,
   loading,
   statusMessage,
@@ -89,6 +93,11 @@ export function Dashboard({
               showStatus(result.message, result.success ? 'success' : 'error')
             })
             .finally(() => setBusy(false))
+        }
+        break
+      case 'o':
+        if (selectedWorktree) {
+          onOpenWorktree(selectedWorktree.name)
         }
         break
       case 'a':
@@ -152,11 +161,12 @@ export function Dashboard({
       {worktrees.map((worktree, index) => {
         const isSelected = index === selectedIndex
         const isRoot = index === 0
+        const isActive = worktree.name === activeWorktreeName
 
         return (
           <box key={worktree.name} flexDirection="row" gap={1}>
             <text>{isSelected ? '>' : ' '}</text>
-            {isRoot && <text fg="#FFFF00">★</text>}
+            {isActive && <text fg="#FFFF00">★</text>}
             <text>
               {isSelected ? (
                 <b>
@@ -203,7 +213,8 @@ export function Dashboard({
       {!pendingAction && (
         <KeyHints
           hints={[
-            { key: 'Enter', action: 'open' },
+            { key: 'Enter', action: 'inspect' },
+            { key: 'o', action: 'enter' },
             { key: 'u', action: 'up' },
             { key: 'd', action: 'down' },
             { key: 'a', action: 'archive' },
