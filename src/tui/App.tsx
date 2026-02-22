@@ -1,25 +1,20 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useKeyboard } from '@opentui/react'
 import type { WorktreeInfo, PortConfig } from '../types.ts'
-import type { StartView } from './index.tsx'
+import type { StartView, ExitInfo } from './index.tsx'
 import { Dashboard } from './views/Dashboard.tsx'
 import { WorktreeView } from './views/WorktreeView.tsx'
 import { usePortData } from './hooks/usePortData.ts'
 import { useActions } from './hooks/useActions.ts'
-import {
-  getEvalContext,
-  buildEnterCommands,
-  buildExitCommands,
-  writeEvalFile,
-} from '../lib/shell.ts'
 
 interface AppProps {
   startView: StartView
   context: WorktreeInfo
   config: PortConfig
+  requestExit: (info: ExitInfo) => void
 }
 
-export function App({ startView, context, config }: AppProps) {
+export function App({ startView, context, config, requestExit }: AppProps) {
   const [currentView, setCurrentView] = useState<'dashboard' | 'worktree'>(startView)
   const [selectedWorktree, setSelectedWorktree] = useState<string | null>(
     startView === 'worktree' ? context.name : null
@@ -30,10 +25,9 @@ export function App({ startView, context, config }: AppProps) {
   } | null>(null)
 
   // Track which worktree is "active" (where the shell will cd on exit).
-  // Initialized to whatever worktree/root the user launched from.
   const [activeWorktreeName, setActiveWorktreeName] = useState<string>(context.name)
 
-  // Use a ref so the exit handler always reads the latest value
+  // Refs so the exit handler always reads the latest values
   const activeWorktreeRef = useRef(activeWorktreeName)
   activeWorktreeRef.current = activeWorktreeName
 
@@ -61,7 +55,6 @@ export function App({ startView, context, config }: AppProps) {
 
   const handleBack = useCallback(() => {
     setCurrentView('dashboard')
-    // Don't clear selectedWorktree — Dashboard uses it to restore cursor position
   }, [])
 
   const handleOpenWorktree = useCallback(
@@ -72,40 +65,24 @@ export function App({ startView, context, config }: AppProps) {
     [showStatus]
   )
 
-  // Write shell eval commands on exit so the shell cd's to the active worktree.
-  useEffect(() => {
-    const exitHandler = () => {
-      const evalCtx = getEvalContext()
-      if (!evalCtx) return
+  const handleExit = useCallback(() => {
+    const activeName = activeWorktreeRef.current
+    const activeWt = worktrees.find(w => w.name === activeName)
+    const worktreePath = activeWt?.path ?? context.worktreePath
 
-      const activeName = activeWorktreeRef.current
-      const activeWt = worktrees.find(w => w.name === activeName)
-      const worktreePath = activeWt?.path ?? context.worktreePath
-
-      // If the active worktree is the repo root, exit to root
-      if (worktreePath === context.repoRoot) {
-        const commands = buildExitCommands(evalCtx.shell, context.repoRoot)
-        writeEvalFile(commands, evalCtx.evalFile)
-      } else {
-        const commands = buildEnterCommands(
-          evalCtx.shell,
-          worktreePath,
-          activeName,
-          context.repoRoot
-        )
-        writeEvalFile(commands, evalCtx.evalFile)
-      }
-    }
-
-    process.on('exit', exitHandler)
-    return () => {
-      process.removeListener('exit', exitHandler)
-    }
-  }, [context, worktrees])
+    requestExit({
+      activeWorktreeName: activeName,
+      worktreePath,
+      changed: activeName !== context.name,
+    })
+  }, [worktrees, context, requestExit])
 
   useKeyboard(event => {
     if (event.name === 'q' && !event.ctrl && !event.meta) {
-      process.exit(0)
+      handleExit()
+    }
+    if (event.name === 'c' && event.ctrl) {
+      handleExit()
     }
     if (event.name === 'r' && !event.ctrl && !event.meta) {
       refresh()
