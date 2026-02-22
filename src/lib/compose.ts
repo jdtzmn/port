@@ -501,27 +501,35 @@ export async function getComposeCommand(): Promise<string> {
   }
 }
 
+/** Options for controlling how compose command output is handled */
+export interface ComposeRunOptions {
+  /**
+   * 'inherit' streams output to the terminal (default, used by CLI commands).
+   * 'capture' captures stdout/stderr and returns them (used by TUI).
+   */
+  stdio?: 'inherit' | 'capture'
+}
+
+/** Result from a compose command run in capture mode */
+export interface ComposeCapturedResult {
+  exitCode: number
+  stdout: string
+  stderr: string
+}
+
 /**
- * Run a docker compose command with the appropriate -p and -f flags
+ * Build the full docker compose command string with -p and -f flags.
  *
- * This is the core function for running docker compose commands. It:
- * - Automatically includes the project name (-p flag)
- * - Automatically includes the compose file and override file (-f flags)
- * - Streams output to the terminal in real-time
- *
- * @param cwd - Working directory
- * @param composeFile - Path to docker-compose file
- * @param projectName - Project name for docker-compose (used for container naming)
- * @param args - Arguments to pass to docker compose (e.g., ['up', '-d'], ['down'], ['logs', '-f'])
- * @returns Object with exitCode
+ * This is the single source of truth for compose command construction.
+ * Both stdio modes use this function so they can never diverge.
  */
-export async function runCompose(
+async function buildComposeCommand(
   cwd: string,
   composeFile: string,
   projectName: string,
   args: string[],
   runtimeContext?: ComposeRuntimeContext
-): Promise<{ exitCode: number }> {
+): Promise<string> {
   const cmd = await getComposeCommand()
   const renderedUserOverride = runtimeContext
     ? await renderUserOverrideFile({
@@ -535,15 +543,55 @@ export async function runCompose(
     : null
   const composeFiles = getComposeFileStack(composeFile, renderedUserOverride)
 
-  // Build the full command with -p and -f flags
   const fullArgs = ['-p', projectName]
-
   for (const file of composeFiles) {
     fullArgs.push('-f', file)
   }
-
   fullArgs.push(...args)
-  const fullCommand = `${cmd} ${fullArgs.join(' ')}`
+
+  return `${cmd} ${fullArgs.join(' ')}`
+}
+
+/**
+ * Run a docker compose command with the appropriate -p and -f flags
+ *
+ * This is the core function for running docker compose commands. It:
+ * - Automatically includes the project name (-p flag)
+ * - Automatically includes the compose file and override file (-f flags)
+ * - In 'inherit' mode (default): streams output to the terminal in real-time
+ * - In 'capture' mode: captures stdout/stderr and returns them
+ *
+ * @param cwd - Working directory
+ * @param composeFile - Path to docker-compose file
+ * @param projectName - Project name for docker-compose (used for container naming)
+ * @param args - Arguments to pass to docker compose (e.g., ['up', '-d'], ['down'], ['logs', '-f'])
+ * @param runtimeContext - Optional runtime context for user override rendering
+ * @param options - Options for controlling stdio handling
+ * @returns Object with exitCode (and stdout/stderr in capture mode)
+ */
+export async function runCompose(
+  cwd: string,
+  composeFile: string,
+  projectName: string,
+  args: string[],
+  runtimeContext?: ComposeRuntimeContext,
+  options?: ComposeRunOptions
+): Promise<{ exitCode: number } | ComposeCapturedResult> {
+  const fullCommand = await buildComposeCommand(cwd, composeFile, projectName, args, runtimeContext)
+
+  if (options?.stdio === 'capture') {
+    try {
+      const { stdout, stderr } = await execAsync(fullCommand, { cwd })
+      return { exitCode: 0, stdout, stderr }
+    } catch (error: unknown) {
+      const err = error as { code?: number; stdout?: string; stderr?: string }
+      return {
+        exitCode: err.code ?? 1,
+        stdout: err.stdout ?? '',
+        stderr: err.stderr ?? '',
+      }
+    }
+  }
 
   return execWithStdio(fullCommand, { cwd })
 }
