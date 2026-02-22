@@ -33,7 +33,8 @@
     "lint:fix": "bunx eslint . --fix",
     "format": "bunx prettier --write .",
     "format:check": "bunx prettier --check .",
-    "test": "bunx vitest"
+    "test": "bunx vitest",
+    "test:tui": "bun test src/tui/__tests__/"
   },
   "engines": {
     "bun": ">=1.0.0"
