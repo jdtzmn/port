@@ -210,6 +210,11 @@ program
       }
       await enter(branch)
     } else {
+      if (!process.stdout.isTTY) {
+        program.help()
+        return
+      }
+
       // No argument provided — launch TUI
       try {
         const info = detectWorktree()
