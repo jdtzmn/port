@@ -186,12 +186,16 @@ export function Dashboard({
                 </>
               )}
             </text>
-            {worktree.services.map(service => (
-              <box key={service.name} flexDirection="row" gap={0}>
-                <text fg="#888888">{service.name} </text>
-                <StatusIndicator running={service.running} />
-              </box>
-            ))}
+            {worktree.services.length === 0 && loading ? (
+              <text fg="#555555">...</text>
+            ) : (
+              worktree.services.map(service => (
+                <box key={service.name} flexDirection="row" gap={0}>
+                  <text fg="#888888">{service.name} </text>
+                  <StatusIndicator running={service.running} />
+                </box>
+              ))
+            )}
           </box>
         )
       })}
