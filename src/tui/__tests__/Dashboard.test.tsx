@@ -49,6 +49,7 @@ function props(overrides: Record<string, unknown> = {}) {
     onSelectWorktree: noop,
     onOpenWorktree: noop,
     activeWorktreeName: 'myapp',
+    initialSelectedName: null,
     actions: mockActions,
     refresh: noop,
     loading: false,

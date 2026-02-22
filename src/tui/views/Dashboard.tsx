@@ -23,6 +23,7 @@ interface DashboardProps {
   onSelectWorktree: (name: string) => void
   onOpenWorktree: (name: string) => void
   activeWorktreeName: string
+  initialSelectedName: string | null
   actions: Actions
   refresh: () => void
   loading: boolean
@@ -39,12 +40,17 @@ export function Dashboard({
   onSelectWorktree,
   onOpenWorktree,
   activeWorktreeName,
+  initialSelectedName,
   actions,
   loading,
   statusMessage,
   showStatus,
 }: DashboardProps) {
-  const [selectedIndex, setSelectedIndex] = useState(0)
+  const [selectedIndex, setSelectedIndex] = useState(() => {
+    if (!initialSelectedName) return 0
+    const idx = worktrees.findIndex(w => w.name === initialSelectedName)
+    return idx >= 0 ? idx : 0
+  })
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
   const [busy, setBusy] = useState(false)
 

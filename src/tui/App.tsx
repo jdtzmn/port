@@ -61,7 +61,7 @@ export function App({ startView, context, config }: AppProps) {
 
   const handleBack = useCallback(() => {
     setCurrentView('dashboard')
-    setSelectedWorktree(null)
+    // Don't clear selectedWorktree — Dashboard uses it to restore cursor position
   }, [])
 
   const handleOpenWorktree = useCallback(
@@ -145,6 +145,7 @@ export function App({ startView, context, config }: AppProps) {
       onSelectWorktree={handleSelectWorktree}
       onOpenWorktree={handleOpenWorktree}
       activeWorktreeName={activeWorktreeName}
+      initialSelectedName={selectedWorktree}
       actions={actions}
       refresh={refresh}
       loading={loading}
