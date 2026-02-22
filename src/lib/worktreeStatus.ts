@@ -17,7 +17,49 @@ export interface WorktreeStatus {
   running: boolean
 }
 
-async function getWorktreeServiceStatus(
+/**
+ * Get worktree skeletons (names and paths) instantly from the filesystem.
+ * No Docker calls — returns empty services arrays that get filled in later.
+ */
+export function getWorktreeSkeletons(repoRoot: string): WorktreeStatus[] {
+  const worktrees: WorktreeStatus[] = []
+  const treesDir = getTreesDir(repoRoot)
+  const repoName = sanitizeBranchName(repoRoot.split('/').pop() ?? 'main')
+
+  worktrees.push({
+    name: repoName,
+    path: repoRoot,
+    services: [],
+    running: false,
+  })
+
+  if (!existsSync(treesDir)) {
+    return worktrees
+  }
+
+  const entries = readdirSync(treesDir, { withFileTypes: true })
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue
+    }
+
+    worktrees.push({
+      name: entry.name,
+      path: join(treesDir, entry.name),
+      services: [],
+      running: false,
+    })
+  }
+
+  return worktrees
+}
+
+/**
+ * Fetch service status for a single worktree.
+ * Makes Docker CLI calls (compose config + compose ps).
+ */
+export async function fetchWorktreeServices(
   repoRoot: string,
   branch: string,
   domain: string,
@@ -55,61 +97,30 @@ async function getWorktreeServiceStatus(
   return services
 }
 
+/**
+ * Collect full worktree statuses (sequential, used by CLI commands).
+ * For the TUI, prefer getWorktreeSkeletons + fetchWorktreeServices in parallel.
+ */
 export async function collectWorktreeStatuses(
   repoRoot: string,
   composeFile: string,
   domain: string
 ): Promise<WorktreeStatus[]> {
-  const worktrees: WorktreeStatus[] = []
-  const treesDir = getTreesDir(repoRoot)
-  const repoName = sanitizeBranchName(repoRoot.split('/').pop() ?? 'main')
+  const skeletons = getWorktreeSkeletons(repoRoot)
 
-  const mainProjectName = getProjectName(repoRoot, repoName)
-  const mainServices = await getWorktreeServiceStatus(
-    repoRoot,
-    repoName,
-    domain,
-    repoRoot,
-    composeFile,
-    mainProjectName
-  )
-
-  worktrees.push({
-    name: repoName,
-    path: repoRoot,
-    services: mainServices,
-    running: mainServices.some(service => service.running),
-  })
-
-  if (!existsSync(treesDir)) {
-    return worktrees
-  }
-
-  const entries = readdirSync(treesDir, { withFileTypes: true })
-
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue
-    }
-
-    const worktreePath = join(treesDir, entry.name)
-    const projectName = getProjectName(repoRoot, entry.name)
-    const services = await getWorktreeServiceStatus(
+  for (const wt of skeletons) {
+    const projectName = getProjectName(repoRoot, wt.name)
+    const services = await fetchWorktreeServices(
       repoRoot,
-      entry.name,
+      wt.name,
       domain,
-      worktreePath,
+      wt.path,
       composeFile,
       projectName
     )
-
-    worktrees.push({
-      name: entry.name,
-      path: worktreePath,
-      services,
-      running: services.some(service => service.running),
-    })
+    wt.services = services
+    wt.running = services.some(s => s.running)
   }
 
-  return worktrees
+  return skeletons
 }
