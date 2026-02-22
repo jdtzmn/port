@@ -23,10 +23,15 @@ export function App({ startView, context, config }: AppProps) {
     type: 'success' | 'error'
   } | null>(null)
 
-  const { worktrees, hostServices, traefikRunning, loading, refresh } = usePortData(
+  const { worktrees, hostServices, traefikRunning, loading, error, refresh } = usePortData(
     context.repoRoot,
     config
   )
+
+  // Show data loading errors as status messages
+  if (error && !statusMessage) {
+    setStatusMessage({ text: error, type: 'error' })
+  }
 
   const actions = useActions(context.repoRoot, config, refresh)
 
