@@ -2,8 +2,14 @@ import { useState } from 'react'
 import { useKeyboard } from '@opentui/react'
 import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
+import type { ActionResult } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
 import { KeyHints } from '../components/KeyHints.tsx'
+
+interface Actions {
+  downWorktree: (worktreePath: string, worktreeName: string) => Promise<ActionResult>
+  killHostService: (service: HostService) => Promise<ActionResult>
+}
 
 interface WorktreeViewProps {
   worktree: WorktreeStatus | null
@@ -11,8 +17,11 @@ interface WorktreeViewProps {
   config: PortConfig
   repoRoot: string
   onBack: () => void
+  actions: Actions
   refresh: () => void
   loading: boolean
+  statusMessage: { text: string; type: 'success' | 'error' } | null
+  showStatus: (text: string, type: 'success' | 'error') => void
 }
 
 interface ServiceItem {
@@ -21,9 +30,10 @@ interface ServiceItem {
   port: number
   running: boolean
   url: string
-  /** Only for host services */
   pid?: number
   actualPort?: number
+  /** Reference to original host service for kill action */
+  hostService?: HostService
 }
 
 function buildServiceItems(
@@ -46,7 +56,6 @@ function buildServiceItems(
           url: `${baseUrl}:${port}`,
         })
       }
-      // Services with no ports still show up, but with no URL
       if (service.ports.length === 0) {
         items.push({
           type: 'docker',
@@ -68,6 +77,7 @@ function buildServiceItems(
       url: `${baseUrl}:${hs.logicalPort}`,
       pid: hs.pid,
       actualPort: hs.actualPort,
+      hostService: hs,
     })
   }
 
@@ -79,16 +89,20 @@ export function WorktreeView({
   hostServices,
   config,
   onBack,
+  actions,
   loading,
+  statusMessage,
+  showStatus,
 }: WorktreeViewProps) {
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [busy, setBusy] = useState(false)
 
   const worktreeName = worktree?.name ?? 'unknown'
   const baseUrl = `http://${worktreeName}.${config.domain}`
   const services = buildServiceItems(worktree, hostServices, config, worktreeName)
 
   useKeyboard(event => {
-    if (event.ctrl || event.meta) return
+    if (event.ctrl || event.meta || busy) return
 
     const maxIndex = Math.max(services.length - 1, 0)
 
@@ -107,7 +121,6 @@ export function WorktreeView({
       case 'return': {
         const selected = services[selectedIndex]
         if (selected?.url) {
-          // Open URL in default browser
           const cmd =
             process.platform === 'darwin'
               ? 'open'
@@ -117,6 +130,35 @@ export function WorktreeView({
           import('child_process').then(({ exec }) => {
             exec(`${cmd} ${selected.url}`)
           })
+        }
+        break
+      }
+      case 'd':
+        if (worktree) {
+          setBusy(true)
+          actions
+            .downWorktree(worktree.path, worktree.name)
+            .then(result => {
+              showStatus(result.message, result.success ? 'success' : 'error')
+            })
+            .finally(() => setBusy(false))
+        }
+        break
+      case 'k': {
+        // Already handled by navigation above. For killing host services,
+        // we could add a different key. Using 'x' for kill.
+        break
+      }
+      case 'x': {
+        const selected = services[selectedIndex]
+        if (selected?.type === 'host' && selected.hostService) {
+          setBusy(true)
+          actions
+            .killHostService(selected.hostService)
+            .then(result => {
+              showStatus(result.message, result.success ? 'success' : 'error')
+            })
+            .finally(() => setBusy(false))
         }
         break
       }
@@ -131,6 +173,7 @@ export function WorktreeView({
           <b>{worktreeName}</b>
         </text>
         {loading && <text fg="#888888"> refreshing...</text>}
+        {busy && <text fg="#FFFF00"> working...</text>}
       </box>
 
       {/* URL */}
@@ -148,7 +191,6 @@ export function WorktreeView({
           {services
             .filter(s => s.type === 'docker')
             .map((service, i) => {
-              // Find the actual index in the full services array
               const globalIndex = services.findIndex(s => s === service)
               const isSelected = globalIndex === selectedIndex
 
@@ -199,11 +241,19 @@ export function WorktreeView({
       {/* Spacer */}
       <box flexGrow={1} />
 
+      {/* Status message */}
+      {statusMessage && (
+        <text fg={statusMessage.type === 'success' ? '#00FF00' : '#FF4444'}>
+          {statusMessage.text}
+        </text>
+      )}
+
       {/* Key hints */}
       <KeyHints
         hints={[
           { key: 'Enter', action: 'open in browser' },
           { key: 'd', action: 'down' },
+          { key: 'x', action: 'kill host svc' },
           { key: 'Esc', action: 'back' },
           { key: 'r', action: 'refresh' },
           { key: 'q', action: 'quit' },

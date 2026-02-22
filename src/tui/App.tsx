@@ -5,6 +5,7 @@ import type { StartView } from './index.tsx'
 import { Dashboard } from './views/Dashboard.tsx'
 import { WorktreeView } from './views/WorktreeView.tsx'
 import { usePortData } from './hooks/usePortData.ts'
+import { useActions } from './hooks/useActions.ts'
 
 interface AppProps {
   startView: StartView
@@ -17,11 +18,22 @@ export function App({ startView, context, config }: AppProps) {
   const [selectedWorktree, setSelectedWorktree] = useState<string | null>(
     startView === 'worktree' ? context.name : null
   )
+  const [statusMessage, setStatusMessage] = useState<{
+    text: string
+    type: 'success' | 'error'
+  } | null>(null)
 
   const { worktrees, hostServices, traefikRunning, loading, refresh } = usePortData(
     context.repoRoot,
     config
   )
+
+  const actions = useActions(context.repoRoot, config, refresh)
+
+  const showStatus = useCallback((text: string, type: 'success' | 'error') => {
+    setStatusMessage({ text, type })
+    setTimeout(() => setStatusMessage(null), 3000)
+  }, [])
 
   const handleSelectWorktree = useCallback((name: string) => {
     setSelectedWorktree(name)
@@ -40,7 +52,7 @@ export function App({ startView, context, config }: AppProps) {
     if (event.name === 'r' && !event.ctrl && !event.meta) {
       refresh()
     }
-  }, {})
+  })
 
   if (currentView === 'worktree' && selectedWorktree) {
     const worktree = worktrees.find(w => w.name === selectedWorktree)
@@ -55,8 +67,11 @@ export function App({ startView, context, config }: AppProps) {
         config={config}
         repoRoot={context.repoRoot}
         onBack={handleBack}
+        actions={actions}
         refresh={refresh}
         loading={loading}
+        statusMessage={statusMessage}
+        showStatus={showStatus}
       />
     )
   }
@@ -70,8 +85,11 @@ export function App({ startView, context, config }: AppProps) {
       traefikRunning={traefikRunning}
       config={config}
       onSelectWorktree={handleSelectWorktree}
+      actions={actions}
       refresh={refresh}
       loading={loading}
+      statusMessage={statusMessage}
+      showStatus={showStatus}
     />
   )
 }
