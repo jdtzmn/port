@@ -23,6 +23,7 @@ import { completion } from './commands/completion.ts'
 import { isReservedCommand } from './lib/commands.ts'
 import { detectWorktree } from './lib/worktree.ts'
 import { branchExists } from './lib/git.ts'
+import { loadConfig, configExists } from './lib/config.ts'
 import * as output from './lib/output.ts'
 
 export const program = new Command()
@@ -209,8 +210,31 @@ program
       }
       await enter(branch)
     } else {
-      // No argument provided, show help
-      program.help()
+      if (!process.stdout.isTTY) {
+        program.help()
+        return
+      }
+
+      // No argument provided — launch TUI
+      try {
+        const info = detectWorktree()
+
+        if (!configExists(info.repoRoot)) {
+          output.error('Not in a port project. Run `port init` first.')
+          process.exit(1)
+        }
+
+        const config = await loadConfig(info.repoRoot)
+        const startView = 'dashboard'
+
+        // Dynamic import to avoid bundling OpenTUI assets into the main CLI
+        const { launchTui } = await import('./tui/index.tsx')
+        await launchTui(startView as 'dashboard' | 'worktree', info, config)
+      } catch {
+        // Not in a git repo — eventually this will show the project list
+        output.error('Not in a git repository. Run `port` inside a port project.')
+        process.exit(1)
+      }
     }
   })
 
