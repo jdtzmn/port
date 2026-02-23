@@ -4,7 +4,7 @@ import type { TestRenderer } from '@opentui/core/testing'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { HostService, PortConfig } from '../../types.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
-import { Dashboard } from '../views/Dashboard.tsx'
+import { Dashboard, findSubstringMatchRanges } from '../views/Dashboard.tsx'
 
 const mockConfig: PortConfig = { domain: 'port' }
 
@@ -25,6 +25,39 @@ const mockWorktrees: WorktreeStatus[] = [
       { name: 'web', ports: [3000], running: false },
       { name: 'db', ports: [5432], running: false },
     ],
+    running: false,
+  },
+]
+
+const filterWorktrees: WorktreeStatus[] = [
+  {
+    name: 'myapp',
+    path: '/repo',
+    services: [],
+    running: false,
+  },
+  {
+    name: 'proj-jump',
+    path: '/repo/.port/trees/proj-jump',
+    services: [],
+    running: false,
+  },
+  {
+    name: 'feature-auth',
+    path: '/repo/.port/trees/feature-auth',
+    services: [],
+    running: false,
+  },
+  {
+    name: 'chore-clean',
+    path: '/repo/.port/trees/chore-clean',
+    services: [],
+    running: false,
+  },
+  {
+    name: 'bug-auth-ui',
+    path: '/repo/.port/trees/bug-auth-ui',
+    services: [],
     running: false,
   },
 ]
@@ -57,6 +90,20 @@ function props(overrides: Record<string, unknown> = {}) {
     showStatus: noop,
     ...overrides,
   }
+}
+
+function frameLine(frame: string, contains: string): string {
+  return frame.split('\n').find(line => line.includes(contains)) ?? ''
+}
+
+async function pressAndRender(
+  mockInput: { pressKey: (key: string) => void; pressEnter: () => void },
+  renderOnce: () => Promise<void>,
+  key: string
+) {
+  mockInput.pressKey(key)
+  await new Promise(resolve => setTimeout(resolve, 50))
+  await renderOnce()
 }
 
 let currentRenderer: TestRenderer | null = null
@@ -115,7 +162,16 @@ describe('Dashboard', () => {
     expect(frame).toContain('○')
   })
 
-  test('shows key hints including enter and inspect', async () => {
+  test('findSubstringMatchRanges returns all case-insensitive matches', () => {
+    const ranges = findSubstringMatchRanges('bug-auth-auth', 'AUTH')
+
+    expect(ranges).toEqual([
+      { start: 4, end: 8 },
+      { start: 9, end: 13 },
+    ])
+  })
+
+  test('shows key hints including enter, open, and jump', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <Dashboard {...props()} />,
       { width: 80, height: 20 }
@@ -129,6 +185,8 @@ describe('Dashboard', () => {
     expect(frame).toContain('inspect')
     expect(frame).toContain('[o]')
     expect(frame).toContain('open')
+    expect(frame).toContain('[/]')
+    expect(frame).toContain('filter')
     expect(frame).toContain('[u]')
     expect(frame).toContain('[d]')
     expect(frame).toContain('[a]')
@@ -198,6 +256,131 @@ describe('Dashboard', () => {
     await renderOnce()
 
     expect(openedName).toBe('feature-auth')
+  })
+
+  test('/ enters query mode without resetting the caret', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props()} />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('j')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const frame = captureCharFrame()
+
+    expect(frameLine(frame, 'feature-auth')).toContain('>')
+    expect(frame).toContain('(type to filter)')
+  })
+
+  test('query mode accepts j as query text', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props({ worktrees: filterWorktrees, activeWorktreeName: 'myapp' })} />,
+      { width: 90, height: 24 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    mockInput.pressKey('j')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const frame = captureCharFrame()
+
+    expect(frame).toContain('/j')
+    expect(frame).toContain('(1 match)')
+    expect(frameLine(frame, 'myapp (root)')).toContain('>')
+  })
+
+  test('filtered navigation j/k skips non-matching worktrees', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props({ worktrees: filterWorktrees, activeWorktreeName: 'myapp' })} />,
+      { width: 90, height: 24 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    await pressAndRender(mockInput, renderOnce, 'a')
+    await pressAndRender(mockInput, renderOnce, 'u')
+    await pressAndRender(mockInput, renderOnce, 't')
+    await pressAndRender(mockInput, renderOnce, 'h')
+
+    mockInput.pressEnter()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    let frame = captureCharFrame()
+    expect(frameLine(frame, 'feature-auth')).toContain('>')
+
+    mockInput.pressKey('j')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    frame = captureCharFrame()
+    expect(frameLine(frame, 'bug-auth-ui')).toContain('>')
+    expect(frameLine(frame, 'chore-clean')).not.toContain('>')
+
+    mockInput.pressKey('k')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    frame = captureCharFrame()
+    expect(frameLine(frame, 'feature-auth')).toContain('>')
+  })
+
+  test('[/] edit filter clears the current query before typing', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props({ worktrees: filterWorktrees, activeWorktreeName: 'myapp' })} />,
+      { width: 90, height: 24 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    await pressAndRender(mockInput, renderOnce, 'a')
+    await pressAndRender(mockInput, renderOnce, 'u')
+    await pressAndRender(mockInput, renderOnce, 't')
+    await pressAndRender(mockInput, renderOnce, 'h')
+
+    mockInput.pressEnter()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    let frame = captureCharFrame()
+    expect(frame).toContain('/auth')
+
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    frame = captureCharFrame()
+    expect(frame).toContain('/ (type to filter)')
+
+    await pressAndRender(mockInput, renderOnce, 'j')
+
+    frame = captureCharFrame()
+    expect(frame).toContain('/j')
+    expect(frame).not.toContain('/authj')
   })
 
   test('star indicator follows activeWorktreeName', async () => {
