@@ -9,7 +9,14 @@ on:
   #     - 'v*.*.*'
 
 jobs:
+  verify:
+    name: Verify release tests
+    uses: ./.github/workflows/linux-integration-tests.yml
+    with:
+      run-traefik-diagnostics: true
+
   publish:
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -17,11 +24,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Configure git identity (required by tests)
-        run: |
-          git config --global user.email "ci@test.local"
-          git config --global user.name "CI Runner"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -42,16 +44,6 @@ jobs:
 
       - name: Build
         run: bun run build
-
-      - name: Create global `port` command
-        run: |
-          sudo ln -s "$(pwd)/dist/index.js" /usr/local/bin/port && chmod +x dist/index.js
-
-      - name: Configure DNS
-        run: sudo env PATH=$PATH port install -y
-
-      - name: Run tests
-        run: bun run test
 
       - name: Publish to npm
         run: npm publish --provenance --access public
