@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback } from 'react'
 import { useKeyboard } from '@opentui/react'
 import type { WorktreeInfo, PortConfig } from '../types.ts'
 import type { StartView, ExitInfo } from './index.tsx'
@@ -23,11 +23,7 @@ export function App({ startView, context, config, requestExit }: AppProps) {
   } | null>(null)
 
   // Track which worktree is "active" (where the shell will cd on exit).
-  const [activeWorktreeName, setActiveWorktreeName] = useState<string>(context.name)
-
-  // Refs so the exit handler always reads the latest values
-  const activeWorktreeRef = useRef(activeWorktreeName)
-  activeWorktreeRef.current = activeWorktreeName
+  const activeWorktreeName = context.name
 
   const { worktrees, hostServices, traefikRunning, loading, error, refresh } = usePortData(
     context.repoRoot,
@@ -69,7 +65,7 @@ export function App({ startView, context, config, requestExit }: AppProps) {
   )
 
   const handleExit = useCallback(() => {
-    const activeName = activeWorktreeRef.current
+    const activeName = activeWorktreeName
     const activeWt = worktrees.find(w => w.name === activeName)
     const worktreePath = activeWt?.path ?? context.worktreePath
 
@@ -78,7 +74,7 @@ export function App({ startView, context, config, requestExit }: AppProps) {
       worktreePath,
       changed: activeName !== context.name,
     })
-  }, [worktrees, context, requestExit])
+  }, [activeWorktreeName, worktrees, context, requestExit])
 
   useKeyboard(event => {
     if (event.name === 'q' && !event.ctrl && !event.meta) {
