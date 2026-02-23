@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 
 import { Command } from 'commander'
+import { readFileSync } from 'fs'
+import { fileURLToPath } from 'url'
 import { init } from './commands/init.ts'
 import { list } from './commands/list.ts'
 import { install } from './commands/install.ts'
@@ -25,6 +27,17 @@ import * as output from './lib/output.ts'
 
 export const program = new Command()
 program.enablePositionalOptions()
+
+function getCliVersion(): string {
+  try {
+    const packageJsonPath = fileURLToPath(new URL('../package.json', import.meta.url))
+    const packageJsonRaw = readFileSync(packageJsonPath, 'utf8')
+    const packageJson = JSON.parse(packageJsonRaw) as { version?: unknown }
+    return typeof packageJson.version === 'string' ? packageJson.version : '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+}
 
 function getReservedCommands(): Set<string> {
   const reserved = new Set<string>(['help'])
@@ -66,7 +79,7 @@ async function maybeWarnCommandBranchCollision(): Promise<void> {
 program
   .name('port')
   .description('Manage git worktrees — run parallel Docker Compose stacks without port conflicts')
-  .version('0.1.0')
+  .version(getCliVersion())
 
 // port init
 program
