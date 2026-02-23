@@ -128,7 +128,7 @@ describe('Dashboard', () => {
     expect(frame).toContain('[Enter]')
     expect(frame).toContain('inspect')
     expect(frame).toContain('[o]')
-    expect(frame).toContain('enter')
+    expect(frame).toContain('open')
     expect(frame).toContain('[u]')
     expect(frame).toContain('[d]')
     expect(frame).toContain('[a]')

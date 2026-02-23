@@ -59,10 +59,15 @@ export function App({ startView, context, config, requestExit }: AppProps) {
 
   const handleOpenWorktree = useCallback(
     (name: string) => {
-      setActiveWorktreeName(name)
-      showStatus(`Entered ${name}`, 'success')
+      const selectedWt = worktrees.find(w => w.name === name)
+
+      requestExit({
+        activeWorktreeName: name,
+        worktreePath: selectedWt?.path ?? context.worktreePath,
+        changed: name !== context.name,
+      })
     },
-    [showStatus]
+    [worktrees, context, requestExit]
   )
 
   const handleExit = useCallback(() => {

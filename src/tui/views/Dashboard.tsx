@@ -224,7 +224,7 @@ export function Dashboard({
         <KeyHints
           hints={[
             { key: 'Enter', action: 'inspect' },
-            { key: 'o', action: 'enter' },
+            { key: 'o', action: 'open' },
             { key: 'u', action: 'up' },
             { key: 'd', action: 'down' },
             { key: 'a', action: 'archive' },
