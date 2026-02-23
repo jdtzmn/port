@@ -225,7 +225,7 @@ program
         }
 
         const config = await loadConfig(info.repoRoot)
-        const startView = info.isMainRepo ? 'dashboard' : 'worktree'
+        const startView = 'dashboard'
 
         // Dynamic import to avoid bundling OpenTUI assets into the main CLI
         const { launchTui } = await import('./tui/index.tsx')

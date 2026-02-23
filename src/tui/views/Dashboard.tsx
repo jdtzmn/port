@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useKeyboard } from '@opentui/react'
 import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
@@ -154,6 +154,27 @@ export function Dashboard({
   const [jumpMode, setJumpMode] = useState<JumpMode>('normal')
   const [appliedQuery, setAppliedQuery] = useState('')
   const [draftQuery, setDraftQuery] = useState('')
+  const initialSelectionAppliedRef = useRef(false)
+
+  useEffect(() => {
+    if (initialSelectionAppliedRef.current) return
+
+    if (!initialSelectedName) {
+      initialSelectionAppliedRef.current = true
+      return
+    }
+
+    if (worktrees.length === 0) {
+      return
+    }
+
+    const idx = worktrees.findIndex(w => w.name === initialSelectedName)
+    if (idx >= 0) {
+      setSelectedIndex(idx)
+    }
+
+    initialSelectionAppliedRef.current = true
+  }, [initialSelectedName, worktrees])
 
   const jumpModeRef = useRef<JumpMode>(jumpMode)
   const appliedQueryRef = useRef(appliedQuery)

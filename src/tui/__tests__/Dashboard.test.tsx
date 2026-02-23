@@ -1,6 +1,7 @@
 import { test, expect, afterEach, describe } from 'bun:test'
 import { testRender } from '@opentui/react/test-utils'
 import type { TestRenderer } from '@opentui/core/testing'
+import { useEffect, useState } from 'react'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { HostService, PortConfig } from '../../types.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
@@ -405,6 +406,66 @@ describe('Dashboard', () => {
 
     // feature-auth SHOULD have star
     expect(authLine).toBeDefined()
+    expect(authLine!).toContain('★')
+  })
+
+  test('initialSelectedName places caret on current worktree', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard
+        {...props({
+          activeWorktreeName: 'feature-auth',
+          initialSelectedName: 'feature-auth',
+        })}
+      />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+
+    const authLine = frame.split('\n').find(line => line.includes('feature-auth'))
+
+    expect(authLine).toBeDefined()
+    expect(authLine!).toContain('>')
+    expect(authLine!).toContain('★')
+  })
+
+  test('applies initialSelectedName after async worktree load', async () => {
+    function AsyncDashboard() {
+      const [worktrees, setWorktrees] = useState<WorktreeStatus[]>([])
+
+      useEffect(() => {
+        setWorktrees(mockWorktrees)
+      }, [])
+
+      return (
+        <Dashboard
+          {...props({
+            worktrees,
+            activeWorktreeName: 'feature-auth',
+            initialSelectedName: 'feature-auth',
+            loading: worktrees.length === 0,
+          })}
+        />
+      )
+    }
+
+    const { renderer, renderOnce, captureCharFrame } = await testRender(<AsyncDashboard />, {
+      width: 60,
+      height: 20,
+    })
+    currentRenderer = renderer
+
+    await renderOnce()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const frame = captureCharFrame()
+    const authLine = frame.split('\n').find(line => line.includes('feature-auth'))
+
+    expect(authLine).toBeDefined()
+    expect(authLine!).toContain('>')
     expect(authLine!).toContain('★')
   })
 

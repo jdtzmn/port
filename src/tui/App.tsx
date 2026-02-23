@@ -16,9 +16,7 @@ interface AppProps {
 
 export function App({ startView, context, config, requestExit }: AppProps) {
   const [currentView, setCurrentView] = useState<'dashboard' | 'worktree'>(startView)
-  const [selectedWorktree, setSelectedWorktree] = useState<string | null>(
-    startView === 'worktree' ? context.name : null
-  )
+  const [selectedWorktree, setSelectedWorktree] = useState<string | null>(context.name)
   const [statusMessage, setStatusMessage] = useState<{
     text: string
     type: 'success' | 'error'
