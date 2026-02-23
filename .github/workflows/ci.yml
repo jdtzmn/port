@@ -90,7 +90,9 @@ jobs:
           wait
 
       - name: Configure DNS
-        run: sudo env PATH=$PATH port install -y
+        run: |
+          sudo env PATH=$PATH port install -y
+          sudo env PATH=$PATH port install --domain test -y
 
       - name: Run tests
         run: bun run test

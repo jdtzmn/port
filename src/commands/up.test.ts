@@ -1,6 +1,7 @@
 import { waitFor } from 'cli-testing-library'
 import { createConnection } from 'net'
 import { describe, test, expect } from 'vitest'
+import { checkDns } from '../lib/dns'
 import { prepareSample, renderCLI } from '../../tests/utils'
 
 const SAMPLES_TIMEOUT = 60_000
@@ -79,6 +80,49 @@ describe('samples start', () => {
         timeout: SAMPLES_TIMEOUT,
       })
       await sample.cleanup()
+    },
+    SAMPLES_TIMEOUT + 1000
+  )
+
+  test(
+    'start the db-and-server sample with a custom domain',
+    async ctx => {
+      const dnsConfigured = await checkDns('test')
+      if (!dnsConfigured) {
+        if (process.env.CI) {
+          throw new Error(
+            'DNS is not configured for the .test domain in CI. ' +
+              'Ensure `port install --domain test -y` runs before tests.'
+          )
+        }
+        ctx.skip()
+      }
+
+      const sample = await prepareSample('db-and-server', {
+        initWithConfig: { domain: 'test' },
+      })
+
+      try {
+        const { findByError } = await renderCLI(['up'], sample.dir)
+
+        await findByError('Traefik dashboard:', {}, { timeout: SAMPLES_TIMEOUT })
+
+        // Confirm that the custom domain is reachable (retry until Traefik routes are ready)
+        await waitFor(
+          async () => {
+            const res = await fetch(sample.urlWithPort(3000))
+            expect(res.status).toBe(200)
+          },
+          { timeout: SAMPLES_TIMEOUT }
+        )
+
+        const downInstance = await renderCLI(['down', '-y'], sample.dir)
+        await waitFor(() => expect(downInstance.hasExit()).toMatchObject({ exitCode: 0 }), {
+          timeout: SAMPLES_TIMEOUT,
+        })
+      } finally {
+        await sample.cleanup()
+      }
     },
     SAMPLES_TIMEOUT + 1000
   )

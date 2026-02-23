@@ -166,7 +166,7 @@ describe('uninstall command', () => {
       if (cmd === 'brew --prefix') {
         return { stdout: '/usr/local\n' }
       }
-      if (cmd.includes('grep "address=/port/"')) {
+      if (cmd === 'cat /usr/local/etc/dnsmasq.conf') {
         return { stdout: 'address=/port/127.0.0.1\n' }
       }
       if (cmd === 'pgrep dnsmasq') {
@@ -195,7 +195,7 @@ describe('uninstall command', () => {
       if (cmd === 'brew --prefix') {
         return { stdout: '/usr/local\n' }
       }
-      if (cmd.includes('grep "address=/custom/"')) {
+      if (cmd === 'cat /usr/local/etc/dnsmasq.conf') {
         return { stdout: 'address=/custom/127.0.0.1\n' }
       }
       if (cmd === 'pgrep dnsmasq') {

@@ -80,3 +80,17 @@ test('Shows a hint when command name collides with a branch', async () => {
     await sample.cleanup()
   }
 })
+
+test('Does not show collision hint for shell-hook command', async () => {
+  const sample = await prepareSample('simple-server', { initWithConfig: true })
+
+  try {
+    await execAsync('git branch shell-hook', { cwd: sample.dir })
+
+    const result = await renderCLI(['shell-hook', 'fish'], sample.dir)
+    const instance = result.queryByError('Hint: branch "shell-hook"')
+    expect(instance).toBeNull()
+  } finally {
+    await sample.cleanup()
+  }
+})

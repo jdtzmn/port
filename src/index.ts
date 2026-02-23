@@ -21,8 +21,11 @@ import { cleanup } from './commands/cleanup.ts'
 import { urls } from './commands/urls.ts'
 import { onboard } from './commands/onboard.ts'
 import { shellHook } from './commands/shell-hook.ts'
+import { completion } from './commands/completion.ts'
+import { isReservedCommand } from './lib/commands.ts'
 import { detectWorktree } from './lib/worktree.ts'
 import { branchExists } from './lib/git.ts'
+import { loadConfig, configExists } from './lib/config.ts'
 import * as output from './lib/output.ts'
 
 export const program = new Command()
@@ -38,29 +41,14 @@ function getCliVersion(): string {
     return '0.0.0'
   }
 }
-
-function getReservedCommands(): Set<string> {
-  const reserved = new Set<string>(['help'])
-
-  for (const command of program.commands) {
-    reserved.add(command.name())
-
-    for (const alias of command.aliases()) {
-      reserved.add(alias)
-    }
-  }
-
-  return reserved
-}
-
 async function maybeWarnCommandBranchCollision(): Promise<void> {
   const token = process.argv[2]
 
-  if (!token || token.startsWith('-') || token === 'enter') {
+  if (!token || token.startsWith('-') || token === 'enter' || token === 'shell-hook') {
     return
   }
 
-  if (!getReservedCommands().has(token)) {
+  if (!isReservedCommand(token)) {
     return
   }
 
@@ -111,6 +99,7 @@ program
   .command('list')
   .alias('ls')
   .description('List worktrees and host service summary')
+  .option('-n, --names', 'Print only worktree names, one per line')
   .action(list)
 
 // port status
@@ -210,6 +199,12 @@ program
   .description('Delete archived branches created by port remove (with confirmation)')
   .action(cleanup)
 
+// port completion <shell>
+program
+  .command('completion <shell>')
+  .description('Generate shell completion script (bash, zsh, or fish)')
+  .action(completion)
+
 // port <branch> - default command to enter a worktree
 // This must be last to act as a catch-all for branch names
 program.hook('preAction', async () => {
@@ -221,14 +216,37 @@ program
   .action(async (branch: string | undefined) => {
     if (branch) {
       // Check if it looks like a command that wasn't matched
-      if (getReservedCommands().has(branch)) {
+      if (isReservedCommand(branch)) {
         program.help()
         return
       }
       await enter(branch)
     } else {
-      // No argument provided, show help
-      program.help()
+      if (!process.stdout.isTTY) {
+        program.help()
+        return
+      }
+
+      // No argument provided — launch TUI
+      try {
+        const info = detectWorktree()
+
+        if (!configExists(info.repoRoot)) {
+          output.error('Not in a port project. Run `port init` first.')
+          process.exit(1)
+        }
+
+        const config = await loadConfig(info.repoRoot)
+        const startView = 'dashboard'
+
+        // Dynamic import to avoid bundling OpenTUI assets into the main CLI
+        const { launchTui } = await import('./tui/index.tsx')
+        await launchTui(startView as 'dashboard' | 'worktree', info, config)
+      } catch {
+        // Not in a git repo — eventually this will show the project list
+        output.error('Not in a git repository. Run `port` inside a port project.')
+        process.exit(1)
+      }
     }
   })
 
