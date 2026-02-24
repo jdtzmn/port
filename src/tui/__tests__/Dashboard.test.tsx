@@ -657,6 +657,41 @@ describe('Dashboard', () => {
       currentRenderer = null
     }
   })
+
+  test('many worktrees do not overflow into header area', async () => {
+    const manyWorktrees: WorktreeStatus[] = Array.from({ length: 20 }, (_, i) => ({
+      name: i === 0 ? 'myapp' : `branch-${String(i).padStart(2, '0')}`,
+      path: i === 0 ? '/repo' : `/repo/.port/trees/branch-${String(i).padStart(2, '0')}`,
+      services: [{ name: 'web', ports: [3000], running: i % 2 === 0 }],
+      running: i % 2 === 0,
+    }))
+
+    // Short terminal: 12 lines can't fit header + 20 worktrees + footer
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props({ worktrees: manyWorktrees, activeWorktreeName: 'myapp' })} />,
+      { width: 80, height: 12 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+    const lines = frame.split('\n')
+
+    // Header elements must remain visible and not be overwritten by worktree rows
+    expect(frame).toContain('port: myapp')
+    expect(frame).toContain('Traefik:')
+    expect(frame).toContain('Worktrees')
+
+    // The "Worktrees" label should appear BEFORE any worktree row
+    const worktreesLabelLine = lines.findIndex(l => l.includes('Worktrees'))
+    const firstRowLine = lines.findIndex(l => l.includes('> '))
+    expect(worktreesLabelLine).toBeGreaterThan(-1)
+    expect(firstRowLine).toBeGreaterThan(worktreesLabelLine)
+
+    // Not all 20 worktrees should be visible (some must be clipped)
+    const visibleBranches = lines.filter(l => l.includes('branch-')).length
+    expect(visibleBranches).toBeLessThan(20)
+  })
 })
 
 describe('buildServicesText', () => {

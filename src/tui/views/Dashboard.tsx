@@ -361,45 +361,52 @@ export function Dashboard({
       </text>
 
       {/* Worktree rows */}
-      {worktrees.length === 0 && !loading && <text fg="#888888">No worktrees found</text>}
+      <box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
+        {worktrees.length === 0 && !loading && <text fg="#888888">No worktrees found</text>}
 
-      {worktrees.map((worktree, index) => {
-        const isSelected = index === selectedIndex
-        const isRoot = index === 0
-        const isActive = worktree.name === activeWorktreeName
-        const sortedServices = [...worktree.services].sort(
-          (a, b) => Number(b.running) - Number(a.running)
-        )
-        const servicesText = buildServicesText(sortedServices)
-        const totalCount = worktree.services.length
-        const nameStr = worktree.name + (isRoot ? ' (root)' : '')
-        const servicesSuffix =
-          totalCount > 0 ? ' ' + servicesText : totalCount === 0 && loading ? ' ...' : ''
+        {worktrees.map((worktree, index) => {
+          const isSelected = index === selectedIndex
+          const isRoot = index === 0
+          const isActive = worktree.name === activeWorktreeName
+          const sortedServices = [...worktree.services].sort(
+            (a, b) => Number(b.running) - Number(a.running)
+          )
+          const servicesText = buildServicesText(sortedServices)
+          const totalCount = worktree.services.length
+          const nameStr = worktree.name + (isRoot ? ' (root)' : '')
 
-        return (
-          <box key={worktree.name} flexDirection="row" height={1} overflow="hidden">
-            <text wrapMode="none" flexShrink={0}>
-              {isSelected ? '> ' : '  '}
-            </text>
-            {isActive && (
-              <text wrapMode="none" flexShrink={0} fg="#FFFF00">
-                ★{' '}
+          return (
+            <box key={worktree.name} flexDirection="row" height={1} overflow="hidden">
+              <text wrapMode="none" flexShrink={0}>
+                {isSelected ? '> ' : '  '}
               </text>
-            )}
-            <text flexShrink={1} truncate wrapMode="none">
-              {nameStr + servicesSuffix}
-            </text>
-            {totalCount > 0 && (
-              <text wrapMode="none" flexShrink={0} fg="#555555">
-                {' ' + totalCount + ' total'}
+              {isActive && (
+                <text wrapMode="none" flexShrink={0} fg="#FFFF00">
+                  ★{' '}
+                </text>
+              )}
+              <text flexShrink={1} truncate wrapMode="none">
+                {nameStr}
               </text>
-            )}
-          </box>
-        )
-      })}
-
-      {/* Spacer */}
-      <box flexGrow={1} />
+              {totalCount === 0 && loading && (
+                <text wrapMode="none" flexShrink={0} fg="#555555">
+                  {' ...'}
+                </text>
+              )}
+              {totalCount > 0 && (
+                <text fg="#888888" flexShrink={1} truncate wrapMode="none">
+                  {'  ' + servicesText}
+                </text>
+              )}
+              {totalCount > 0 && (
+                <text wrapMode="none" flexShrink={0} fg="#555555">
+                  {' ' + totalCount + ' total'}
+                </text>
+              )}
+            </box>
+          )
+        })}
+      </box>
 
       {/* Status message */}
       {statusMessage && (
