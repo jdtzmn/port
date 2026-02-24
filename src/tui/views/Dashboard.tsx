@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { useKeyboard, useTerminalDimensions } from '@opentui/react'
+import { useKeyboard } from '@opentui/react'
 import type { PortConfig, HostService } from '../../types.ts'
-import type { WorktreeStatus, WorktreeServiceStatus } from '../../lib/worktreeStatus.ts'
+import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
 import { KeyHints } from '../components/KeyHints.tsx'
@@ -132,89 +132,13 @@ function buildNameSegments(name: string, query: string): NameSegment[] {
 }
 
 /**
- * Display widths for Unicode characters with East Asian Ambiguous width.
- * On macOS terminals these typically render as 2 columns; on others they
- * may be 1. We use 2 to be safe — underestimating is far worse than
- * leaving a small gap on the right.
+ * Build a plain-text summary of services for a worktree row.
+ * Services are sorted running-first upstream; this just joins them
+ * with status indicators into a single string like:
+ *   "web ● api ● db ○ redis ○"
  */
-const INDICATOR_WIDTH = 2 // ● or ○
-const STAR_WIDTH = 2 // ★
-const ELLIPSIS_WIDTH = 2 // …
-
-/**
- * Width of a single service chip: "name " + indicator.
- * Between chips, the parent row's gap={1} adds 1 column of spacing.
- */
-function serviceChipWidth(name: string): number {
-  return name.length + 1 + INDICATOR_WIDTH // "name " + ●
-}
-
-/**
- * Width of the overflow tag: "…+N more".
- */
-function overflowTagWidth(hiddenCount: number): number {
-  // "…" + "+" + digits + " more" + leading gap
-  return 1 + ELLIPSIS_WIDTH + 1 + String(hiddenCount).length + 5
-}
-
-/**
- * Calculate the prefix width of a worktree row before services begin.
- * Layout: "> " gap "★" gap "name (root)" gap
- */
-export function rowPrefixWidth(nameLength: number, isActive: boolean, isRoot: boolean): number {
-  // cursor char (1) + gap (1)
-  let width = 2
-  // star + gap (only when active)
-  if (isActive) width += STAR_WIDTH + 1
-  // name text
-  width += nameLength
-  // " (root)" suffix
-  if (isRoot) width += 7
-  // gap before first service
-  width += 1
-  return width
-}
-
-/**
- * Determine how many services fit in `availableWidth` columns.
- * Returns the visible services and the count of hidden ones.
- * When truncating, reserves space for the "…+N more" indicator.
- */
-export function fitServices(
-  services: WorktreeServiceStatus[],
-  availableWidth: number
-): { visible: WorktreeServiceStatus[]; hiddenCount: number } {
-  if (services.length === 0) return { visible: [], hiddenCount: 0 }
-
-  // Check if all services fit
-  const totalWidth = services.reduce(
-    (sum, s, i) => sum + serviceChipWidth(s.name) + (i > 0 ? 1 : 0),
-    0
-  )
-  if (totalWidth <= availableWidth) {
-    return { visible: services, hiddenCount: 0 }
-  }
-
-  // Greedily fit services, reserving room for the overflow tag
-  const visible: WorktreeServiceStatus[] = []
-  let used = 0
-
-  for (let i = 0; i < services.length; i++) {
-    const chipW = serviceChipWidth(services[i]!.name) + (visible.length > 0 ? 1 : 0)
-    const remaining = services.length - i - 1
-    // Reserve space for the overflow tag if there would be hidden services
-    const reservedForTag = remaining > 0 ? overflowTagWidth(remaining) : 0
-
-    if (used + chipW + reservedForTag <= availableWidth) {
-      visible.push(services[i]!)
-      used += chipW
-    } else {
-      break
-    }
-  }
-
-  const hiddenCount = services.length - visible.length
-  return { visible, hiddenCount }
+export function buildServicesText(services: { name: string; running: boolean }[]): string {
+  return services.map(s => `${s.name} ${s.running ? '●' : '○'}`).join(' ')
 }
 
 export function Dashboard({
@@ -230,7 +154,6 @@ export function Dashboard({
   statusMessage,
   showStatus,
 }: DashboardProps) {
-  const { width: terminalWidth } = useTerminalDimensions()
   const [selectedIndex, setSelectedIndex] = useState(() => {
     if (!initialSelectedName) return 0
     const idx = worktrees.findIndex(w => w.name === initialSelectedName)
@@ -480,13 +403,11 @@ export function Dashboard({
         const sortedServices = [...worktree.services].sort(
           (a, b) => Number(b.running) - Number(a.running)
         )
-
-        const prefixW = rowPrefixWidth(worktree.name.length, isActive, isRoot)
-        const availableWidth = terminalWidth - prefixW
-        const { visible, hiddenCount } = fitServices(sortedServices, availableWidth)
+        const servicesText = buildServicesText(sortedServices)
+        const totalCount = worktree.services.length
 
         return (
-          <box key={worktree.name} flexDirection="row" gap={1}>
+          <box key={worktree.name} flexDirection="row" gap={1} overflow="hidden">
             <text>{isSelected ? '>' : ' '}</text>
             {isActive && <text fg="#FFFF00">★</text>}
             <box flexDirection="row" gap={0}>
@@ -500,19 +421,16 @@ export function Dashboard({
               ))}
               {isRoot && <text>{isSelected ? <b> (root)</b> : ' (root)'}</text>}
             </box>
-            {worktree.services.length === 0 && loading ? (
+            {totalCount === 0 && loading ? (
               <text fg="#555555">...</text>
-            ) : (
+            ) : totalCount > 0 ? (
               <>
-                {visible.map(service => (
-                  <box key={service.name} flexDirection="row" gap={0}>
-                    <text fg="#888888">{service.name} </text>
-                    <StatusIndicator running={service.running} />
-                  </box>
-                ))}
-                {hiddenCount > 0 && <text fg="#555555">{`…+${hiddenCount} more`}</text>}
+                <text fg="#888888" flexShrink={1} truncate wrapMode="none">
+                  {servicesText}
+                </text>
+                <text fg="#555555">{totalCount} total</text>
               </>
-            )}
+            ) : null}
           </box>
         )
       })}

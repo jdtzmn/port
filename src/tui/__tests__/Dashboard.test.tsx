@@ -5,12 +5,7 @@ import { useEffect, useState } from 'react'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { HostService, PortConfig } from '../../types.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
-import {
-  Dashboard,
-  findSubstringMatchRanges,
-  fitServices,
-  rowPrefixWidth,
-} from '../views/Dashboard.tsx'
+import { Dashboard, findSubstringMatchRanges, buildServicesText } from '../views/Dashboard.tsx'
 
 const mockConfig: PortConfig = { domain: 'port' }
 
@@ -502,11 +497,9 @@ describe('Dashboard', () => {
       },
     ]
 
-    // Width needs to fit: "> " (2) + "myapp" (5) + " (root)" (7) + gap (1)
-    // + 4 service chips with indicators (wide Unicode) + gaps
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <Dashboard {...props({ worktrees: mixedWorktrees, activeWorktreeName: '' })} />,
-      { width: 100, height: 20 }
+      { width: 120, height: 20 }
     )
     currentRenderer = renderer
 
@@ -530,7 +523,21 @@ describe('Dashboard', () => {
     expect(apiPos).toBeLessThan(redisPos)
   })
 
-  test('truncates services that overflow terminal width', async () => {
+  test('shows total count for worktrees with services', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props({ activeWorktreeName: '' })} />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+
+    // mockWorktrees first entry has 2 services (web, db)
+    expect(frame).toContain('2 total')
+  })
+
+  test('services text truncates at narrow widths and shows total count', async () => {
     const manyServicesWorktrees: WorktreeStatus[] = [
       {
         name: 'myapp',
@@ -547,96 +554,40 @@ describe('Dashboard', () => {
       },
     ]
 
-    // Use a narrow terminal so services overflow
+    // 60 cols: enough for name + some services + total, but not all services
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <Dashboard {...props({ worktrees: manyServicesWorktrees, activeWorktreeName: '' })} />,
-      { width: 40, height: 20 }
+      { width: 60, height: 20 }
     )
     currentRenderer = renderer
 
     await renderOnce()
     const frame = captureCharFrame()
 
-    expect(frame).toContain('more')
-    // "scheduler" is long and should be truncated at 40 cols
-    const appLine = frame.split('\n').find(l => l.includes('(root)'))!
-    expect(appLine).toContain('…+')
-  })
-
-  test('shows all services when terminal is wide enough', async () => {
-    const { renderer, renderOnce, captureCharFrame } = await testRender(
-      <Dashboard {...props({ activeWorktreeName: '' })} />,
-      { width: 80, height: 20 }
-    )
-    currentRenderer = renderer
-
-    await renderOnce()
-    const frame = captureCharFrame()
-
-    // mockWorktrees has web and db — should both fit at 80 cols
-    expect(frame).toContain('web')
-    expect(frame).toContain('db')
-    expect(frame).not.toContain('more')
+    // The total count suffix should always be visible
+    expect(frame).toContain('6 total')
   })
 })
 
-describe('fitServices', () => {
-  const svc = (name: string, running = true) => ({ name, ports: [], running })
-
-  // Each chip: name.length + 1 (space) + 2 (indicator) = name.length + 3
-  // Gap between chips: 1
-  // Overflow tag "…+N more": 1 (gap) + 2 (…) + 1 (+) + digits + 5 ( more)
-
-  test('returns all services when they fit', () => {
-    const services = [svc('web'), svc('db')]
-    // "web ●" = 6, gap + "db ●" = 1+5 = 6, total = 12
-    const result = fitServices(services, 50)
-    expect(result.visible).toHaveLength(2)
-    expect(result.hiddenCount).toBe(0)
+describe('buildServicesText', () => {
+  test('joins services with status indicators', () => {
+    const services = [
+      { name: 'web', running: true },
+      { name: 'db', running: false },
+    ]
+    expect(buildServicesText(services)).toBe('web ● db ○')
   })
 
-  test('returns empty for empty input', () => {
-    const result = fitServices([], 50)
-    expect(result.visible).toHaveLength(0)
-    expect(result.hiddenCount).toBe(0)
+  test('returns empty string for no services', () => {
+    expect(buildServicesText([])).toBe('')
   })
 
-  test('truncates when services overflow', () => {
-    const services = [svc('web'), svc('api'), svc('db'), svc('redis'), svc('worker')]
-    // Very narrow: only room for 1-2 services
-    const result = fitServices(services, 20)
-    expect(result.visible.length).toBeLessThan(5)
-    expect(result.hiddenCount).toBe(5 - result.visible.length)
-    expect(result.hiddenCount).toBeGreaterThan(0)
-  })
-
-  test('truncates all when nothing fits', () => {
-    const services = [svc('superlongservicename')]
-    const result = fitServices(services, 5)
-    expect(result.visible).toHaveLength(0)
-    expect(result.hiddenCount).toBe(1)
-  })
-
-  test('preserves service order', () => {
-    const services = [svc('alpha'), svc('beta'), svc('gamma')]
-    const result = fitServices(services, 100)
-    expect(result.visible.map(s => s.name)).toEqual(['alpha', 'beta', 'gamma'])
-  })
-})
-
-describe('rowPrefixWidth', () => {
-  test('basic worktree (no star, no root)', () => {
-    // "> " (2) + "feature" (7) + gap (1) = 10
-    expect(rowPrefixWidth(7, false, false)).toBe(10)
-  })
-
-  test('active worktree adds star width', () => {
-    // "> " (2) + "★" (2) + gap (1) + "feature" (7) + gap (1) = 13
-    expect(rowPrefixWidth(7, true, false)).toBe(13)
-  })
-
-  test('root worktree adds suffix', () => {
-    // "> " (2) + "myapp" (5) + " (root)" (7) + gap (1) = 15
-    expect(rowPrefixWidth(5, false, true)).toBe(15)
+  test('preserves input order', () => {
+    const services = [
+      { name: 'alpha', running: true },
+      { name: 'beta', running: false },
+      { name: 'gamma', running: true },
+    ]
+    expect(buildServicesText(services)).toBe('alpha ● beta ○ gamma ●')
   })
 })
