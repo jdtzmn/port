@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useKeyboard } from '@opentui/react'
+import type { ScrollBoxRenderable } from '@opentui/core'
 import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
@@ -133,6 +134,20 @@ export function Dashboard({
   const [appliedQuery, setAppliedQuery] = useState('')
   const [draftQuery, setDraftQuery] = useState('')
   const initialSelectionAppliedRef = useRef(false)
+  const scrollRef = useRef<ScrollBoxRenderable>(null)
+
+  // Keep selected row visible inside the scrollbox
+  useEffect(() => {
+    const sb = scrollRef.current
+    if (!sb) return
+    const viewportHeight = sb.viewport.height
+    if (viewportHeight <= 0) return
+    if (selectedIndex < sb.scrollTop) {
+      sb.scrollTop = selectedIndex
+    } else if (selectedIndex >= sb.scrollTop + viewportHeight) {
+      sb.scrollTop = selectedIndex - viewportHeight + 1
+    }
+  }, [selectedIndex])
 
   useEffect(() => {
     if (initialSelectionAppliedRef.current) return
@@ -336,7 +351,7 @@ export function Dashboard({
   return (
     <box flexDirection="column" width="100%" height="100%">
       {/* Header */}
-      <box flexDirection="row" gap={1}>
+      <box flexDirection="row" gap={1} flexShrink={0}>
         <text>
           <b>port: {repoName}</b>
         </text>
@@ -344,24 +359,31 @@ export function Dashboard({
         {busy && <text fg="#FFFF00"> working...</text>}
       </box>
 
-      <box height={1} />
+      <box height={1} flexShrink={0} />
 
       {/* Traefik status */}
-      <box flexDirection="row" gap={1}>
+      <box flexDirection="row" gap={1} flexShrink={0}>
         <text fg="#888888">Traefik:</text>
         <StatusIndicator running={traefikRunning} />
         <text>{traefikRunning ? 'running' : 'stopped'}</text>
       </box>
 
-      <box height={1} />
+      <box height={1} flexShrink={0} />
 
       {/* Worktree list header */}
-      <text fg="#888888">
+      <text fg="#888888" flexShrink={0}>
         <b>Worktrees</b>
       </text>
 
       {/* Worktree rows */}
-      <box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
+      <scrollbox
+        ref={scrollRef}
+        flexGrow={1}
+        flexShrink={1}
+        scrollY
+        scrollX={false}
+        contentOptions={{ flexDirection: 'column' }}
+      >
         {worktrees.length === 0 && !loading && <text fg="#888888">No worktrees found</text>}
 
         {worktrees.map((worktree, index) => {
@@ -394,7 +416,7 @@ export function Dashboard({
                 </text>
               )}
               {totalCount > 0 && (
-                <text fg="#888888" flexShrink={1} truncate wrapMode="none">
+                <text fg="#888888" flexShrink={100} truncate wrapMode="none">
                   {'  ' + servicesText}
                 </text>
               )}
@@ -406,7 +428,7 @@ export function Dashboard({
             </box>
           )
         })}
-      </box>
+      </scrollbox>
 
       {/* Status message */}
       {statusMessage && (
