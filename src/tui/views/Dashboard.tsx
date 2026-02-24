@@ -410,7 +410,7 @@ export function Dashboard({
           <box key={worktree.name} flexDirection="row" gap={1} overflow="hidden">
             <text>{isSelected ? '>' : ' '}</text>
             {isActive && <text fg="#FFFF00">★</text>}
-            <box flexDirection="row" gap={0}>
+            <box flexDirection="row" gap={0} flexShrink={1} overflow="hidden">
               {nameSegments.map((segment, segmentIndex) => (
                 <text
                   key={`${worktree.name}-segment-${segmentIndex}`}
@@ -421,16 +421,13 @@ export function Dashboard({
               ))}
               {isRoot && <text>{isSelected ? <b> (root)</b> : ' (root)'}</text>}
             </box>
-            {totalCount === 0 && loading ? (
-              <text fg="#555555">...</text>
-            ) : totalCount > 0 ? (
-              <>
-                <text fg="#888888" flexShrink={1} truncate wrapMode="none">
-                  {servicesText}
-                </text>
-                <text fg="#555555">{totalCount} total</text>
-              </>
-            ) : null}
+            {totalCount === 0 && loading && <text fg="#555555">...</text>}
+            {totalCount > 0 && (
+              <text fg="#888888" flexShrink={1} truncate wrapMode="none">
+                {servicesText}
+              </text>
+            )}
+            {totalCount > 0 && <text fg="#555555">{totalCount} total</text>}
           </box>
         )
       })}
