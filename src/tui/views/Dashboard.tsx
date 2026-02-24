@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { useKeyboard } from '@opentui/react'
+import { useKeyboard, useTerminalDimensions } from '@opentui/react'
 import type { PortConfig, HostService } from '../../types.ts'
-import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
+import type { WorktreeStatus, WorktreeServiceStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
 import { KeyHints } from '../components/KeyHints.tsx'
@@ -131,6 +131,57 @@ function buildNameSegments(name: string, query: string): NameSegment[] {
   return segments
 }
 
+/**
+ * Width of a single service chip: "name ●" = name.length + 2 chars.
+ * Between chips, the parent row's gap={1} adds 1 char of spacing.
+ */
+function serviceChipWidth(name: string): number {
+  return name.length + 2
+}
+
+/**
+ * Determine how many services fit in `availableWidth` columns.
+ * Returns the visible services and the count of hidden ones.
+ * When truncating, reserves space for the "…+N more" indicator.
+ */
+export function fitServices(
+  services: WorktreeServiceStatus[],
+  availableWidth: number
+): { visible: WorktreeServiceStatus[]; hiddenCount: number } {
+  if (services.length === 0) return { visible: [], hiddenCount: 0 }
+
+  // Check if all services fit
+  const totalWidth = services.reduce(
+    (sum, s, i) => sum + serviceChipWidth(s.name) + (i > 0 ? 1 : 0),
+    0
+  )
+  if (totalWidth <= availableWidth) {
+    return { visible: services, hiddenCount: 0 }
+  }
+
+  // Binary-style: greedily fit services, reserving room for the overflow tag
+  const visible: WorktreeServiceStatus[] = []
+  let used = 0
+
+  for (let i = 0; i < services.length; i++) {
+    const chipW = serviceChipWidth(services[i]!.name) + (visible.length > 0 ? 1 : 0)
+    const remaining = services.length - i - 1
+    // If this isn't the last service, we need to reserve space for "…+N more"
+    // The overflow tag width: gap(1) + "…+" (2) + digits + " more" (5)
+    const overflowTagWidth = remaining > 0 ? 1 + 2 + String(remaining).length + 5 : 0
+
+    if (used + chipW + overflowTagWidth <= availableWidth) {
+      visible.push(services[i]!)
+      used += chipW
+    } else {
+      break
+    }
+  }
+
+  const hiddenCount = services.length - visible.length
+  return { visible, hiddenCount }
+}
+
 export function Dashboard({
   repoName,
   worktrees,
@@ -144,6 +195,7 @@ export function Dashboard({
   statusMessage,
   showStatus,
 }: DashboardProps) {
+  const { width: terminalWidth } = useTerminalDimensions()
   const [selectedIndex, setSelectedIndex] = useState(() => {
     if (!initialSelectedName) return 0
     const idx = worktrees.findIndex(w => w.name === initialSelectedName)
@@ -394,6 +446,11 @@ export function Dashboard({
           (a, b) => Number(b.running) - Number(a.running)
         )
 
+        // Calculate prefix width: "> " (2) + gap(1) + star? (1+1gap) + name + " (root)"? + gap(1)
+        const prefixWidth = 2 + (isActive ? 2 : 0) + worktree.name.length + (isRoot ? 7 : 0) + 1
+        const availableWidth = terminalWidth - prefixWidth
+        const { visible, hiddenCount } = fitServices(sortedServices, availableWidth)
+
         return (
           <box key={worktree.name} flexDirection="row" gap={1}>
             <text>{isSelected ? '>' : ' '}</text>
@@ -412,12 +469,15 @@ export function Dashboard({
             {worktree.services.length === 0 && loading ? (
               <text fg="#555555">...</text>
             ) : (
-              sortedServices.map(service => (
-                <box key={service.name} flexDirection="row" gap={0}>
-                  <text fg="#888888">{service.name} </text>
-                  <StatusIndicator running={service.running} />
-                </box>
-              ))
+              <>
+                {visible.map(service => (
+                  <box key={service.name} flexDirection="row" gap={0}>
+                    <text fg="#888888">{service.name} </text>
+                    <StatusIndicator running={service.running} />
+                  </box>
+                ))}
+                {hiddenCount > 0 && <text fg="#555555">{`…+${hiddenCount} more`}</text>}
+              </>
             )}
           </box>
         )
