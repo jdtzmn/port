@@ -22,6 +22,7 @@ import { urls } from './commands/urls.ts'
 import { onboard } from './commands/onboard.ts'
 import { shellHook } from './commands/shell-hook.ts'
 import { completion } from './commands/completion.ts'
+import { hook } from './commands/hook.ts'
 import { isReservedCommand } from './lib/commands.ts'
 import { detectWorktree } from './lib/worktree.ts'
 import { branchExists } from './lib/git.ts'
@@ -198,6 +199,13 @@ program
   .command('cleanup')
   .description('Delete archived branches created by port remove (with confirmation)')
   .action(cleanup)
+
+// port hook [hook-name]
+program
+  .command('hook [hook-name]')
+  .description('Re-run a hook script in the current worktree')
+  .option('-l, --list', 'List available hooks and their status')
+  .action(hook)
 
 // port completion <shell>
 program
