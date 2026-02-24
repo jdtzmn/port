@@ -20,7 +20,7 @@ async function listHooks(repoRoot: string): Promise<void> {
   for (const name of HOOK_NAMES) {
     const exists = await hookExists(repoRoot, name)
     if (exists) {
-      output.success(`${name} ${output.command('.port/hooks/' + name + '.sh')}`)
+      output.info(`${name} ${output.command('.port/hooks/' + name + '.sh')}`)
     } else {
       output.dim(`  ${name} (not configured)`)
     }
