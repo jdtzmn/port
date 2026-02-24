@@ -99,38 +99,6 @@ function findInitialFilteredSelection(currentIndex: number, matchingIndices: num
   return matchingIndices[0]!
 }
 
-interface NameSegment {
-  text: string
-  matched: boolean
-}
-
-function buildNameSegments(name: string, query: string): NameSegment[] {
-  const ranges = findSubstringMatchRanges(name, query)
-
-  if (ranges.length === 0) {
-    return [{ text: name, matched: false }]
-  }
-
-  const segments: NameSegment[] = []
-  let cursor = 0
-
-  for (const range of ranges) {
-    if (cursor < range.start) {
-      segments.push({ text: name.slice(cursor, range.start), matched: false })
-    }
-
-    segments.push({ text: name.slice(range.start, range.end), matched: true })
-
-    cursor = range.end
-  }
-
-  if (cursor < name.length) {
-    segments.push({ text: name.slice(cursor), matched: false })
-  }
-
-  return segments
-}
-
 /**
  * Build a plain-text summary of services for a worktree row.
  * Services are sorted running-first upstream; this just joins them
@@ -399,35 +367,33 @@ export function Dashboard({
         const isSelected = index === selectedIndex
         const isRoot = index === 0
         const isActive = worktree.name === activeWorktreeName
-        const nameSegments = buildNameSegments(worktree.name, highlightQuery)
         const sortedServices = [...worktree.services].sort(
           (a, b) => Number(b.running) - Number(a.running)
         )
         const servicesText = buildServicesText(sortedServices)
         const totalCount = worktree.services.length
+        const nameStr = worktree.name + (isRoot ? ' (root)' : '')
+        const servicesSuffix =
+          totalCount > 0 ? ' ' + servicesText : totalCount === 0 && loading ? ' ...' : ''
 
         return (
-          <box key={worktree.name} flexDirection="row" gap={1} overflow="hidden">
-            <text>{isSelected ? '>' : ' '}</text>
-            {isActive && <text fg="#FFFF00">★</text>}
-            <box flexDirection="row" gap={0} flexShrink={1} overflow="hidden">
-              {nameSegments.map((segment, segmentIndex) => (
-                <text
-                  key={`${worktree.name}-segment-${segmentIndex}`}
-                  fg={segment.matched ? '#00AAFF' : undefined}
-                >
-                  {isSelected ? <b>{segment.text}</b> : segment.text}
-                </text>
-              ))}
-              {isRoot && <text>{isSelected ? <b> (root)</b> : ' (root)'}</text>}
-            </box>
-            {totalCount === 0 && loading && <text fg="#555555">...</text>}
-            {totalCount > 0 && (
-              <text fg="#888888" flexShrink={1} truncate wrapMode="none">
-                {servicesText}
+          <box key={worktree.name} flexDirection="row" height={1} overflow="hidden">
+            <text wrapMode="none" flexShrink={0}>
+              {isSelected ? '> ' : '  '}
+            </text>
+            {isActive && (
+              <text wrapMode="none" flexShrink={0} fg="#FFFF00">
+                ★{' '}
               </text>
             )}
-            {totalCount > 0 && <text fg="#555555">{totalCount} total</text>}
+            <text flexShrink={1} truncate wrapMode="none">
+              {nameStr + servicesSuffix}
+            </text>
+            {totalCount > 0 && (
+              <text wrapMode="none" flexShrink={0} fg="#555555">
+                {' ' + totalCount + ' total'}
+              </text>
+            )}
           </box>
         )
       })}

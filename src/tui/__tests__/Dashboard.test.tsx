@@ -567,6 +567,96 @@ describe('Dashboard', () => {
     // The total count suffix should always be visible
     expect(frame).toContain('6 total')
   })
+
+  test('rows stay single-line with long names, many services, and narrow widths', async () => {
+    const stressWorktrees: WorktreeStatus[] = [
+      {
+        name: 'myapp',
+        path: '/repo',
+        services: [
+          { name: 'web', ports: [3000], running: true },
+          { name: 'api', ports: [4000], running: true },
+          { name: 'db', ports: [5432], running: false },
+          { name: 'redis', ports: [6379], running: false },
+          { name: 'worker', ports: [8000], running: true },
+          { name: 'scheduler', ports: [9000], running: false },
+          { name: 'nginx', ports: [80], running: true },
+          { name: 'mailhog', ports: [1025], running: false },
+          { name: 'minio', ports: [9001], running: true },
+          { name: 'elasticsearch', ports: [9200], running: false },
+        ],
+        running: true,
+      },
+      {
+        name: 'jacob-fix-floating-chat-bar-on-full-page-routes',
+        path: '/repo/.port/trees/jacob-fix-floating-chat-bar-on-full-page-routes',
+        services: [
+          { name: 'web', ports: [3000], running: true },
+          { name: 'api', ports: [4000], running: true },
+          { name: 'db', ports: [5432], running: false },
+          { name: 'redis', ports: [6379], running: true },
+          { name: 'worker', ports: [8000], running: false },
+          { name: 'scheduler', ports: [9000], running: false },
+          { name: 'nginx', ports: [80], running: true },
+        ],
+        running: true,
+      },
+      {
+        name: 'feature-implement-oauth2-pkce-flow-with-refresh-token-rotation',
+        path: '/repo/.port/trees/feature-implement-oauth2-pkce-flow-with-refresh-token-rotation',
+        services: [
+          { name: 'web', ports: [3000], running: false },
+          { name: 'api', ports: [4000], running: false },
+        ],
+        running: false,
+      },
+      {
+        name: 'short',
+        path: '/repo/.port/trees/short',
+        services: [{ name: 'web', ports: [3000], running: true }],
+        running: true,
+      },
+    ]
+
+    for (const width of [60, 80, 120]) {
+      const { renderer, renderOnce, captureCharFrame } = await testRender(
+        <Dashboard {...props({ worktrees: stressWorktrees, activeWorktreeName: 'myapp' })} />,
+        { width, height: 20 }
+      )
+      currentRenderer = renderer
+
+      await renderOnce()
+      const frame = captureCharFrame()
+      const lines = frame.split('\n')
+
+      // Each worktree should render on exactly one line
+      const worktreeLines = lines.filter(
+        l =>
+          l.includes('myapp') ||
+          l.includes('jacob-fix') ||
+          l.includes('feature-impl') ||
+          l.includes('short')
+      )
+      // At minimum, 4 worktree names should each appear on their own line
+      expect(worktreeLines.length).toBeGreaterThanOrEqual(4)
+
+      // "N total" suffix should always be visible for every worktree with services
+      expect(frame).toContain('10 total')
+      expect(frame).toContain('7 total')
+      expect(frame).toContain('2 total')
+      expect(frame).toContain('1 total')
+
+      // No worktree name should spill onto a second line (check that name fragments
+      // like "(root)" don't appear on a line without "myapp")
+      const rootLines = lines.filter(l => l.includes('(root)'))
+      for (const rootLine of rootLines) {
+        expect(rootLine).toContain('myapp')
+      }
+
+      renderer.destroy()
+      currentRenderer = null
+    }
+  })
 })
 
 describe('buildServicesText', () => {
