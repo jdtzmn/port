@@ -5,7 +5,12 @@ import { useEffect, useState } from 'react'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { HostService, PortConfig } from '../../types.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
-import { Dashboard, findSubstringMatchRanges, fitServices } from '../views/Dashboard.tsx'
+import {
+  Dashboard,
+  findSubstringMatchRanges,
+  fitServices,
+  rowPrefixWidth,
+} from '../views/Dashboard.tsx'
 
 const mockConfig: PortConfig = { domain: 'port' }
 
@@ -497,9 +502,11 @@ describe('Dashboard', () => {
       },
     ]
 
+    // Width needs to fit: "> " (2) + "myapp" (5) + " (root)" (7) + gap (1)
+    // + 4 service chips with indicators (wide Unicode) + gaps
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <Dashboard {...props({ worktrees: mixedWorktrees, activeWorktreeName: '' })} />,
-      { width: 80, height: 20 }
+      { width: 100, height: 20 }
     )
     currentRenderer = renderer
 
@@ -576,9 +583,13 @@ describe('Dashboard', () => {
 describe('fitServices', () => {
   const svc = (name: string, running = true) => ({ name, ports: [], running })
 
+  // Each chip: name.length + 1 (space) + 2 (indicator) = name.length + 3
+  // Gap between chips: 1
+  // Overflow tag "…+N more": 1 (gap) + 2 (…) + 1 (+) + digits + 5 ( more)
+
   test('returns all services when they fit', () => {
     const services = [svc('web'), svc('db')]
-    // "web ●" = 5, gap + "db ●" = 1+4 = 5, total = 10
+    // "web ●" = 6, gap + "db ●" = 1+5 = 6, total = 12
     const result = fitServices(services, 50)
     expect(result.visible).toHaveLength(2)
     expect(result.hiddenCount).toBe(0)
@@ -610,5 +621,22 @@ describe('fitServices', () => {
     const services = [svc('alpha'), svc('beta'), svc('gamma')]
     const result = fitServices(services, 100)
     expect(result.visible.map(s => s.name)).toEqual(['alpha', 'beta', 'gamma'])
+  })
+})
+
+describe('rowPrefixWidth', () => {
+  test('basic worktree (no star, no root)', () => {
+    // "> " (2) + "feature" (7) + gap (1) = 10
+    expect(rowPrefixWidth(7, false, false)).toBe(10)
+  })
+
+  test('active worktree adds star width', () => {
+    // "> " (2) + "★" (2) + gap (1) + "feature" (7) + gap (1) = 13
+    expect(rowPrefixWidth(7, true, false)).toBe(13)
+  })
+
+  test('root worktree adds suffix', () => {
+    // "> " (2) + "myapp" (5) + " (root)" (7) + gap (1) = 15
+    expect(rowPrefixWidth(5, false, true)).toBe(15)
   })
 })

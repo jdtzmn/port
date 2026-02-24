@@ -132,11 +132,47 @@ function buildNameSegments(name: string, query: string): NameSegment[] {
 }
 
 /**
- * Width of a single service chip: "name ●" = name.length + 2 chars.
- * Between chips, the parent row's gap={1} adds 1 char of spacing.
+ * Display widths for Unicode characters with East Asian Ambiguous width.
+ * On macOS terminals these typically render as 2 columns; on others they
+ * may be 1. We use 2 to be safe — underestimating is far worse than
+ * leaving a small gap on the right.
+ */
+const INDICATOR_WIDTH = 2 // ● or ○
+const STAR_WIDTH = 2 // ★
+const ELLIPSIS_WIDTH = 2 // …
+
+/**
+ * Width of a single service chip: "name " + indicator.
+ * Between chips, the parent row's gap={1} adds 1 column of spacing.
  */
 function serviceChipWidth(name: string): number {
-  return name.length + 2
+  return name.length + 1 + INDICATOR_WIDTH // "name " + ●
+}
+
+/**
+ * Width of the overflow tag: "…+N more".
+ */
+function overflowTagWidth(hiddenCount: number): number {
+  // "…" + "+" + digits + " more" + leading gap
+  return 1 + ELLIPSIS_WIDTH + 1 + String(hiddenCount).length + 5
+}
+
+/**
+ * Calculate the prefix width of a worktree row before services begin.
+ * Layout: "> " gap "★" gap "name (root)" gap
+ */
+export function rowPrefixWidth(nameLength: number, isActive: boolean, isRoot: boolean): number {
+  // cursor char (1) + gap (1)
+  let width = 2
+  // star + gap (only when active)
+  if (isActive) width += STAR_WIDTH + 1
+  // name text
+  width += nameLength
+  // " (root)" suffix
+  if (isRoot) width += 7
+  // gap before first service
+  width += 1
+  return width
 }
 
 /**
@@ -159,18 +195,17 @@ export function fitServices(
     return { visible: services, hiddenCount: 0 }
   }
 
-  // Binary-style: greedily fit services, reserving room for the overflow tag
+  // Greedily fit services, reserving room for the overflow tag
   const visible: WorktreeServiceStatus[] = []
   let used = 0
 
   for (let i = 0; i < services.length; i++) {
     const chipW = serviceChipWidth(services[i]!.name) + (visible.length > 0 ? 1 : 0)
     const remaining = services.length - i - 1
-    // If this isn't the last service, we need to reserve space for "…+N more"
-    // The overflow tag width: gap(1) + "…+" (2) + digits + " more" (5)
-    const overflowTagWidth = remaining > 0 ? 1 + 2 + String(remaining).length + 5 : 0
+    // Reserve space for the overflow tag if there would be hidden services
+    const reservedForTag = remaining > 0 ? overflowTagWidth(remaining) : 0
 
-    if (used + chipW + overflowTagWidth <= availableWidth) {
+    if (used + chipW + reservedForTag <= availableWidth) {
       visible.push(services[i]!)
       used += chipW
     } else {
@@ -446,9 +481,8 @@ export function Dashboard({
           (a, b) => Number(b.running) - Number(a.running)
         )
 
-        // Calculate prefix width: "> " (2) + gap(1) + star? (1+1gap) + name + " (root)"? + gap(1)
-        const prefixWidth = 2 + (isActive ? 2 : 0) + worktree.name.length + (isRoot ? 7 : 0) + 1
-        const availableWidth = terminalWidth - prefixWidth
+        const prefixW = rowPrefixWidth(worktree.name.length, isActive, isRoot)
+        const availableWidth = terminalWidth - prefixW
         const { visible, hiddenCount } = fitServices(sortedServices, availableWidth)
 
         return (
