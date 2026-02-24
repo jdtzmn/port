@@ -11,6 +11,12 @@ import { getPortDir, HOOKS_DIR, LOGS_DIR, LATEST_LOG } from './config.ts'
 export type HookName = 'post-create'
 
 /**
+ * All available hook names
+ * Keep in sync with HookName type above
+ */
+export const HOOK_NAMES: HookName[] = ['post-create']
+
+/**
  * Environment variables passed to hooks
  */
 export interface HookEnv {
