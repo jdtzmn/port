@@ -132,6 +132,10 @@ export async function execWithStdio(
     })
 
     child.on('close', code => {
+      // When stdio is 'inherit', process.stdin gets ref'd by the child,
+      // which keeps the event loop alive after the child exits. Unref it
+      // so the parent process can exit naturally once all work is done.
+      process.stdin.unref()
       resolve({ exitCode: code ?? 0 })
     })
   })

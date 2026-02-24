@@ -280,4 +280,23 @@ describe('execWithStdio', () => {
 
     await expect(execWithStdio('docker compose up')).rejects.toThrow('spawn failure')
   })
+
+  test('unrefs stdin after child process closes so the event loop can drain', async () => {
+    const unrefSpy = vi.spyOn(process.stdin, 'unref')
+
+    const { execWithStdio } = await loadExecModule({
+      spawnImpl: (_command, _args, _options) => ({
+        on: (event: string, handler: (code?: number) => void) => {
+          if (event === 'close') {
+            handler(0)
+          }
+        },
+      }),
+    })
+
+    await execWithStdio('docker compose up -d')
+
+    expect(unrefSpy).toHaveBeenCalled()
+    unrefSpy.mockRestore()
+  })
 })
