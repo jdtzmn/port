@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { HostService, PortConfig } from '../../types.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
-import { Dashboard, findSubstringMatchRanges } from '../views/Dashboard.tsx'
+import { Dashboard, findSubstringMatchRanges, fitServices } from '../views/Dashboard.tsx'
 
 const mockConfig: PortConfig = { domain: 'port' }
 
@@ -480,5 +480,135 @@ describe('Dashboard', () => {
     const frame = captureCharFrame()
 
     expect(frame).toContain('refreshing...')
+  })
+
+  test('displays running services before stopped services', async () => {
+    const mixedWorktrees: WorktreeStatus[] = [
+      {
+        name: 'myapp',
+        path: '/repo',
+        services: [
+          { name: 'db', ports: [5432], running: false },
+          { name: 'web', ports: [3000], running: true },
+          { name: 'redis', ports: [6379], running: false },
+          { name: 'api', ports: [4000], running: true },
+        ],
+        running: true,
+      },
+    ]
+
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props({ worktrees: mixedWorktrees, activeWorktreeName: '' })} />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+    const appLine = frame.split('\n').find(l => l.includes('(root)'))!
+
+    // Running services (web, api) should appear before stopped (db, redis)
+    const webPos = appLine.indexOf('web')
+    const apiPos = appLine.indexOf('api')
+    const dbPos = appLine.indexOf('db')
+    const redisPos = appLine.indexOf('redis')
+
+    expect(webPos).toBeGreaterThan(-1)
+    expect(apiPos).toBeGreaterThan(-1)
+    expect(dbPos).toBeGreaterThan(-1)
+    expect(redisPos).toBeGreaterThan(-1)
+    expect(webPos).toBeLessThan(dbPos)
+    expect(apiPos).toBeLessThan(dbPos)
+    expect(webPos).toBeLessThan(redisPos)
+    expect(apiPos).toBeLessThan(redisPos)
+  })
+
+  test('truncates services that overflow terminal width', async () => {
+    const manyServicesWorktrees: WorktreeStatus[] = [
+      {
+        name: 'myapp',
+        path: '/repo',
+        services: [
+          { name: 'web', ports: [3000], running: true },
+          { name: 'api', ports: [4000], running: true },
+          { name: 'db', ports: [5432], running: true },
+          { name: 'redis', ports: [6379], running: true },
+          { name: 'worker', ports: [8000], running: true },
+          { name: 'scheduler', ports: [9000], running: true },
+        ],
+        running: true,
+      },
+    ]
+
+    // Use a narrow terminal so services overflow
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props({ worktrees: manyServicesWorktrees, activeWorktreeName: '' })} />,
+      { width: 40, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+
+    expect(frame).toContain('more')
+    // "scheduler" is long and should be truncated at 40 cols
+    const appLine = frame.split('\n').find(l => l.includes('(root)'))!
+    expect(appLine).toContain('…+')
+  })
+
+  test('shows all services when terminal is wide enough', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props({ activeWorktreeName: '' })} />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+
+    // mockWorktrees has web and db — should both fit at 80 cols
+    expect(frame).toContain('web')
+    expect(frame).toContain('db')
+    expect(frame).not.toContain('more')
+  })
+})
+
+describe('fitServices', () => {
+  const svc = (name: string, running = true) => ({ name, ports: [], running })
+
+  test('returns all services when they fit', () => {
+    const services = [svc('web'), svc('db')]
+    // "web ●" = 5, gap + "db ●" = 1+4 = 5, total = 10
+    const result = fitServices(services, 50)
+    expect(result.visible).toHaveLength(2)
+    expect(result.hiddenCount).toBe(0)
+  })
+
+  test('returns empty for empty input', () => {
+    const result = fitServices([], 50)
+    expect(result.visible).toHaveLength(0)
+    expect(result.hiddenCount).toBe(0)
+  })
+
+  test('truncates when services overflow', () => {
+    const services = [svc('web'), svc('api'), svc('db'), svc('redis'), svc('worker')]
+    // Very narrow: only room for 1-2 services
+    const result = fitServices(services, 20)
+    expect(result.visible.length).toBeLessThan(5)
+    expect(result.hiddenCount).toBe(5 - result.visible.length)
+    expect(result.hiddenCount).toBeGreaterThan(0)
+  })
+
+  test('truncates all when nothing fits', () => {
+    const services = [svc('superlongservicename')]
+    const result = fitServices(services, 5)
+    expect(result.visible).toHaveLength(0)
+    expect(result.hiddenCount).toBe(1)
+  })
+
+  test('preserves service order', () => {
+    const services = [svc('alpha'), svc('beta'), svc('gamma')]
+    const result = fitServices(services, 100)
+    expect(result.visible.map(s => s.name)).toEqual(['alpha', 'beta', 'gamma'])
   })
 })
