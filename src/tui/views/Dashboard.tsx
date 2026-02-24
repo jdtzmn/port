@@ -390,6 +390,9 @@ export function Dashboard({
         const isRoot = index === 0
         const isActive = worktree.name === activeWorktreeName
         const nameSegments = buildNameSegments(worktree.name, highlightQuery)
+        const sortedServices = [...worktree.services].sort(
+          (a, b) => Number(b.running) - Number(a.running)
+        )
 
         return (
           <box key={worktree.name} flexDirection="row" gap={1}>
@@ -409,7 +412,7 @@ export function Dashboard({
             {worktree.services.length === 0 && loading ? (
               <text fg="#555555">...</text>
             ) : (
-              worktree.services.map(service => (
+              sortedServices.map(service => (
                 <box key={service.name} flexDirection="row" gap={0}>
                   <text fg="#888888">{service.name} </text>
                   <StatusIndicator running={service.running} />
