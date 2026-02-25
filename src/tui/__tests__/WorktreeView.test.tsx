@@ -220,4 +220,48 @@ describe('WorktreeView', () => {
 
     expect(frame).toContain('No services configured')
   })
+
+  test('many services do not overflow into header or key hints', async () => {
+    const manyServicesWorktree: WorktreeStatus = {
+      name: 'big-app',
+      path: '/repo/.port/trees/big-app',
+      services: Array.from({ length: 20 }, (_, i) => ({
+        name: `svc-${String(i + 1).padStart(2, '0')}`,
+        ports: [3000 + i],
+        running: i % 2 === 0,
+      })),
+      running: true,
+    }
+
+    // Short terminal: 10 lines can't fit header + 20 services + footer
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={manyServicesWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 60, height: 10 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+    const lines = frame.split('\n')
+
+    // Header must remain visible
+    expect(frame).toContain('big-app')
+    expect(frame).toContain('http://big-app.port')
+
+    // Not all 20 services should be visible (some must be clipped/scrolled)
+    const serviceLines = lines.filter(l => l.includes('svc-'))
+    expect(serviceLines.length).toBeLessThan(20)
+    expect(serviceLines.length).toBeGreaterThan(0)
+  })
 })
