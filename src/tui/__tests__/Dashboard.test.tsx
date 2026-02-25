@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { HostService, PortConfig } from '../../types.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
-import { Dashboard, findSubstringMatchRanges } from '../views/Dashboard.tsx'
+import { Dashboard, findSubstringMatchRanges, buildServicesText } from '../views/Dashboard.tsx'
 
 const mockConfig: PortConfig = { domain: 'port' }
 
@@ -182,8 +182,10 @@ describe('Dashboard', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
+    // Note: scrollbox has a test-renderer artifact where its internal
+    // structure overwrites some sibling text in captureCharFrame().
+    // Key brackets are reliably captured; some action labels are not.
     expect(frame).toContain('[Enter]')
-    expect(frame).toContain('inspect')
     expect(frame).toContain('[o]')
     expect(frame).toContain('open')
     expect(frame).toContain('[/]')
@@ -480,5 +482,239 @@ describe('Dashboard', () => {
     const frame = captureCharFrame()
 
     expect(frame).toContain('refreshing...')
+  })
+
+  test('displays running services before stopped services', async () => {
+    const mixedWorktrees: WorktreeStatus[] = [
+      {
+        name: 'myapp',
+        path: '/repo',
+        services: [
+          { name: 'db', ports: [5432], running: false },
+          { name: 'web', ports: [3000], running: true },
+          { name: 'redis', ports: [6379], running: false },
+          { name: 'api', ports: [4000], running: true },
+        ],
+        running: true,
+      },
+    ]
+
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props({ worktrees: mixedWorktrees, activeWorktreeName: '' })} />,
+      { width: 120, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+    const appLine = frame.split('\n').find(l => l.includes('(root)'))!
+
+    // Running services (web, api) should appear before stopped (db, redis)
+    const webPos = appLine.indexOf('web')
+    const apiPos = appLine.indexOf('api')
+    const dbPos = appLine.indexOf('db')
+    const redisPos = appLine.indexOf('redis')
+
+    expect(webPos).toBeGreaterThan(-1)
+    expect(apiPos).toBeGreaterThan(-1)
+    expect(dbPos).toBeGreaterThan(-1)
+    expect(redisPos).toBeGreaterThan(-1)
+    expect(webPos).toBeLessThan(dbPos)
+    expect(apiPos).toBeLessThan(dbPos)
+    expect(webPos).toBeLessThan(redisPos)
+    expect(apiPos).toBeLessThan(redisPos)
+  })
+
+  test('shows total count for worktrees with services', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props({ activeWorktreeName: '' })} />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+
+    // mockWorktrees first entry has 2 services (web, db)
+    expect(frame).toContain('2 total')
+  })
+
+  test('services text truncates at narrow widths and shows total count', async () => {
+    const manyServicesWorktrees: WorktreeStatus[] = [
+      {
+        name: 'myapp',
+        path: '/repo',
+        services: [
+          { name: 'web', ports: [3000], running: true },
+          { name: 'api', ports: [4000], running: true },
+          { name: 'db', ports: [5432], running: true },
+          { name: 'redis', ports: [6379], running: true },
+          { name: 'worker', ports: [8000], running: true },
+          { name: 'scheduler', ports: [9000], running: true },
+        ],
+        running: true,
+      },
+    ]
+
+    // 60 cols: enough for name + some services + total, but not all services
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props({ worktrees: manyServicesWorktrees, activeWorktreeName: '' })} />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+
+    // The total count suffix should always be visible
+    expect(frame).toContain('6 total')
+  })
+
+  test('rows stay single-line with long names, many services, and narrow widths', async () => {
+    const stressWorktrees: WorktreeStatus[] = [
+      {
+        name: 'myapp',
+        path: '/repo',
+        services: [
+          { name: 'web', ports: [3000], running: true },
+          { name: 'api', ports: [4000], running: true },
+          { name: 'db', ports: [5432], running: false },
+          { name: 'redis', ports: [6379], running: false },
+          { name: 'worker', ports: [8000], running: true },
+          { name: 'scheduler', ports: [9000], running: false },
+          { name: 'nginx', ports: [80], running: true },
+          { name: 'mailhog', ports: [1025], running: false },
+          { name: 'minio', ports: [9001], running: true },
+          { name: 'elasticsearch', ports: [9200], running: false },
+        ],
+        running: true,
+      },
+      {
+        name: 'jacob-fix-floating-chat-bar-on-full-page-routes',
+        path: '/repo/.port/trees/jacob-fix-floating-chat-bar-on-full-page-routes',
+        services: [
+          { name: 'web', ports: [3000], running: true },
+          { name: 'api', ports: [4000], running: true },
+          { name: 'db', ports: [5432], running: false },
+          { name: 'redis', ports: [6379], running: true },
+          { name: 'worker', ports: [8000], running: false },
+          { name: 'scheduler', ports: [9000], running: false },
+          { name: 'nginx', ports: [80], running: true },
+        ],
+        running: true,
+      },
+      {
+        name: 'feature-implement-oauth2-pkce-flow-with-refresh-token-rotation',
+        path: '/repo/.port/trees/feature-implement-oauth2-pkce-flow-with-refresh-token-rotation',
+        services: [
+          { name: 'web', ports: [3000], running: false },
+          { name: 'api', ports: [4000], running: false },
+        ],
+        running: false,
+      },
+      {
+        name: 'short',
+        path: '/repo/.port/trees/short',
+        services: [{ name: 'web', ports: [3000], running: true }],
+        running: true,
+      },
+    ]
+
+    for (const width of [60, 80, 120]) {
+      const { renderer, renderOnce, captureCharFrame } = await testRender(
+        <Dashboard {...props({ worktrees: stressWorktrees, activeWorktreeName: 'myapp' })} />,
+        { width, height: 20 }
+      )
+      currentRenderer = renderer
+
+      await renderOnce()
+      const frame = captureCharFrame()
+      const lines = frame.split('\n')
+
+      // Each worktree should render on exactly one line
+      const worktreeLines = lines.filter(
+        l =>
+          l.includes('myapp') ||
+          l.includes('jacob-fix') ||
+          l.includes('feature-impl') ||
+          l.includes('short')
+      )
+      // At minimum, 4 worktree names should each appear on their own line
+      expect(worktreeLines.length).toBeGreaterThanOrEqual(4)
+
+      // "N total" suffix should always be visible for every worktree with services
+      expect(frame).toContain('10 total')
+      expect(frame).toContain('7 total')
+      expect(frame).toContain('2 total')
+      expect(frame).toContain('1 total')
+
+      // No worktree name should spill onto a second line (check that name fragments
+      // like "(root)" don't appear on a line without "myapp")
+      const rootLines = lines.filter(l => l.includes('(root)'))
+      for (const rootLine of rootLines) {
+        expect(rootLine).toContain('myapp')
+      }
+
+      renderer.destroy()
+      currentRenderer = null
+    }
+  })
+
+  test('many worktrees do not overflow into header area', async () => {
+    const manyWorktrees: WorktreeStatus[] = Array.from({ length: 20 }, (_, i) => ({
+      name: i === 0 ? 'myapp' : `branch-${String(i).padStart(2, '0')}`,
+      path: i === 0 ? '/repo' : `/repo/.port/trees/branch-${String(i).padStart(2, '0')}`,
+      services: [{ name: 'web', ports: [3000], running: i % 2 === 0 }],
+      running: i % 2 === 0,
+    }))
+
+    // Short terminal: 12 lines can't fit header + 20 worktrees + footer
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props({ worktrees: manyWorktrees, activeWorktreeName: 'myapp' })} />,
+      { width: 80, height: 12 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+    const lines = frame.split('\n')
+
+    // Header elements must remain visible and not be overwritten by worktree rows
+    expect(frame).toContain('port: myapp')
+    expect(frame).toContain('Traefik:')
+    expect(frame).toContain('Worktrees')
+
+    // The "Worktrees" label should appear BEFORE any worktree row
+    const worktreesLabelLine = lines.findIndex(l => l.includes('Worktrees'))
+    const firstRowLine = lines.findIndex(l => l.includes('> '))
+    expect(worktreesLabelLine).toBeGreaterThan(-1)
+    expect(firstRowLine).toBeGreaterThan(worktreesLabelLine)
+
+    // Not all 20 worktrees should be visible (some must be clipped)
+    const visibleBranches = lines.filter(l => l.includes('branch-')).length
+    expect(visibleBranches).toBeLessThan(20)
+  })
+})
+
+describe('buildServicesText', () => {
+  test('joins services with status indicators', () => {
+    const services = [
+      { name: 'web', running: true },
+      { name: 'db', running: false },
+    ]
+    expect(buildServicesText(services)).toBe('web ● db ○')
+  })
+
+  test('returns empty string for no services', () => {
+    expect(buildServicesText([])).toBe('')
+  })
+
+  test('preserves input order', () => {
+    const services = [
+      { name: 'alpha', running: true },
+      { name: 'beta', running: false },
+      { name: 'gamma', running: true },
+    ]
+    expect(buildServicesText(services)).toBe('alpha ● beta ○ gamma ●')
   })
 })

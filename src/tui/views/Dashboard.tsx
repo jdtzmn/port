@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useKeyboard } from '@opentui/react'
+import type { ScrollBoxRenderable } from '@opentui/core'
 import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
@@ -99,35 +100,33 @@ function findInitialFilteredSelection(currentIndex: number, matchingIndices: num
   return matchingIndices[0]!
 }
 
-interface NameSegment {
-  text: string
-  matched: boolean
+/**
+ * Build a plain-text summary of services for a worktree row.
+ * Services are sorted running-first upstream; this just joins them
+ * with status indicators into a single string like:
+ *   "web ● api ● db ○ redis ○"
+ */
+export function buildServicesText(services: { name: string; running: boolean }[]): string {
+  return services.map(s => `${s.name} ${s.running ? '●' : '○'}`).join(' ')
 }
 
-function buildNameSegments(name: string, query: string): NameSegment[] {
-  const ranges = findSubstringMatchRanges(name, query)
-
-  if (ranges.length === 0) {
-    return [{ text: name, matched: false }]
-  }
-
-  const segments: NameSegment[] = []
+function buildHighlightedSegments(text: string, ranges: MatchRange[]): React.ReactNode[] {
+  const segments: React.ReactNode[] = []
   let cursor = 0
-
   for (const range of ranges) {
-    if (cursor < range.start) {
-      segments.push({ text: name.slice(cursor, range.start), matched: false })
+    if (range.start > cursor) {
+      segments.push(text.slice(cursor, range.start))
     }
-
-    segments.push({ text: name.slice(range.start, range.end), matched: true })
-
+    segments.push(
+      <span key={range.start} fg="#00AAFF">
+        {text.slice(range.start, range.end)}
+      </span>
+    )
     cursor = range.end
   }
-
-  if (cursor < name.length) {
-    segments.push({ text: name.slice(cursor), matched: false })
+  if (cursor < text.length) {
+    segments.push(text.slice(cursor))
   }
-
   return segments
 }
 
@@ -155,6 +154,20 @@ export function Dashboard({
   const [appliedQuery, setAppliedQuery] = useState('')
   const [draftQuery, setDraftQuery] = useState('')
   const initialSelectionAppliedRef = useRef(false)
+  const scrollRef = useRef<ScrollBoxRenderable>(null)
+
+  // Keep selected row visible inside the scrollbox
+  useEffect(() => {
+    const sb = scrollRef.current
+    if (!sb) return
+    const viewportHeight = sb.viewport.height
+    if (viewportHeight <= 0) return
+    if (selectedIndex < sb.scrollTop) {
+      sb.scrollTop = selectedIndex
+    } else if (selectedIndex >= sb.scrollTop + viewportHeight) {
+      sb.scrollTop = selectedIndex - viewportHeight + 1
+    }
+  }, [selectedIndex])
 
   useEffect(() => {
     if (initialSelectionAppliedRef.current) return
@@ -358,7 +371,7 @@ export function Dashboard({
   return (
     <box flexDirection="column" width="100%" height="100%">
       {/* Header */}
-      <box flexDirection="row" gap={1}>
+      <box flexDirection="row" gap={1} flexShrink={0}>
         <text>
           <b>port: {repoName}</b>
         </text>
@@ -366,62 +379,86 @@ export function Dashboard({
         {busy && <text fg="#FFFF00"> working...</text>}
       </box>
 
-      <box height={1} />
+      <box height={1} flexShrink={0} />
 
       {/* Traefik status */}
-      <box flexDirection="row" gap={1}>
+      <box flexDirection="row" gap={1} flexShrink={0}>
         <text fg="#888888">Traefik:</text>
         <StatusIndicator running={traefikRunning} />
         <text>{traefikRunning ? 'running' : 'stopped'}</text>
       </box>
 
-      <box height={1} />
+      <box height={1} flexShrink={0} />
 
       {/* Worktree list header */}
-      <text fg="#888888">
+      <text fg="#888888" flexShrink={0}>
         <b>Worktrees</b>
       </text>
 
       {/* Worktree rows */}
-      {worktrees.length === 0 && !loading && <text fg="#888888">No worktrees found</text>}
+      <scrollbox
+        ref={scrollRef}
+        flexGrow={1}
+        flexShrink={1}
+        scrollY
+        scrollX={false}
+        contentOptions={{ flexDirection: 'column', width: '100%' }}
+      >
+        {worktrees.length === 0 && !loading && <text fg="#888888">No worktrees found</text>}
 
-      {worktrees.map((worktree, index) => {
-        const isSelected = index === selectedIndex
-        const isRoot = index === 0
-        const isActive = worktree.name === activeWorktreeName
-        const nameSegments = buildNameSegments(worktree.name, highlightQuery)
+        {worktrees.map((worktree, index) => {
+          const isSelected = index === selectedIndex
+          const isRoot = index === 0
+          const isActive = worktree.name === activeWorktreeName
+          const sortedServices = [...worktree.services].sort(
+            (a, b) => Number(b.running) - Number(a.running)
+          )
+          const servicesText = buildServicesText(sortedServices)
+          const totalCount = worktree.services.length
+          const nameStr = worktree.name + (isRoot ? ' (root)' : '')
+          const matchRanges = highlightQuery
+            ? findSubstringMatchRanges(nameStr, highlightQuery)
+            : []
 
-        return (
-          <box key={worktree.name} flexDirection="row" gap={1}>
-            <text>{isSelected ? '>' : ' '}</text>
-            {isActive && <text fg="#FFFF00">★</text>}
-            <box flexDirection="row" gap={0}>
-              {nameSegments.map((segment, segmentIndex) => (
-                <text
-                  key={`${worktree.name}-segment-${segmentIndex}`}
-                  fg={segment.matched ? '#00AAFF' : undefined}
-                >
-                  {isSelected ? <b>{segment.text}</b> : segment.text}
+          return (
+            <box key={worktree.name} flexDirection="row" height={1} overflow="hidden">
+              <text wrapMode="none" flexShrink={0}>
+                {isSelected ? '> ' : '  '}
+              </text>
+              {isActive && (
+                <text wrapMode="none" flexShrink={0} fg="#FFFF00">
+                  ★{' '}
                 </text>
-              ))}
-              {isRoot && <text>{isSelected ? <b> (root)</b> : ' (root)'}</text>}
+              )}
+              <text flexShrink={1} wrapMode="none">
+                {matchRanges.length > 0 ? buildHighlightedSegments(nameStr, matchRanges) : nameStr}
+              </text>
+              {totalCount === 0 && loading && (
+                <text wrapMode="none" flexShrink={0} fg="#555555">
+                  {' ...'}
+                </text>
+              )}
+              {totalCount > 0 && (
+                <text wrapMode="none" flexShrink={0}>
+                  {'  '}
+                </text>
+              )}
+              {totalCount > 0 && (
+                <text fg="#888888" flexShrink={100} wrapMode="none">
+                  {servicesText}
+                </text>
+              )}
+              {totalCount > 0 && (
+                <text wrapMode="none" flexShrink={0} fg="#555555">
+                  {'  ' + totalCount + ' total'}
+                </text>
+              )}
             </box>
-            {worktree.services.length === 0 && loading ? (
-              <text fg="#555555">...</text>
-            ) : (
-              worktree.services.map(service => (
-                <box key={service.name} flexDirection="row" gap={0}>
-                  <text fg="#888888">{service.name} </text>
-                  <StatusIndicator running={service.running} />
-                </box>
-              ))
-            )}
-          </box>
-        )
-      })}
+          )
+        })}
+      </scrollbox>
 
-      {/* Spacer */}
-      <box flexGrow={1} />
+      <box height={1} flexShrink={0} />
 
       {/* Status message */}
       {statusMessage && (

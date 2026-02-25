@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useKeyboard } from '@opentui/react'
+import type { ScrollBoxRenderable } from '@opentui/core'
 import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
@@ -96,6 +97,56 @@ export function WorktreeView({
 }: WorktreeViewProps) {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [busy, setBusy] = useState(false)
+  const scrollRef = useRef<ScrollBoxRenderable>(null)
+
+  // Keep selected service visible inside the scrollbox.
+  // Estimate the content line for the selected item accounting for section
+  // headers (1 line each) and the host section spacer (1 line).
+  useEffect(() => {
+    const sb = scrollRef.current
+    if (!sb) return
+    const vpHeight = sb.viewport.height
+    if (vpHeight <= 0) return
+
+    const svcs = buildServiceItems(worktree, hostServices, config, worktree?.name ?? 'unknown')
+    const hasDocker = svcs.some(s => s.type === 'docker')
+    const hasHost = svcs.some(s => s.type === 'host')
+    const dockerCount = svcs.filter(s => s.type === 'docker').length
+
+    // Docker header is outside the scrollbox, so line 0 is the first docker row.
+    let line = 0
+    const selected = svcs[selectedIndex]
+    if (selected?.type === 'docker') {
+      let seen = 0
+      for (let i = 0; i < svcs.length; i++) {
+        if (svcs[i]!.type === 'docker') {
+          if (i === selectedIndex) break
+          seen++
+        }
+      }
+      line += seen
+    } else if (selected?.type === 'host') {
+      line += dockerCount // all docker rows
+      if (hasDocker && hasHost) {
+        line += 1 // spacer between sections
+      }
+      line += 1 // "Host Services" header
+      let seen = 0
+      for (let i = 0; i < svcs.length; i++) {
+        if (svcs[i]!.type === 'host') {
+          if (i === selectedIndex) break
+          seen++
+        }
+      }
+      line += seen
+    }
+
+    if (line < sb.scrollTop) {
+      sb.scrollTop = line
+    } else if (line >= sb.scrollTop + vpHeight) {
+      sb.scrollTop = line - vpHeight + 1
+    }
+  }, [selectedIndex, worktree, hostServices, config])
 
   const worktreeName = worktree?.name ?? 'unknown'
   const baseUrl = `http://${worktreeName}.${config.domain}`
@@ -163,7 +214,7 @@ export function WorktreeView({
   return (
     <box flexDirection="column" width="100%" height="100%">
       {/* Header */}
-      <box flexDirection="row" gap={1}>
+      <box flexDirection="row" gap={1} flexShrink={0}>
         <text>
           <b>{worktreeName}</b>
         </text>
@@ -172,73 +223,87 @@ export function WorktreeView({
       </box>
 
       {/* URL */}
-      <text fg="#00AAFF">{baseUrl}</text>
+      <text fg="#00AAFF" flexShrink={0}>
+        {baseUrl}
+      </text>
 
-      <box height={1} />
+      <box height={1} flexShrink={0} />
 
-      {/* Docker services section */}
+      {/* Docker services header (always visible) */}
       {services.some(s => s.type === 'docker') && (
-        <>
-          <text fg="#888888">
-            <b>Docker Services</b>
-          </text>
-
-          {services
-            .filter(s => s.type === 'docker')
-            .map((service, i) => {
-              const globalIndex = services.findIndex(s => s === service)
-              const isSelected = globalIndex === selectedIndex
-
-              return (
-                <box key={`${service.name}-${service.port}-${i}`} flexDirection="row" gap={1}>
-                  <text>{isSelected ? '>' : ' '}</text>
-                  <text>{isSelected ? <b>{service.name}</b> : service.name}</text>
-                  {service.port > 0 && <text fg="#888888">:{service.port}</text>}
-                  <StatusIndicator running={service.running} />
-                  <text fg="#888888">{service.running ? 'running' : 'stopped'}</text>
-                </box>
-              )
-            })}
-        </>
+        <text fg="#888888" flexShrink={0}>
+          <b>Docker Services</b>
+        </text>
       )}
 
-      {/* Host services section */}
-      {services.some(s => s.type === 'host') && (
-        <>
-          <box height={1} />
-          <text fg="#888888">
-            <b>Host Services</b>
-          </text>
+      {/* Scrollable services list */}
+      <scrollbox
+        ref={scrollRef}
+        flexGrow={1}
+        flexShrink={1}
+        scrollY
+        scrollX={false}
+        contentOptions={{ flexDirection: 'column', width: '100%' }}
+      >
+        {/* Docker services */}
+        {services.some(s => s.type === 'docker') && (
+          <>
+            {services
+              .filter(s => s.type === 'docker')
+              .map((service, i) => {
+                const globalIndex = services.findIndex(s => s === service)
+                const isSelected = globalIndex === selectedIndex
 
-          {services
-            .filter(s => s.type === 'host')
-            .map(service => {
-              const globalIndex = services.findIndex(s => s === service)
-              const isSelected = globalIndex === selectedIndex
+                return (
+                  <box key={`${service.name}-${service.port}-${i}`} flexDirection="row" gap={1}>
+                    <text>{isSelected ? '>' : ' '}</text>
+                    <text>{isSelected ? <b>{service.name}</b> : service.name}</text>
+                    {service.port > 0 && <text fg="#888888">:{service.port}</text>}
+                    <StatusIndicator running={service.running} />
+                    <text fg="#888888">{service.running ? 'running' : 'stopped'}</text>
+                  </box>
+                )
+              })}
+          </>
+        )}
 
-              return (
-                <box key={`host-${service.port}`} flexDirection="row" gap={1}>
-                  <text>{isSelected ? '>' : ' '}</text>
-                  <text>{isSelected ? <b>{service.name}</b> : service.name}</text>
-                  <text fg="#888888">
-                    :{service.port} → :{service.actualPort}
-                  </text>
-                  <text fg="#888888">PID {service.pid}</text>
-                  <StatusIndicator running={service.running} />
-                </box>
-              )
-            })}
-        </>
-      )}
+        {/* Host services section */}
+        {services.some(s => s.type === 'host') && (
+          <>
+            <box height={1} />
+            <text fg="#888888">
+              <b>Host Services</b>
+            </text>
 
-      {services.length === 0 && !loading && <text fg="#888888">No services configured</text>}
+            {services
+              .filter(s => s.type === 'host')
+              .map(service => {
+                const globalIndex = services.findIndex(s => s === service)
+                const isSelected = globalIndex === selectedIndex
 
-      {/* Spacer */}
-      <box flexGrow={1} />
+                return (
+                  <box key={`host-${service.port}`} flexDirection="row" gap={1}>
+                    <text>{isSelected ? '>' : ' '}</text>
+                    <text>{isSelected ? <b>{service.name}</b> : service.name}</text>
+                    <text fg="#888888">
+                      :{service.port} → :{service.actualPort}
+                    </text>
+                    <text fg="#888888">PID {service.pid}</text>
+                    <StatusIndicator running={service.running} />
+                  </box>
+                )
+              })}
+          </>
+        )}
+
+        {services.length === 0 && !loading && <text fg="#888888">No services configured</text>}
+      </scrollbox>
+
+      <box height={1} flexShrink={0} />
 
       {/* Status message */}
       {statusMessage && (
-        <text fg={statusMessage.type === 'success' ? '#00FF00' : '#FF4444'}>
+        <text fg={statusMessage.type === 'success' ? '#00FF00' : '#FF4444'} flexShrink={0}>
           {statusMessage.text}
         </text>
       )}
