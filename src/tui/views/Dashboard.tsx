@@ -110,6 +110,26 @@ export function buildServicesText(services: { name: string; running: boolean }[]
   return services.map(s => `${s.name} ${s.running ? '●' : '○'}`).join(' ')
 }
 
+function buildHighlightedSegments(text: string, ranges: MatchRange[]): React.ReactNode[] {
+  const segments: React.ReactNode[] = []
+  let cursor = 0
+  for (const range of ranges) {
+    if (range.start > cursor) {
+      segments.push(text.slice(cursor, range.start))
+    }
+    segments.push(
+      <span key={range.start} fg="#00AAFF">
+        {text.slice(range.start, range.end)}
+      </span>
+    )
+    cursor = range.end
+  }
+  if (cursor < text.length) {
+    segments.push(text.slice(cursor))
+  }
+  return segments
+}
+
 export function Dashboard({
   repoName,
   worktrees,
@@ -382,7 +402,7 @@ export function Dashboard({
         flexShrink={1}
         scrollY
         scrollX={false}
-        contentOptions={{ flexDirection: 'column' }}
+        contentOptions={{ flexDirection: 'column', width: '100%' }}
       >
         {worktrees.length === 0 && !loading && <text fg="#888888">No worktrees found</text>}
 
@@ -396,6 +416,9 @@ export function Dashboard({
           const servicesText = buildServicesText(sortedServices)
           const totalCount = worktree.services.length
           const nameStr = worktree.name + (isRoot ? ' (root)' : '')
+          const matchRanges = highlightQuery
+            ? findSubstringMatchRanges(nameStr, highlightQuery)
+            : []
 
           return (
             <box key={worktree.name} flexDirection="row" height={1} overflow="hidden">
@@ -407,8 +430,8 @@ export function Dashboard({
                   ★{' '}
                 </text>
               )}
-              <text flexShrink={1} truncate wrapMode="none">
-                {nameStr}
+              <text flexShrink={1} wrapMode="none">
+                {matchRanges.length > 0 ? buildHighlightedSegments(nameStr, matchRanges) : nameStr}
               </text>
               {totalCount === 0 && loading && (
                 <text wrapMode="none" flexShrink={0} fg="#555555">
@@ -416,19 +439,26 @@ export function Dashboard({
                 </text>
               )}
               {totalCount > 0 && (
-                <text fg="#888888" flexShrink={100} truncate wrapMode="none">
-                  {'  ' + servicesText}
+                <text wrapMode="none" flexShrink={0}>
+                  {'  '}
+                </text>
+              )}
+              {totalCount > 0 && (
+                <text fg="#888888" flexShrink={100} wrapMode="none">
+                  {servicesText}
                 </text>
               )}
               {totalCount > 0 && (
                 <text wrapMode="none" flexShrink={0} fg="#555555">
-                  {' ' + totalCount + ' total'}
+                  {'  ' + totalCount + ' total'}
                 </text>
               )}
             </box>
           )
         })}
       </scrollbox>
+
+      <box height={1} flexShrink={0} />
 
       {/* Status message */}
       {statusMessage && (
