@@ -15,7 +15,7 @@ import * as output from '../lib/output.ts'
  * Generates shell-native completion scripts that:
  * - Complete subcommand names and aliases
  * - Complete per-command flags
- * - Dynamically complete branch names via `command port list --names`
+ * - Dynamically complete branch names via `command port list`
  *   (uses `command` to bypass the shell-hook wrapper function)
  *
  * All command metadata is introspected from the Commander.js program
@@ -105,7 +105,7 @@ function generateBashCompletion(): string {
     '  # If completing the first argument, offer subcommands + branch names',
     '  if [[ $cword -eq 1 ]]; then',
     '    local branches',
-    '    branches="$(command port list --names 2>/dev/null)"',
+    '    branches="$(command port list 2>/dev/null)"',
     '    COMPREPLY=($(compgen -W "$subcommands $global_flags $branches" -- "$cur"))',
     '    return',
     '  fi',
@@ -123,7 +123,7 @@ function generateBashCompletion(): string {
     '  case "$prev" in',
     '    ' + branchCommandsPattern + ')',
     '      local branches',
-    '      branches="$(command port list --names 2>/dev/null)"',
+    '      branches="$(command port list 2>/dev/null)"',
     '      COMPREPLY=($(compgen -W "$branches" -- "$cur"))',
     '      return',
     '      ;;',
@@ -174,7 +174,7 @@ function generateZshCompletion(): string {
     '  # Completing first argument: subcommands + branch names',
     '  if (( CURRENT == 2 )); then',
     '    local -a branches',
-    '    branches=(${(f)"$(command port list --names 2>/dev/null)"})',
+    '    branches=(${(f)"$(command port list 2>/dev/null)"})',
     '    compadd -- "${subcommands[@]}" "${global_flags[@]}" "${branches[@]}"',
     '    return',
     '  fi',
@@ -195,7 +195,7 @@ function generateZshCompletion(): string {
     '    ' + branchCommandsPattern + ')',
     '      if (( CURRENT == 3 )); then',
     '        local -a branches',
-    '        branches=(${(f)"$(command port list --names 2>/dev/null)"})',
+    '        branches=(${(f)"$(command port list 2>/dev/null)"})',
     '        compadd -- "${branches[@]}"',
     '        return',
     '      fi',
@@ -269,7 +269,7 @@ function generateFishCompletion(): string {
   lines.push('')
   lines.push('# Branch name completions when no subcommand given (port <branch>)')
   lines.push(
-    "complete -c port -n __port_no_subcommand -a '(command port list --names 2>/dev/null)' -d 'branch'"
+    "complete -c port -n __port_no_subcommand -a '(command port list 2>/dev/null)' -d 'branch'"
   )
 
   // Branch completions for branch-accepting commands
@@ -279,7 +279,7 @@ function generateFishCompletion(): string {
     lines.push(
       "complete -c port -n '__port_using_subcommand " +
         cmd +
-        "' -a '(command port list --names 2>/dev/null)' -d 'branch'"
+        "' -a '(command port list 2>/dev/null)' -d 'branch'"
     )
   }
 

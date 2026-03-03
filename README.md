@@ -173,19 +173,13 @@ This is useful for:
 - Quick testing without containerization
 - Running multiple instances of the same service on different worktrees
 
-### 10. List Active Worktrees
-
-```bash
-port list
-```
-
-Shows a concise worktree-level running/stopped summary and any running host services.
-
-For per-service details by worktree:
+### 10. Check Status
 
 ```bash
 port status
 ```
+
+Shows per-service status grouped by worktree, host services, and Traefik.
 
 Show URLs for services in the current worktree:
 
@@ -234,8 +228,8 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port kill [port]`                               | Stop host services (optionally by logical port)       |
 | `port remove <branch> [--force] [--keep-branch]` | Remove worktree and archive local branch              |
 | `port compose <args...>`                         | Run docker compose with auto `-f` flags               |
-| `port list`                                      | List worktree and host-service summary                |
-| `port status`                                    | Show per-service status by worktree                   |
+| `port list`                                      | Print worktree names, one per line                    |
+| `port status`                                    | Show service status across all worktrees              |
 | `port urls [service]`                            | Show service URLs for current worktree                |
 | `port cleanup`                                   | Delete archived local branches with confirmation      |
 | `port uninstall [--yes] [--domain DOMAIN]`       | Remove DNS configuration for wildcard domain          |

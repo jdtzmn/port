@@ -3,29 +3,32 @@ import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
 import { isTraefikRunning } from '../lib/compose.ts'
 import { getAllHostServices } from '../lib/registry.ts'
 import { isProcessRunning, cleanupStaleHostServices } from '../lib/hostService.ts'
-import { collectWorktreeStatuses } from '../lib/worktreeStatus.ts'
+import { collectWorktreeStatuses, type WorktreeStatus } from '../lib/worktreeStatus.ts'
 import * as output from '../lib/output.ts'
 
 /**
- * Show per-service status details grouped by worktree
+ * Show per-service status details grouped by worktree, host services, and Traefik.
+ * Degrades gracefully outside a git repo or non-port project by showing global
+ * service status only.
  */
 export async function status(): Promise<void> {
-  let repoRoot: string
+  let worktrees: WorktreeStatus[] = []
+
   try {
-    repoRoot = detectWorktree().repoRoot
+    const repoRoot = detectWorktree().repoRoot
+
+    if (configExists(repoRoot)) {
+      const config = await loadConfig(repoRoot)
+      const composeFile = getComposeFile(config)
+      worktrees = await collectWorktreeStatuses(repoRoot, composeFile, config.domain)
+    } else {
+      output.info(
+        'Current repository is not initialized with port. Showing global service status only.'
+      )
+    }
   } catch {
-    output.error('Not in a git repository')
-    process.exit(1)
+    output.info('Not in a git repository. Showing global service status only.')
   }
-
-  if (!configExists(repoRoot)) {
-    output.error('Port not initialized. Run "port init" first.')
-    process.exit(1)
-  }
-
-  const config = await loadConfig(repoRoot)
-  const composeFile = getComposeFile(config)
-  const worktrees = await collectWorktreeStatuses(repoRoot, composeFile, config.domain)
 
   output.header('Worktree service status:')
   output.newline()

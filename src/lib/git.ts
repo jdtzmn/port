@@ -2,6 +2,7 @@ import simpleGit, { type SimpleGit } from 'simple-git'
 import { existsSync } from 'fs'
 import { getWorktreePath } from './worktree.ts'
 import { sanitizeBranchName } from './sanitize.ts'
+import { execAsync } from './exec.ts'
 
 /**
  * Error thrown when git operations fail
@@ -311,6 +312,129 @@ export async function pruneWorktrees(repoRoot: string): Promise<void> {
     await git.raw(['worktree', 'prune'])
   } catch (error) {
     throw new GitError(`Failed to prune worktrees: ${error}`)
+  }
+}
+
+/**
+ * Detect the default branch for the repository (e.g., main, master).
+ *
+ * Tries `git symbolic-ref refs/remotes/origin/HEAD` first, then falls back
+ * to checking whether `main` or `master` exist locally.
+ *
+ * @param repoRoot - The repository root path
+ * @returns The default branch name
+ */
+export async function getDefaultBranch(repoRoot: string): Promise<string> {
+  const git = getGit(repoRoot)
+
+  // Try the remote HEAD symbolic ref first (most reliable)
+  try {
+    const ref = await git.raw(['symbolic-ref', 'refs/remotes/origin/HEAD'])
+    // Returns something like "refs/remotes/origin/main"
+    const branch = ref.trim().replace('refs/remotes/origin/', '')
+    if (branch) return branch
+  } catch {
+    // Remote HEAD not set — fall back to local checks
+  }
+
+  // Check for common default branch names
+  const branches = await git.branchLocal()
+  if (branches.all.includes('main')) return 'main'
+  if (branches.all.includes('master')) return 'master'
+
+  // Last resort: use whatever branch the main worktree is on
+  try {
+    const head = await git.revparse(['--abbrev-ref', 'HEAD'])
+    return head.trim()
+  } catch {
+    return 'main'
+  }
+}
+
+/**
+ * Get branches that are fully merged into the given base branch.
+ *
+ * Uses `git branch --merged <base>` which checks reachability.
+ * Does NOT catch squash-merged branches — use {@link getGoneBranches} or
+ * GitHub PR metadata for those.
+ *
+ * @param repoRoot - The repository root path
+ * @param baseBranch - The branch to check against (e.g., main)
+ * @returns Array of branch names that are merged
+ */
+export async function getMergedBranches(repoRoot: string, baseBranch: string): Promise<string[]> {
+  const git = getGit(repoRoot)
+
+  try {
+    const result = await git.raw(['branch', '--merged', baseBranch])
+    return result
+      .split('\n')
+      .map(line => line.replace(/^\*?\s+/, '').trim())
+      .filter(
+        branch => branch.length > 0 && branch !== baseBranch && !branch.startsWith('archive/')
+      )
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Get branches whose upstream tracking branch has been deleted on the remote.
+ *
+ * Run `git fetch --prune` first (or pass `fetch: false` to skip) to ensure
+ * remote-tracking refs are up to date, then look for branches whose tracking
+ * ref shows `: gone]` in `git branch -vv`.
+ *
+ * @param repoRoot - The repository root path
+ * @param options.fetch - Whether to `git fetch --prune` first (default: true)
+ * @returns Array of branch names whose upstream is gone
+ */
+export async function getGoneBranches(
+  repoRoot: string,
+  options: { fetch?: boolean } = {}
+): Promise<string[]> {
+  const git = getGit(repoRoot)
+  const shouldFetch = options.fetch ?? true
+
+  if (shouldFetch) {
+    try {
+      await git.fetch(['--prune'])
+    } catch {
+      // Fetch may fail if offline — continue with stale data
+    }
+  }
+
+  try {
+    const result = await git.raw(['branch', '-vv'])
+    const goneBranches: string[] = []
+
+    for (const line of result.split('\n')) {
+      // Match lines like: "  feature-auth  abc1234 [origin/feature-auth: gone] commit msg"
+      const match = line.match(/^\*?\s+(\S+)\s+\S+\s+\[.*: gone\]/)
+      if (match?.[1] && !match[1].startsWith('archive/')) {
+        goneBranches.push(match[1])
+      }
+    }
+
+    return goneBranches
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Fetch and prune remote-tracking references.
+ *
+ * Equivalent to `git fetch --prune`. Failures (e.g., offline) are swallowed.
+ *
+ * @param repoRoot - The repository root path
+ */
+export async function fetchAndPrune(repoRoot: string): Promise<void> {
+  const git = getGit(repoRoot)
+  try {
+    await git.fetch(['--prune'])
+  } catch {
+    // Swallow — caller handles degraded results
   }
 }
 
