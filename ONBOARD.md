@@ -58,6 +58,6 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 
 ## Useful Checks
 
-- `port list`: quick worktree and host-service summary
+- `port list`: list worktree names
 - `port kill [port]`: stop host processes started with port run
 - `port cleanup`: delete archived local branches from port remove

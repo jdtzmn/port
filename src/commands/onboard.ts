@@ -90,7 +90,7 @@ export function generateMarkdown(): string {
 
   lines.push('## Useful Checks')
   lines.push('')
-  lines.push('- `port list`: quick worktree and host-service summary')
+  lines.push('- `port list`: list worktree names')
   lines.push('- `port kill [port]`: stop host processes started with port run')
   lines.push('- `port cleanup`: delete archived local branches from port remove')
   lines.push('')
@@ -127,7 +127,7 @@ export async function onboard(options?: { md?: boolean }): Promise<void> {
   }
 
   output.info('Useful checks:')
-  output.dim(`- ${output.command('port list')}: quick worktree and host-service summary`)
+  output.dim(`- ${output.command('port list')}: list worktree names`)
   output.dim(`- ${output.command('port kill [port]')}: stop host processes started with port run`)
   output.dim(`- ${output.command('port cleanup')}: delete archived local branches from port remove`)
 }

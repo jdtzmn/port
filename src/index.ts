@@ -96,15 +96,10 @@ program
   .action(install)
 
 // port list
-program
-  .command('list')
-  .alias('ls')
-  .description('List worktrees and host service summary')
-  .option('-n, --names', 'Print only worktree names, one per line')
-  .action(list)
+program.command('list').alias('ls').description('Print worktree names, one per line').action(list)
 
 // port status
-program.command('status').description('Show per-service status for all worktrees').action(status)
+program.command('status').description('Show service status across all worktrees').action(status)
 
 // port enter <branch>
 program
