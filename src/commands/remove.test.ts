@@ -252,6 +252,39 @@ describe('remove command', () => {
     expect(mocks.removeWorktree).toHaveBeenCalledWith('/repo', 'demo-2', true)
   })
 
+  test('exits worktree before removing when git-detected inside it (no PORT_WORKTREE)', async () => {
+    delete process.env.PORT_WORKTREE
+    mocks.detectWorktree.mockReturnValue({
+      repoRoot: '/repo',
+      worktreePath: '/repo/.port/trees/demo-2',
+      name: 'demo-2',
+      isMainRepo: false,
+    })
+
+    await remove('demo-2')
+
+    expect(mocks.exit).toHaveBeenCalled()
+    const exitOrder = mocks.exit.mock.invocationCallOrder[0]!
+    const removeOrder = mocks.removeWorktree.mock.invocationCallOrder[0]!
+    expect(exitOrder).toBeLessThan(removeOrder)
+    expect(mocks.removeWorktree).toHaveBeenCalledWith('/repo', 'demo-2', true)
+  })
+
+  test('does not exit when git-detected inside a different worktree', async () => {
+    delete process.env.PORT_WORKTREE
+    mocks.detectWorktree.mockReturnValue({
+      repoRoot: '/repo',
+      worktreePath: '/repo/.port/trees/other-branch',
+      name: 'other-branch',
+      isMainRepo: false,
+    })
+
+    await remove('demo-2')
+
+    expect(mocks.exit).not.toHaveBeenCalled()
+    expect(mocks.removeWorktree).toHaveBeenCalledWith('/repo', 'demo-2', true)
+  })
+
   describe('auto-detect from current worktree', () => {
     test('detects branch from current worktree when no branch given', async () => {
       mocks.detectWorktree.mockReturnValue({

@@ -111,7 +111,12 @@ export async function remove(
     }
   }
   // If the user is currently inside the worktree being removed, exit first
-  if (process.env.PORT_WORKTREE === sanitized) {
+  // This handles both shell-hook usage (PORT_WORKTREE set) and direct cd into the worktree
+  const isInsideTargetWorktree =
+    process.env.PORT_WORKTREE === sanitized ||
+    (!worktreeInfo.isMainRepo && worktreeInfo.name === sanitized)
+
+  if (isInsideTargetWorktree) {
     await exit()
   }
 
