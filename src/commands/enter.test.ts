@@ -1,16 +1,31 @@
 import { join } from 'path'
-import { execPortAsync, fetchWithTimeout, prepareSample } from '@tests/utils'
+import { execPortAsync, fetchWithTimeout, prepareSample, safeDown } from '@tests/utils'
 import { describe, test, expect } from 'vitest'
 
-const TIMEOUT = 180000
-const POLL_TIMEOUT = 120000
+const TIMEOUT = 240000
+const POLL_TIMEOUT = 150000
 
-async function safeDown(worktreePath: string): Promise<void> {
-  try {
-    await execPortAsync(['down', '-y'], worktreePath)
-  } catch {
-    // Best-effort cleanup for failed tests.
+/**
+ * Poll a single URL until it returns HTTP 200, then return the body text.
+ * Polls independently so a transient failure on one service does not
+ * discard a successful response from another (unlike Promise.all).
+ */
+async function pollForText(url: string, maxWaitTime: number): Promise<string> {
+  const startTime = Date.now()
+
+  while (Date.now() - startTime < maxWaitTime) {
+    try {
+      const res = await fetchWithTimeout(url)
+      if (res.status === 200) {
+        return await res.text()
+      }
+    } catch {
+      // Service not ready yet
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000))
   }
+
+  throw new Error(`Timed out waiting for ${url} to respond`)
 }
 
 describe('parallel worktrees', () => {
@@ -35,35 +50,16 @@ describe('parallel worktrees', () => {
         await execPortAsync(['up'], worktreeADir)
         await execPortAsync(['up'], worktreeBDir)
 
-        // Wait for both pages to load and have different content
+        // Poll each service independently so a transient Traefik restart
+        // (caused by parallel test workers) doesn't discard a successful
+        // response from the other service.
         const aURL = 'http://a.port:3000'
         const bURL = 'http://b.port:3000'
 
-        const maxWaitTime = POLL_TIMEOUT
-        const startTime = Date.now()
-        let textA = ''
-        let textB = ''
-        let ready = false
-
-        while (Date.now() - startTime < maxWaitTime) {
-          try {
-            const [resA, resB] = await Promise.all([fetchWithTimeout(aURL), fetchWithTimeout(bURL)])
-
-            if (resA.status === 200 && resB.status === 200) {
-              textA = await resA.text()
-              textB = await resB.text()
-              ready = true
-              break
-            }
-          } catch {
-            // Services not ready yet, continue polling
-          }
-          await new Promise(resolve => setTimeout(resolve, 1000))
-        }
-
-        if (!ready) {
-          throw new Error('Timed out waiting for services to respond')
-        }
+        const [textA, textB] = await Promise.all([
+          pollForText(aURL, POLL_TIMEOUT),
+          pollForText(bURL, POLL_TIMEOUT),
+        ])
 
         expect(textA).not.toEqual(textB)
       } finally {

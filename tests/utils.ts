@@ -158,6 +158,21 @@ export async function bringDownAllComposeProjects() {
 }
 
 /**
+ * Stop compose services for a single directory without touching Traefik.
+ *
+ * Tests MUST use this instead of `port down -y` for cleanup because
+ * `port down -y` tears down the shared Traefik container when its registry
+ * is empty, breaking any other parallel test that still depends on routing.
+ */
+export async function safeDown(worktreePath: string): Promise<void> {
+  try {
+    await execAsync(`docker compose --project-directory "${worktreePath}" down`)
+  } catch {
+    // Best-effort cleanup – compose may not have been started.
+  }
+}
+
+/**
  * Fetch with a timeout to prevent hung requests from consuming the entire poll window.
  */
 export async function fetchWithTimeout(url: string, timeoutMs = 5000): Promise<Response> {

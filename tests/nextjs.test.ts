@@ -1,5 +1,5 @@
 import { join } from 'path'
-import { execPortAsync, fetchWithTimeout, prepareSample } from './utils'
+import { execPortAsync, fetchWithTimeout, prepareSample, safeDown } from './utils'
 import { describe, test, expect } from 'vitest'
 
 const TIMEOUT = 240000 // Next.js takes longer to start than other frameworks
@@ -61,14 +61,6 @@ async function fetchHtmlWithContent(
   }
 
   throw new Error(`Timed out waiting for ${url} to return expected content`)
-}
-
-async function safeDown(worktreePath: string): Promise<void> {
-  try {
-    await execPortAsync(['down', '-y'], worktreePath)
-  } catch {
-    // Best-effort cleanup in failure scenarios.
-  }
 }
 
 describe('Next.js routing through Traefik', () => {
