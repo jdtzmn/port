@@ -1,17 +1,9 @@
 import { join } from 'path'
-import { execPortAsync, fetchWithTimeout, prepareSample } from '@tests/utils'
+import { execPortAsync, fetchWithTimeout, prepareSample, safeDown } from '@tests/utils'
 import { describe, test, expect } from 'vitest'
 
 const TIMEOUT = 240000
 const POLL_TIMEOUT = 150000
-
-async function safeDown(worktreePath: string): Promise<void> {
-  try {
-    await execPortAsync(['down', '-y'], worktreePath)
-  } catch {
-    // Best-effort cleanup for failed tests.
-  }
-}
 
 /**
  * Poll a single URL until it returns HTTP 200, then return the body text.
