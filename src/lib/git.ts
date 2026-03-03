@@ -2,7 +2,6 @@ import simpleGit, { type SimpleGit } from 'simple-git'
 import { existsSync } from 'fs'
 import { getWorktreePath } from './worktree.ts'
 import { sanitizeBranchName } from './sanitize.ts'
-import { execAsync } from './exec.ts'
 
 /**
  * Error thrown when git operations fail
