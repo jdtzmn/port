@@ -222,7 +222,7 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
     output.info(`Removing ${output.branch(candidate.sanitized)}...`)
 
     const result = await removeWorktreeAndCleanup(ctx, candidate.branch, {
-      branchAction: 'delete', // Confirmed merged — skip archive, delete directly
+      branchAction: 'archive',
       quiet: true,
     })
 
@@ -243,5 +243,9 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
     )
   } else {
     output.success(`Pruned ${removedCount} worktree${removedCount === 1 ? '' : 's'}.`)
+  }
+
+  if (removedCount > 0) {
+    output.dim('Branches archived locally. Run "port cleanup" to permanently delete them.')
   }
 }
