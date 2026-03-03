@@ -18,6 +18,7 @@ import { handleCliError } from './lib/cli.ts'
 import { kill } from './commands/kill.ts'
 import { status } from './commands/status.ts'
 import { cleanup } from './commands/cleanup.ts'
+import { prune } from './commands/prune.ts'
 import { urls } from './commands/urls.ts'
 import { onboard } from './commands/onboard.ts'
 import { shellHook } from './commands/shell-hook.ts'
@@ -199,6 +200,16 @@ program
   .command('cleanup')
   .description('Delete archived branches created by port remove (with confirmation)')
   .action(cleanup)
+
+// port prune
+program
+  .command('prune')
+  .description('Remove worktrees for branches that have been merged')
+  .option('-n, --dry-run', 'List candidates without removing anything')
+  .option('-f, --force', 'Skip confirmation prompt')
+  .option('--no-fetch', 'Skip git fetch --prune (for offline use)')
+  .option('--base <branch>', 'Override default branch detection (e.g., --base develop)')
+  .action(prune)
 
 // port hook [hook-name]
 program

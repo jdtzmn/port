@@ -1,16 +1,10 @@
-import { existsSync } from 'fs'
 import inquirer from 'inquirer'
-import { detectWorktree, worktreeExists, getWorktreePath } from '../lib/worktree.ts'
+import { detectWorktree, worktreeExists } from '../lib/worktree.ts'
 import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
-import {
-  archiveBranch,
-  findWorktreeByBranch,
-  pruneWorktrees,
-  removeWorktree,
-  removeWorktreeAtPath,
-} from '../lib/git.ts'
-import { unregisterProject, hasRegisteredProjects } from '../lib/registry.ts'
-import { runCompose, stopTraefik, isTraefikRunning, getProjectName } from '../lib/compose.ts'
+import { findWorktreeByBranch } from '../lib/git.ts'
+import { hasRegisteredProjects } from '../lib/registry.ts'
+import { stopTraefik, isTraefikRunning } from '../lib/compose.ts'
+import { removeWorktreeAndCleanup } from '../lib/removal.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
 import { failWithError } from '../lib/cli.ts'
@@ -41,10 +35,8 @@ export async function remove(branch: string, options: RemoveOptions = {}): Promi
 
   // Sanitize branch name
   const sanitized = sanitizeBranchName(branch)
-  const expectedWorktreePath = getWorktreePath(repoRoot, branch)
 
-  let worktreePath = expectedWorktreePath
-  let nonStandardWorktree = false
+  let nonStandardPath: string | undefined
   let sourceBranch = branch
 
   if (!worktreeExists(repoRoot, branch)) {
@@ -54,13 +46,12 @@ export async function remove(branch: string, options: RemoveOptions = {}): Promi
       failWithError(`Worktree not found: ${sanitized}`)
     }
 
-    worktreePath = registeredWorktree.path
-    nonStandardWorktree = true
+    nonStandardPath = registeredWorktree.path
     sourceBranch = registeredWorktree.branch
 
     if (!options.force) {
       output.warn(`Worktree ${output.branch(sanitized)} is registered at a non-standard path:`)
-      output.dim(worktreePath)
+      output.dim(nonStandardPath)
 
       const { removeConfirm } = await inquirer.prompt<{ removeConfirm: boolean }>([
         {
@@ -82,63 +73,27 @@ export async function remove(branch: string, options: RemoveOptions = {}): Promi
     await exit()
   }
 
-  const worktreePathExists = existsSync(worktreePath)
-
   // Load config
   const config = await loadConfig(repoRoot)
   const composeFile = getComposeFile(config)
 
-  // Stop docker-compose services first
-  const projectName = getProjectName(repoRoot, sanitized)
-  if (worktreePathExists) {
-    output.info(`Stopping services in ${output.branch(sanitized)}...`)
-    const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['down'], {
-      repoRoot,
-      branch: sanitized,
-      domain: config.domain,
-    })
-    if (exitCode !== 0) {
-      output.warn('Failed to stop services')
-      // Continue with removal even if stop fails
-    } else {
-      output.success('Services stopped')
-    }
-  } else {
-    output.warn(`Worktree path missing on disk: ${worktreePath}`)
-    output.info('Skipping service shutdown and pruning stale worktree metadata...')
-  }
-
-  // Remove git worktree
   output.info(`Removing worktree: ${output.branch(sanitized)}...`)
-  try {
-    if (worktreePathExists) {
-      if (nonStandardWorktree) {
-        await removeWorktreeAtPath(repoRoot, worktreePath, true)
-      } else {
-        await removeWorktree(repoRoot, branch, true)
-      }
-      output.success('Worktree removed')
-    } else {
-      await pruneWorktrees(repoRoot)
-      output.success('Stale worktree metadata pruned')
+
+  const result = await removeWorktreeAndCleanup(
+    { repoRoot, composeFile, domain: config.domain },
+    sourceBranch,
+    {
+      branchAction: options.keepBranch ? 'keep' : 'archive',
+      nonStandardPath,
     }
-  } catch (error) {
-    failWithError(`Failed to remove worktree: ${error}`)
+  )
+
+  if (!result.success) {
+    failWithError(result.error ?? 'Failed to remove worktree')
   }
 
-  // Unregister project from global registry
-  await unregisterProject(repoRoot, sanitized)
-
-  // Soft-delete local branch unless explicitly preserved
-  if (!options.keepBranch) {
-    try {
-      const archivedBranch = await archiveBranch(repoRoot, sourceBranch)
-      if (archivedBranch) {
-        output.info(`Archived local branch as ${output.branch(archivedBranch)}`)
-      }
-    } catch (error) {
-      output.warn(`Failed to archive local branch '${sourceBranch}': ${error}`)
-    }
+  if (result.archivedBranch) {
+    output.info(`Archived local branch as ${output.branch(result.archivedBranch)}`)
   }
 
   // Check if Traefik should be stopped
