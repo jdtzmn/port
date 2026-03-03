@@ -1,6 +1,6 @@
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
-import { parseComposeFile, getServicePorts } from '../lib/compose.ts'
+import { parseComposeFile, getServicePorts, composePs, getProjectName } from '../lib/compose.ts'
 import * as output from '../lib/output.ts'
 
 /**
@@ -33,12 +33,25 @@ export async function urls(serviceName?: string): Promise<void> {
     process.exit(1)
   }
 
+  // Query Docker for running container status
+  const projectName = getProjectName(repoRoot, name)
+  const psResult = await composePs(worktreePath, composeFile, projectName, {
+    repoRoot,
+    branch: name,
+    domain: config.domain,
+  })
+  const runningServices = new Map(psResult.map(s => [s.name, s.running]))
+
   const services = Object.entries(parsedCompose.services)
     .map(([service, definition]) => {
       const ports = getServicePorts(definition)
+      const running = Array.from(runningServices.entries()).some(
+        ([containerName, isRunning]) => containerName.includes(service) && isRunning
+      )
       return {
         name: service,
         urls: ports.map(port => `http://${name}.${config.domain}:${port}`),
+        running,
       }
     })
     .filter(service => service.urls.length > 0)

@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   getComposeFile: vi.fn(),
   parseComposeFile: vi.fn(),
   getServicePorts: vi.fn(),
+  composePs: vi.fn(),
+  getProjectName: vi.fn(),
   header: vi.fn(),
   serviceUrls: vi.fn(),
   branch: vi.fn(),
@@ -27,6 +29,8 @@ vi.mock('../lib/config.ts', () => ({
 vi.mock('../lib/compose.ts', () => ({
   parseComposeFile: mocks.parseComposeFile,
   getServicePorts: mocks.getServicePorts,
+  composePs: mocks.composePs,
+  getProjectName: mocks.getProjectName,
 }))
 
 vi.mock('../lib/output.ts', () => ({
@@ -55,6 +59,8 @@ describe('urls command', () => {
     mocks.loadConfig.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
     mocks.getComposeFile.mockReturnValue('docker-compose.yml')
     mocks.branch.mockImplementation((value: string) => value)
+    mocks.getProjectName.mockReturnValue('repo-feature-1')
+    mocks.composePs.mockResolvedValue([])
 
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => {
       throw new Error(`process.exit:${typeof code === 'number' ? code : 0}`)
@@ -86,8 +92,8 @@ describe('urls command', () => {
 
     expect(mocks.header).toHaveBeenCalledWith('Service URLs for feature-1:')
     expect(mocks.serviceUrls).toHaveBeenCalledWith([
-      { name: 'web', urls: ['http://feature-1.port:3000'] },
-      { name: 'db', urls: ['http://feature-1.port:5432'] },
+      { name: 'web', urls: ['http://feature-1.port:3000'], running: false },
+      { name: 'db', urls: ['http://feature-1.port:5432'], running: false },
     ])
   })
 
@@ -111,7 +117,7 @@ describe('urls command', () => {
     await urls('web')
 
     expect(mocks.serviceUrls).toHaveBeenCalledWith([
-      { name: 'web', urls: ['http://feature-1.port:3000'] },
+      { name: 'web', urls: ['http://feature-1.port:3000'], running: false },
     ])
   })
 
@@ -149,7 +155,36 @@ describe('urls command', () => {
 
     expect(mocks.header).toHaveBeenCalledWith('Service URLs for repo:')
     expect(mocks.serviceUrls).toHaveBeenCalledWith([
-      { name: 'web', urls: ['http://repo.port:3000'] },
+      { name: 'web', urls: ['http://repo.port:3000'], running: false },
+    ])
+  })
+
+  test('marks services as running when containers are up', async () => {
+    const web = {}
+    const db = {}
+
+    mocks.parseComposeFile.mockResolvedValue({
+      name: 'repo',
+      services: {
+        web,
+        db,
+      },
+    })
+    mocks.getServicePorts.mockImplementation((service: object) => {
+      if (service === web) return [3000]
+      if (service === db) return [5432]
+      return []
+    })
+    mocks.composePs.mockResolvedValue([
+      { name: 'repo-feature-1-web-1', running: true },
+      { name: 'repo-feature-1-db-1', running: false },
+    ])
+
+    await urls()
+
+    expect(mocks.serviceUrls).toHaveBeenCalledWith([
+      { name: 'web', urls: ['http://feature-1.port:3000'], running: true },
+      { name: 'db', urls: ['http://feature-1.port:5432'], running: false },
     ])
   })
 })
