@@ -3,10 +3,12 @@ import {
   getSubcommands,
   getBranchCommands,
   getShellCommands,
+  getHookNameCommands,
   getCommandFlags,
   getGlobalFlags,
   getCommandDescriptions,
 } from '../lib/commands.ts'
+import { HOOK_NAMES } from '../lib/hooks.ts'
 import * as output from '../lib/output.ts'
 
 /**
@@ -52,6 +54,7 @@ function generateBashCompletion(): string {
   const subcommands = getSubcommands()
   const branchCommands = getBranchCommands()
   const shellCommands = getShellCommands()
+  const hookNameCommands = getHookNameCommands()
   const commandFlags = getCommandFlags()
   const globalFlags = getGlobalFlags()
 
@@ -59,6 +62,7 @@ function generateBashCompletion(): string {
   const branchCommandsPattern = branchCommands.join('|')
   const globalFlagList = globalFlags.join(' ')
   const shellList = SUPPORTED_SHELLS.join(' ')
+  const hookNameList = (HOOK_NAMES as readonly string[]).join(' ')
 
   // Build the per-command flag cases
   const flagCases = Object.entries(commandFlags)
@@ -76,6 +80,20 @@ function generateBashCompletion(): string {
         '  # ' + cmd + ' takes a shell name',
         '  if [[ "${words[1]}" == "' + cmd + '" && $cword -eq 2 ]]; then',
         '    COMPREPLY=($(compgen -W "' + shellList + '" -- "$cur"))',
+        '    return',
+        '  fi',
+      ].join('\n')
+    )
+    .join('')
+
+  // Build hook-name completion blocks
+  const hookBlocks = hookNameCommands
+    .map(cmd =>
+      [
+        '',
+        '  # ' + cmd + ' takes a hook name',
+        '  if [[ "${words[1]}" == "' + cmd + '" && $cword -eq 2 ]]; then',
+        '    COMPREPLY=($(compgen -W "' + hookNameList + '" -- "$cur"))',
         '    return',
         '  fi',
       ].join('\n')
@@ -129,6 +147,7 @@ function generateBashCompletion(): string {
     '      ;;',
     '  esac',
     shellBlocks,
+    hookBlocks,
     '}',
     '',
     'complete -F _port_completions port',
@@ -143,6 +162,7 @@ function generateZshCompletion(): string {
   const subcommands = getSubcommands()
   const branchCommands = getBranchCommands()
   const shellCommands = getShellCommands()
+  const hookNameCommands = getHookNameCommands()
   const commandFlags = getCommandFlags()
   const globalFlags = getGlobalFlags()
 
@@ -150,6 +170,7 @@ function generateZshCompletion(): string {
   const quotedGlobalFlags = globalFlags.map(f => "'" + f + "'").join(' ')
   const branchCommandsPattern = branchCommands.join('|')
   const shellList = SUPPORTED_SHELLS.join(' ')
+  const hookNameList = (HOOK_NAMES as readonly string[]).join(' ')
 
   // Build the per-command flag cases
   const flagCases = Object.entries(commandFlags)
@@ -207,6 +228,18 @@ function generateZshCompletion(): string {
     '    compadd -- ' + shellList,
     '    return',
     '  fi',
+    '',
+    '  # Hook-name-accepting commands: complete with hook names',
+    ...(hookNameCommands.length > 0
+      ? [
+          '  if [[ ' +
+            hookNameCommands.map(c => '"$cmd" == "' + c + '"').join(' || ') +
+            ' ]] && (( CURRENT == 3 )); then',
+          '    compadd -- ' + hookNameList,
+          '    return',
+          '  fi',
+        ]
+      : []),
     '}',
     '',
     'compdef _port port',
@@ -221,6 +254,7 @@ function generateFishCompletion(): string {
   const subcommands = getSubcommands()
   const branchCommands = getBranchCommands()
   const shellCommands = getShellCommands()
+  const hookNameCommands = getHookNameCommands()
   const commandFlags = getCommandFlags()
   const descriptions = getCommandDescriptions()
 
@@ -306,6 +340,18 @@ function generateFishCompletion(): string {
   const shellList = SUPPORTED_SHELLS.join(' ')
   for (const cmd of shellCommands) {
     lines.push("complete -c port -n '__port_using_subcommand " + cmd + "' -a '" + shellList + "'")
+  }
+
+  // Hook-name-accepting commands
+  if (hookNameCommands.length > 0) {
+    const hookNameList = (HOOK_NAMES as readonly string[]).join(' ')
+    lines.push('')
+    lines.push('# Hook name completions for hook-accepting commands')
+    for (const cmd of hookNameCommands) {
+      lines.push(
+        "complete -c port -n '__port_using_subcommand " + cmd + "' -a '" + hookNameList + "'"
+      )
+    }
   }
 
   return lines.join('\n')
