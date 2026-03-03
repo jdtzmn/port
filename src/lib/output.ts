@@ -66,10 +66,18 @@ export function branch(name: string): string {
 /**
  * Output service URLs in a formatted block
  */
-export function serviceUrls(services: Array<{ name: string; urls: string[] }>): void {
+export function serviceUrls(
+  services: Array<{ name: string; urls: string[]; running?: boolean }>
+): void {
   for (const service of services) {
+    const statusLabel =
+      service.running === undefined
+        ? ''
+        : service.running
+          ? ' ' + chalk.green('(running)')
+          : ' ' + chalk.dim('(stopped)')
     console.error()
-    console.error('  ' + chalk.bold(service.name) + ':')
+    console.error('  ' + chalk.bold(service.name) + statusLabel + ':')
     for (const serviceUrl of service.urls) {
       console.error('    ' + chalk.dim('•') + ' ' + url(serviceUrl))
     }

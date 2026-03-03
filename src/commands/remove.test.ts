@@ -251,4 +251,122 @@ describe('remove command', () => {
     expect(mocks.exit).not.toHaveBeenCalled()
     expect(mocks.removeWorktree).toHaveBeenCalledWith('/repo', 'demo-2', true)
   })
+
+  test('exits worktree before removing when git-detected inside it (no PORT_WORKTREE)', async () => {
+    delete process.env.PORT_WORKTREE
+    mocks.detectWorktree.mockReturnValue({
+      repoRoot: '/repo',
+      worktreePath: '/repo/.port/trees/demo-2',
+      name: 'demo-2',
+      isMainRepo: false,
+    })
+
+    await remove('demo-2')
+
+    expect(mocks.exit).toHaveBeenCalled()
+    const exitOrder = mocks.exit.mock.invocationCallOrder[0]!
+    const removeOrder = mocks.removeWorktree.mock.invocationCallOrder[0]!
+    expect(exitOrder).toBeLessThan(removeOrder)
+    expect(mocks.removeWorktree).toHaveBeenCalledWith('/repo', 'demo-2', true)
+  })
+
+  test('does not exit when git-detected inside a different worktree', async () => {
+    delete process.env.PORT_WORKTREE
+    mocks.detectWorktree.mockReturnValue({
+      repoRoot: '/repo',
+      worktreePath: '/repo/.port/trees/other-branch',
+      name: 'other-branch',
+      isMainRepo: false,
+    })
+
+    await remove('demo-2')
+
+    expect(mocks.exit).not.toHaveBeenCalled()
+    expect(mocks.removeWorktree).toHaveBeenCalledWith('/repo', 'demo-2', true)
+  })
+
+  describe('auto-detect from current worktree', () => {
+    test('detects branch from current worktree when no branch given', async () => {
+      mocks.detectWorktree.mockReturnValue({
+        repoRoot: '/repo',
+        worktreePath: '/repo/.port/trees/feature-1',
+        name: 'feature-1',
+        isMainRepo: false,
+      })
+      mocks.getWorktreePath.mockReturnValue('/repo/.port/trees/feature-1')
+      mocks.prompt.mockResolvedValue({ confirmRemove: true })
+
+      await remove(undefined)
+
+      expect(mocks.prompt).toHaveBeenCalledWith([
+        expect.objectContaining({
+          name: 'confirmRemove',
+          message: expect.stringContaining('feature-1'),
+          default: false,
+        }),
+      ])
+      expect(mocks.removeWorktree).toHaveBeenCalledWith('/repo', 'feature-1', true)
+    })
+
+    test('uses PORT_WORKTREE env var when at repo root', async () => {
+      process.env.PORT_WORKTREE = 'feature-2'
+      mocks.getWorktreePath.mockReturnValue('/repo/.port/trees/feature-2')
+      mocks.prompt.mockResolvedValue({ confirmRemove: true })
+
+      await remove(undefined)
+
+      expect(mocks.prompt).toHaveBeenCalledWith([
+        expect.objectContaining({
+          name: 'confirmRemove',
+          message: expect.stringContaining('feature-2'),
+        }),
+      ])
+      expect(mocks.removeWorktree).toHaveBeenCalledWith('/repo', 'feature-2', true)
+    })
+
+    test('fails when no branch and not in a worktree', async () => {
+      delete process.env.PORT_WORKTREE
+
+      await expect(remove(undefined)).rejects.toBeInstanceOf(CliError)
+      expect(mocks.error).toHaveBeenCalledWith('No branch specified and not inside a worktree')
+    })
+
+    test('cancels when user declines confirmation', async () => {
+      mocks.detectWorktree.mockReturnValue({
+        repoRoot: '/repo',
+        worktreePath: '/repo/.port/trees/feature-1',
+        name: 'feature-1',
+        isMainRepo: false,
+      })
+      mocks.prompt.mockResolvedValue({ confirmRemove: false })
+
+      await remove(undefined)
+
+      expect(mocks.info).toHaveBeenCalledWith('Removal cancelled')
+      expect(mocks.removeWorktree).not.toHaveBeenCalled()
+      expect(mocks.runCompose).not.toHaveBeenCalled()
+    })
+
+    test('skips confirmation with --force', async () => {
+      mocks.detectWorktree.mockReturnValue({
+        repoRoot: '/repo',
+        worktreePath: '/repo/.port/trees/feature-1',
+        name: 'feature-1',
+        isMainRepo: false,
+      })
+      mocks.getWorktreePath.mockReturnValue('/repo/.port/trees/feature-1')
+
+      await remove(undefined, { force: true })
+
+      expect(mocks.prompt).not.toHaveBeenCalled()
+      expect(mocks.removeWorktree).toHaveBeenCalledWith('/repo', 'feature-1', true)
+    })
+
+    test('does not prompt for confirmation when branch is explicitly provided', async () => {
+      await remove('demo-2')
+
+      expect(mocks.prompt).not.toHaveBeenCalled()
+      expect(mocks.removeWorktree).toHaveBeenCalledWith('/repo', 'demo-2', true)
+    })
+  })
 })

@@ -70,6 +70,23 @@ export function getShellCommands(): string[] {
 }
 
 /**
+ * Commands that accept a `[hook-name]` argument (detected by argument name).
+ */
+export function getHookNameCommands(): string[] {
+  const result: string[] = []
+
+  for (const command of program.commands) {
+    const hasHookArg = command.registeredArguments.some(arg => arg.name() === 'hook-name')
+    if (hasHookArg) {
+      result.push(command.name())
+      result.push(...command.aliases())
+    }
+  }
+
+  return result
+}
+
+/**
  * Per-command flags, keyed by command name and alias.
  * Only includes commands that have options beyond the global defaults.
  * Excludes hidden options.

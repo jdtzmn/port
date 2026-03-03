@@ -1,6 +1,6 @@
 import { detectWorktree } from '../lib/worktree.ts'
 import { hookExists, runHook, HOOK_NAMES, type HookName } from '../lib/hooks.ts'
-import { failWithError } from '../lib/cli.ts'
+import { CliError, failWithError } from '../lib/cli.ts'
 import * as output from '../lib/output.ts'
 
 /**
@@ -55,7 +55,7 @@ export async function hook(
     output.error('Missing hook name')
     output.newline()
     await listHooks(repoRoot)
-    process.exit(1)
+    throw new CliError('Missing hook name', { exitCode: 1, alreadyReported: true })
   }
 
   // Validate hook name
@@ -63,7 +63,7 @@ export async function hook(
     output.error(`Unknown hook "${hookName}"`)
     output.newline()
     await listHooks(repoRoot)
-    process.exit(1)
+    throw new CliError(`Unknown hook "${hookName}"`, { exitCode: 1, alreadyReported: true })
   }
 
   // Must be in a worktree
@@ -95,7 +95,10 @@ export async function hook(
   if (!result.success) {
     output.error(`Hook "${hookName}" failed (exit code ${result.exitCode})`)
     output.dim('See .port/logs/latest.log for details')
-    process.exit(1)
+    throw new CliError(`Hook "${hookName}" failed (exit code ${result.exitCode})`, {
+      exitCode: result.exitCode,
+      alreadyReported: true,
+    })
   }
 
   output.success(`Hook "${hookName}" completed`)
