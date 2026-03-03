@@ -147,14 +147,14 @@ program
   .option('-y, --yes', 'Skip confirmation prompt for stopping Traefik')
   .action(down)
 
-// port remove <branch>
+// port remove [branch]
 program
-  .command('remove <branch>')
+  .command('remove [branch]')
   .alias('rm')
   .description('Remove a worktree and stop its services')
-  .option('-f, --force', 'Skip confirmation for non-standard/stale worktree entries')
+  .option('-f, --force', 'Skip confirmation prompts')
   .option('--keep-branch', 'Keep the local branch instead of archiving it')
-  .action((branch: string, options: { force?: boolean; keepBranch?: boolean }) =>
+  .action((branch: string | undefined, options: { force?: boolean; keepBranch?: boolean }) =>
     remove(branch, options)
   )
 

@@ -1,6 +1,7 @@
 import { existsSync } from 'fs'
 import inquirer from 'inquirer'
 import { detectWorktree, worktreeExists, getWorktreePath } from '../lib/worktree.ts'
+import type { WorktreeInfo } from '../types.ts'
 import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
 import {
   archiveBranch,
@@ -24,12 +25,17 @@ interface RemoveOptions {
 /**
  * Remove a worktree and stop its services
  *
- * @param branch - The branch name of the worktree to remove
+ * @param branch - The branch name of the worktree to remove (auto-detected when omitted)
  */
-export async function remove(branch: string, options: RemoveOptions = {}): Promise<void> {
+export async function remove(
+  branch: string | undefined,
+  options: RemoveOptions = {}
+): Promise<void> {
   let repoRoot: string
+  let worktreeInfo: WorktreeInfo
   try {
-    repoRoot = detectWorktree().repoRoot
+    worktreeInfo = detectWorktree()
+    repoRoot = worktreeInfo.repoRoot
   } catch {
     failWithError('Not in a git repository')
   }
@@ -37,6 +43,33 @@ export async function remove(branch: string, options: RemoveOptions = {}): Promi
   // Check if port is initialized
   if (!configExists(repoRoot)) {
     failWithError('Port not initialized. Run "port init" first.')
+  }
+
+  // Auto-detect branch from current worktree when not specified
+  if (!branch) {
+    if (!worktreeInfo.isMainRepo) {
+      branch = worktreeInfo.name
+    } else if (process.env.PORT_WORKTREE) {
+      branch = process.env.PORT_WORKTREE
+    } else {
+      failWithError('No branch specified and not inside a worktree')
+    }
+
+    // Confirm removal when auto-detected
+    if (!options.force) {
+      const { confirmRemove } = await inquirer.prompt<{ confirmRemove: boolean }>([
+        {
+          type: 'confirm',
+          name: 'confirmRemove',
+          message: `Remove worktree ${output.branch(sanitizeBranchName(branch))}?`,
+          default: false,
+        },
+      ])
+      if (!confirmRemove) {
+        output.info('Removal cancelled')
+        return
+      }
+    }
   }
 
   // Sanitize branch name
