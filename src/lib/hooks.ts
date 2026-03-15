@@ -4,17 +4,39 @@ import { access, mkdir, appendFile } from 'fs/promises'
 import { join } from 'path'
 import { getPortDir, HOOKS_DIR, LOGS_DIR, LATEST_LOG } from './config.ts'
 
-/**
- * Available hook types
- * Add new hooks here as they are implemented
- */
-export type HookName = 'post-create'
+export type HookScope = 'worktree' | 'main'
+
+export interface HookDefinition {
+  /** Contexts where `port hook <name>` is allowed */
+  manualScopes: HookScope[]
+}
 
 /**
- * All available hook names
- * Keep in sync with HookName type above
+ * Hook definitions and policy metadata.
  */
-export const HOOK_NAMES: HookName[] = ['post-create']
+export const HOOK_DEFINITIONS = {
+  'post-create': {
+    manualScopes: ['worktree'],
+  },
+  'post-up': {
+    manualScopes: ['worktree', 'main'],
+  },
+} as const satisfies Record<string, HookDefinition>
+
+/** Available hook names derived from HOOK_DEFINITIONS */
+export type HookName = keyof typeof HOOK_DEFINITIONS
+
+/** All available hook names */
+export const HOOK_NAMES = Object.keys(HOOK_DEFINITIONS) as HookName[]
+
+/**
+ * Check if a hook can be run manually in the current context.
+ */
+export function canRunHookInContext(hookName: HookName, isMainRepo: boolean): boolean {
+  const currentScope: HookScope = isMainRepo ? 'main' : 'worktree'
+  const allowedScopes = HOOK_DEFINITIONS[hookName].manualScopes as readonly HookScope[]
+  return allowedScopes.includes(currentScope)
+}
 
 /**
  * Environment variables passed to hooks
@@ -26,6 +48,8 @@ export interface HookEnv {
   PORT_WORKTREE_PATH?: string
   /** The branch name (sanitized) */
   PORT_BRANCH?: string
+  /** Domain suffix from port config */
+  PORT_DOMAIN?: string
 }
 
 /**
@@ -208,8 +232,9 @@ export async function runPostCreateHook(options: {
   repoRoot: string
   worktreePath: string
   branch: string
+  domain?: string
 }): Promise<HookResult> {
-  const { repoRoot, worktreePath, branch } = options
+  const { repoRoot, worktreePath, branch, domain } = options
 
   return runHook(
     repoRoot,
@@ -218,6 +243,31 @@ export async function runPostCreateHook(options: {
       PORT_ROOT_PATH: repoRoot,
       PORT_WORKTREE_PATH: worktreePath,
       PORT_BRANCH: branch,
+      PORT_DOMAIN: domain,
+    },
+    branch
+  )
+}
+
+/**
+ * Run the post-up hook after services start in a worktree
+ */
+export async function runPostUpHook(options: {
+  repoRoot: string
+  worktreePath: string
+  branch: string
+  domain: string
+}): Promise<HookResult> {
+  const { repoRoot, worktreePath, branch, domain } = options
+
+  return runHook(
+    repoRoot,
+    'post-up',
+    {
+      PORT_ROOT_PATH: repoRoot,
+      PORT_WORKTREE_PATH: worktreePath,
+      PORT_BRANCH: branch,
+      PORT_DOMAIN: domain,
     },
     branch
   )

@@ -36,6 +36,11 @@ const STEPS: OnboardStep[] = [
     why: 'Starts services and wires routing through Traefik.',
   },
   {
+    command: 'port open',
+    how: 'Run after port up if you want to trigger your post-up workflow manually.',
+    why: 'Re-runs the post-up hook (for example, open the browser to your branch URL).',
+  },
+  {
     command: 'port urls [service]',
     how: 'Run in a worktree or repository root.',
     why: 'Shows the exact branch URLs to open and share.',

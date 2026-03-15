@@ -13,6 +13,7 @@ import {
 describe('command name helpers', () => {
   test('recognizes reserved commands and aliases', () => {
     expect(isReservedCommand('install')).toBe(true)
+    expect(isReservedCommand('open')).toBe(true)
     expect(isReservedCommand('ls')).toBe(true)
     expect(isReservedCommand('urls')).toBe(true)
     expect(isReservedCommand('feature/install-docs')).toBe(false)
@@ -42,6 +43,7 @@ describe('getSubcommands', () => {
     expect(cmds).toContain('list')
     expect(cmds).toContain('status')
     expect(cmds).toContain('up')
+    expect(cmds).toContain('open')
     expect(cmds).toContain('down')
     expect(cmds).toContain('completion')
   })

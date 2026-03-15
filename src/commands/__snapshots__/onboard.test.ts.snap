@@ -34,27 +34,32 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 - **How**: Run inside a worktree after entering it.
 - **Why**: Starts services and wires routing through Traefik.
 
-### 6. \`port urls [service]\`
+### 6. \`port open\`
+
+- **How**: Run after port up if you want to trigger your post-up workflow manually.
+- **Why**: Re-runs the post-up hook (for example, open the browser to your branch URL).
+
+### 7. \`port urls [service]\`
 
 - **How**: Run in a worktree or repository root.
 - **Why**: Shows the exact branch URLs to open and share.
 
-### 7. \`port status\`
+### 8. \`port status\`
 
 - **How**: Run anytime when you need service-level visibility.
 - **Why**: Shows running/stopped services across all worktrees.
 
-### 8. \`port down\`
+### 9. \`port down\`
 
 - **How**: Run in a worktree when you are done testing.
 - **Why**: Stops project services and offers Traefik shutdown when appropriate.
 
-### 9. \`port exit\`
+### 10. \`port exit\`
 
 - **How**: Run to return to the repository root from a worktree.
 - **Why**: Changes back to the repo root and clears PORT_WORKTREE env var.
 
-### 10. \`port remove <branch>\`
+### 11. \`port remove <branch>\`
 
 - **How**: Use after a branch is done.
 - **Why**: Stops services, removes worktree, and archives the local branch.
@@ -101,27 +106,32 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 - **How**: Run inside a worktree after entering it.
 - **Why**: Starts services and wires routing through Traefik.
 
-### 6. \`port urls [service]\`
+### 6. \`port open\`
+
+- **How**: Run after port up if you want to trigger your post-up workflow manually.
+- **Why**: Re-runs the post-up hook (for example, open the browser to your branch URL).
+
+### 7. \`port urls [service]\`
 
 - **How**: Run in a worktree or repository root.
 - **Why**: Shows the exact branch URLs to open and share.
 
-### 7. \`port status\`
+### 8. \`port status\`
 
 - **How**: Run anytime when you need service-level visibility.
 - **Why**: Shows running/stopped services across all worktrees.
 
-### 8. \`port down\`
+### 9. \`port down\`
 
 - **How**: Run in a worktree when you are done testing.
 - **Why**: Stops project services and offers Traefik shutdown when appropriate.
 
-### 9. \`port exit\`
+### 10. \`port exit\`
 
 - **How**: Run to return to the repository root from a worktree.
 - **Why**: Changes back to the repo root and clears PORT_WORKTREE env var.
 
-### 10. \`port remove <branch>\`
+### 11. \`port remove <branch>\`
 
 - **How**: Use after a branch is done.
 - **Why**: Stops services, removes worktree, and archives the local branch.
