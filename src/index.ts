@@ -24,6 +24,7 @@ import { onboard } from './commands/onboard.ts'
 import { shellHook } from './commands/shell-hook.ts'
 import { completion } from './commands/completion.ts'
 import { hook } from './commands/hook.ts'
+import { open } from './commands/open.ts'
 import { isReservedCommand } from './lib/commands.ts'
 import { detectWorktree } from './lib/worktree.ts'
 import { branchExists } from './lib/git.ts'
@@ -212,6 +213,9 @@ program
   .description('Re-run a hook script in the current worktree')
   .option('-l, --list', 'List available hooks and their status')
   .action(hook)
+
+// port open
+program.command('open').description('Run the post-up hook in the current worktree').action(open)
 
 // port completion <shell>
 program
