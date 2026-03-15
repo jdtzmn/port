@@ -12,6 +12,7 @@ import {
   appendLog,
   runHook,
   runPostCreateHook,
+  runPostUpHook,
   type HookEnv,
 } from './hooks.ts'
 import { PORT_DIR, HOOKS_DIR, LOGS_DIR, LATEST_LOG } from './config.ts'
@@ -61,6 +62,10 @@ describe('Path helper functions', () => {
     expect(getHookPath(repoRoot, 'post-create')).toBe(
       `${repoRoot}/${PORT_DIR}/${HOOKS_DIR}/post-create.sh`
     )
+  })
+
+  test('getHookPath returns correct path for post-up hook name', () => {
+    expect(getHookPath(repoRoot, 'post-up')).toBe(`${repoRoot}/${PORT_DIR}/${HOOKS_DIR}/post-up.sh`)
   })
 
   test('getLogsDir returns correct path', () => {
@@ -535,5 +540,45 @@ echo "BRANCH=$PORT_BRANCH" >> "${outputFile}"
 
     expect(result.success).toBe(true)
     expect(result.exitCode).toBe(0)
+  })
+})
+
+describe('runPostUpHook', () => {
+  let repoRoot: string
+  let worktreePath: string
+
+  beforeEach(async () => {
+    repoRoot = await setupMockRepo()
+    worktreePath = join(repoRoot, '.port', 'trees', 'test-branch')
+    await mkdir(worktreePath, { recursive: true })
+  })
+
+  afterEach(async () => {
+    await rm(repoRoot, { recursive: true, force: true })
+  })
+
+  test('passes domain and branch env values', async () => {
+    const outputFile = join(repoRoot, 'env-check-up.txt')
+    await createExecutableScript(
+      getHooksDir(repoRoot),
+      'post-up.sh',
+      `#!/bin/bash
+echo "BRANCH=$PORT_BRANCH" >> "${outputFile}"
+echo "DOMAIN=$PORT_DOMAIN" >> "${outputFile}"
+`
+    )
+
+    const result = await runPostUpHook({
+      repoRoot,
+      worktreePath,
+      branch: 'feature/test',
+      domain: 'port',
+    })
+
+    expect(result.success).toBe(true)
+
+    const content = readFileSync(outputFile, 'utf-8')
+    expect(content).toContain('BRANCH=feature/test')
+    expect(content).toContain('DOMAIN=port')
   })
 })

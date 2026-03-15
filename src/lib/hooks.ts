@@ -8,13 +8,13 @@ import { getPortDir, HOOKS_DIR, LOGS_DIR, LATEST_LOG } from './config.ts'
  * Available hook types
  * Add new hooks here as they are implemented
  */
-export type HookName = 'post-create'
+export type HookName = 'post-create' | 'post-up'
 
 /**
  * All available hook names
  * Keep in sync with HookName type above
  */
-export const HOOK_NAMES: HookName[] = ['post-create']
+export const HOOK_NAMES: HookName[] = ['post-create', 'post-up']
 
 /**
  * Environment variables passed to hooks
@@ -26,6 +26,8 @@ export interface HookEnv {
   PORT_WORKTREE_PATH?: string
   /** The branch name (sanitized) */
   PORT_BRANCH?: string
+  /** Domain suffix from port config */
+  PORT_DOMAIN?: string
 }
 
 /**
@@ -208,8 +210,9 @@ export async function runPostCreateHook(options: {
   repoRoot: string
   worktreePath: string
   branch: string
+  domain?: string
 }): Promise<HookResult> {
-  const { repoRoot, worktreePath, branch } = options
+  const { repoRoot, worktreePath, branch, domain } = options
 
   return runHook(
     repoRoot,
@@ -218,6 +221,31 @@ export async function runPostCreateHook(options: {
       PORT_ROOT_PATH: repoRoot,
       PORT_WORKTREE_PATH: worktreePath,
       PORT_BRANCH: branch,
+      PORT_DOMAIN: domain,
+    },
+    branch
+  )
+}
+
+/**
+ * Run the post-up hook after services start in a worktree
+ */
+export async function runPostUpHook(options: {
+  repoRoot: string
+  worktreePath: string
+  branch: string
+  domain: string
+}): Promise<HookResult> {
+  const { repoRoot, worktreePath, branch, domain } = options
+
+  return runHook(
+    repoRoot,
+    'post-up',
+    {
+      PORT_ROOT_PATH: repoRoot,
+      PORT_WORKTREE_PATH: worktreePath,
+      PORT_BRANCH: branch,
+      PORT_DOMAIN: domain,
     },
     branch
   )
