@@ -52,14 +52,14 @@ export function findAdjacentMatchIndex(
     for (const index of matchingIndices) {
       if (index > currentIndex) return index
     }
-    return currentIndex
+    return matchingIndices[0]!
   }
 
   for (let i = matchingIndices.length - 1; i >= 0; i--) {
     if (matchingIndices[i]! < currentIndex) return matchingIndices[i]!
   }
 
-  return currentIndex
+  return matchingIndices[matchingIndices.length - 1]!
 }
 
 export function findInitialFilteredSelection(

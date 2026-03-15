@@ -340,12 +340,19 @@ describe('Dashboard', () => {
     expect(frameLine(frame, 'bug-auth-ui')).toContain('>')
     expect(frameLine(frame, 'chore-clean')).not.toContain('>')
 
-    mockInput.pressKey('k')
+    mockInput.pressKey('j')
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
     frame = captureCharFrame()
     expect(frameLine(frame, 'feature-auth')).toContain('>')
+
+    mockInput.pressKey('k')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    frame = captureCharFrame()
+    expect(frameLine(frame, 'bug-auth-ui')).toContain('>')
   })
 
   test('[/] edit filter clears the current query before typing', async () => {

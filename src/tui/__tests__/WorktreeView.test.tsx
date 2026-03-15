@@ -406,6 +406,20 @@ describe('WorktreeView', () => {
 
     frame = captureCharFrame()
     expect(frameLine(frame, 'alpha:3000')).toContain('>')
+
+    mockInput.pressKey('k')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    frame = captureCharFrame()
+    expect(frameLine(frame, 'api:8080')).toContain('>')
+
+    mockInput.pressKey('j')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    frame = captureCharFrame()
+    expect(frameLine(frame, 'alpha:3000')).toContain('>')
   })
 
   test('Esc clears filtered mode and returns to normal navigation', async () => {

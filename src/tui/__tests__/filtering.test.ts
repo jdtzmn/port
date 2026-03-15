@@ -61,12 +61,12 @@ describe('findAdjacentMatchIndex', () => {
     expect(findAdjacentMatchIndex(7, -1, [1, 3, 7])).toBe(3)
   })
 
-  test('stays put when moving past the last match', () => {
-    expect(findAdjacentMatchIndex(7, 1, [1, 3, 7])).toBe(7)
+  test('wraps to first match when moving past the last match', () => {
+    expect(findAdjacentMatchIndex(7, 1, [1, 3, 7])).toBe(1)
   })
 
-  test('stays put when moving before the first match', () => {
-    expect(findAdjacentMatchIndex(1, -1, [1, 3, 7])).toBe(1)
+  test('wraps to last match when moving before the first match', () => {
+    expect(findAdjacentMatchIndex(1, -1, [1, 3, 7])).toBe(7)
   })
 
   test('stays put when no matches exist', () => {
