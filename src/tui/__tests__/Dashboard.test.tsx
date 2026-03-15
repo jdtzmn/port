@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { HostService, PortConfig } from '../../types.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
-import { Dashboard, findSubstringMatchRanges, buildServicesText } from '../views/Dashboard.tsx'
+import { findSubstringMatchRanges } from '../lib/filtering.ts'
+import { Dashboard, buildServicesText } from '../views/Dashboard.tsx'
 
 const mockConfig: PortConfig = { domain: 'port' }
 
