@@ -29,6 +29,7 @@ port up
 - **Host Process Support**: Run non-Docker processes (like `npm serve`) with Traefik routing
 - **DNS Setup**: Automated DNS configuration for `*.port` domains
 - **Service Discovery**: Easy access to services via hostnames instead of port numbers
+- **Lifecycle Hooks**: Run custom scripts after worktree creation and after `port up`
 
 ## Installation
 
@@ -151,6 +152,13 @@ port up
 
 Starts docker-compose services and makes them available at `feature-1.port:PORT`.
 
+If `.port/hooks/post-up.sh` is executable, Port runs it after services are up. You can manually
+rerun that hook with:
+
+```bash
+port open
+```
+
 ### 8. Stop Services
 
 ```bash
@@ -223,6 +231,7 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port <branch>`                                  | Enter a worktree (creates if doesn't exist)           |
 | `port exit`                                      | Exit the current worktree and return to repo root     |
 | `port up`                                        | Start docker-compose services in current worktree     |
+| `port open`                                      | Re-run the `post-up` hook in the current worktree     |
 | `port down`                                      | Stop docker-compose services and host processes       |
 | `port run <port> -- <command...>`                | Run a host process with Traefik routing               |
 | `port kill [port]`                               | Stop host services (optionally by logical port)       |
@@ -233,6 +242,32 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port urls [service]`                            | Show service URLs for current worktree                |
 | `port cleanup`                                   | Delete archived local branches with confirmation      |
 | `port uninstall [--yes] [--domain DOMAIN]`       | Remove DNS configuration for wildcard domain          |
+| `port hook [hook-name] [--list]`                 | List or manually run a configured lifecycle hook      |
+
+## Hooks
+
+Port supports executable shell hooks in `.port/hooks/`:
+
+- `post-create.sh`: runs after a new worktree is created by `port enter <branch>`
+- `post-up.sh`: runs after `port up` successfully starts services
+
+Both hooks receive these environment variables:
+
+- `PORT_ROOT_PATH`
+- `PORT_WORKTREE_PATH`
+- `PORT_BRANCH`
+- `PORT_DOMAIN`
+
+Manual hook commands:
+
+```bash
+port hook --list
+port hook post-create
+port hook post-up
+
+# shorthand for `port hook post-up`
+port open
+```
 
 ## How It Works
 

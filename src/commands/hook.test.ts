@@ -177,6 +177,23 @@ describe('hook command', () => {
     expect(mocks.success).toHaveBeenCalledWith('Hook "post-create" completed')
   })
 
+  test('runs post-up hook and reports success', async () => {
+    await hook('post-up', {})
+
+    expect(mocks.info).toHaveBeenCalledWith('Running post-up hook...')
+    expect(mocks.runHook).toHaveBeenCalledWith(
+      '/repo',
+      'post-up',
+      {
+        PORT_ROOT_PATH: '/repo',
+        PORT_WORKTREE_PATH: '/repo/.port/trees/my-branch',
+        PORT_BRANCH: 'my-branch',
+      },
+      'my-branch'
+    )
+    expect(mocks.success).toHaveBeenCalledWith('Hook "post-up" completed')
+  })
+
   // -----------------------------------------------------------------------
   // Failed hook execution
   // -----------------------------------------------------------------------
