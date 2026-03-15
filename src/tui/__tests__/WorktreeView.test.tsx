@@ -37,6 +37,10 @@ const mockActions = {
   killHostService: noopAsync,
 }
 
+function frameLine(frame: string, contains: string): string {
+  return frame.split('\n').find(line => line.includes(contains)) ?? ''
+}
+
 let currentRenderer: TestRenderer | null = null
 
 afterEach(() => {
@@ -263,5 +267,296 @@ describe('WorktreeView', () => {
     const serviceLines = lines.filter(l => l.includes('svc-'))
     expect(serviceLines.length).toBeLessThan(20)
     expect(serviceLines.length).toBeGreaterThan(0)
+  })
+
+  test('/ enters query mode and shows filter prompt', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={mockHostServices}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 90, height: 22 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const frame = captureCharFrame()
+    expect(frame).toContain('/ (type to filter)')
+    expect(frame).toContain('[Type]')
+    expect(frame).toContain('[Backspace]')
+  })
+
+  test('query mode accepts text and applies filter on Enter', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={mockHostServices}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 90, height: 22 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    mockInput.pressKey('a')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    mockInput.pressKey('p')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    mockInput.pressKey('i')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    let frame = captureCharFrame()
+    expect(frame).toContain('/api')
+    expect(frame).toContain('(1 match)')
+
+    mockInput.pressEnter()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    frame = captureCharFrame()
+    expect(frame).toContain('/api (1 match)')
+    expect(frame).toContain('[j/k]')
+    expect(frameLine(frame, 'api:8080')).toContain('>')
+  })
+
+  test('filtered navigation j/k skips non-matching services', async () => {
+    const filterWorktree: WorktreeStatus = {
+      name: 'filter-test',
+      path: '/repo/.port/trees/filter-test',
+      services: [
+        { name: 'alpha', ports: [3000], running: true },
+        { name: 'db', ports: [5432], running: false },
+        { name: 'api', ports: [8080], running: true },
+      ],
+      running: true,
+    }
+
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={filterWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 90, height: 22 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    mockInput.pressKey('a')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    mockInput.pressEnter()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    let frame = captureCharFrame()
+    expect(frameLine(frame, 'alpha:3000')).toContain('>')
+
+    mockInput.pressKey('j')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    frame = captureCharFrame()
+    expect(frameLine(frame, 'api:8080')).toContain('>')
+    expect(frameLine(frame, 'db:5432')).not.toContain('>')
+
+    mockInput.pressKey('k')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    frame = captureCharFrame()
+    expect(frameLine(frame, 'alpha:3000')).toContain('>')
+  })
+
+  test('Esc clears filtered mode and returns to normal navigation', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={mockHostServices}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 90, height: 22 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+    mockInput.pressKey('a')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+    mockInput.pressEnter()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    mockInput.pressEscape()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    let frame = captureCharFrame()
+    expect(frame).not.toContain('(match')
+
+    mockInput.pressKey('j')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    frame = captureCharFrame()
+    expect(frameLine(frame, 'db:5432')).toContain('>')
+  })
+
+  test('can filter by host-service port', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={mockHostServices}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 100, height: 24 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    for (const ch of ['5', '1', '7', '3']) {
+      mockInput.pressKey(ch)
+      await new Promise(resolve => setTimeout(resolve, 50))
+      await renderOnce()
+    }
+
+    mockInput.pressEnter()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const frame = captureCharFrame()
+    expect(frame).toContain('/5173 (1 match)')
+    expect(frameLine(frame, 'port 5173')).toContain('>')
+  })
+
+  test('Esc in query mode cancels back to normal mode', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={mockHostServices}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 90, height: 22 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+    mockInput.pressKey('d')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    let frame = captureCharFrame()
+    expect(frame).toContain('/d')
+
+    mockInput.pressEscape()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    frame = captureCharFrame()
+    expect(frame).not.toContain('/d')
+    expect(frame).toContain('[/]')
+  })
+
+  test('empty query Enter clears filter prompt', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={mockHostServices}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 90, height: 22 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    mockInput.pressEnter()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const frame = captureCharFrame()
+    expect(frame).not.toContain('(type to filter)')
+    expect(frame).toContain('[/]')
   })
 })

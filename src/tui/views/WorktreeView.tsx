@@ -6,6 +6,8 @@ import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
 import { KeyHints } from '../components/KeyHints.tsx'
+import { useFilterNavigation } from '../hooks/useFilterNavigation.ts'
+import { findSubstringMatchRanges, type MatchRange } from '../lib/filtering.ts'
 
 interface Actions {
   downWorktree: (worktreePath: string, worktreeName: string) => Promise<ActionResult>
@@ -35,6 +37,42 @@ interface ServiceItem {
   actualPort?: number
   /** Reference to original host service for kill action */
   hostService?: HostService
+}
+
+function serviceSearchText(service: ServiceItem): string {
+  if (service.type === 'docker') {
+    return `${service.name} docker ${service.port > 0 ? service.port : ''}`.trim()
+  }
+
+  return `${service.name} host ${service.port} ${service.actualPort ?? ''} ${service.pid ?? ''}`.trim()
+}
+
+function serviceLabelText(service: ServiceItem): string {
+  if (service.type === 'docker') {
+    return `${service.name}${service.port > 0 ? `:${service.port}` : ''}`
+  }
+
+  return `${service.name} :${service.port} -> :${service.actualPort} PID ${service.pid}`
+}
+
+function buildHighlightedSegments(text: string, ranges: MatchRange[]): React.ReactNode[] {
+  const segments: React.ReactNode[] = []
+  let cursor = 0
+  for (const range of ranges) {
+    if (range.start > cursor) {
+      segments.push(text.slice(cursor, range.start))
+    }
+    segments.push(
+      <span key={range.start} fg="#00AAFF">
+        {text.slice(range.start, range.end)}
+      </span>
+    )
+    cursor = range.end
+  }
+  if (cursor < text.length) {
+    segments.push(text.slice(cursor))
+  }
+  return segments
 }
 
 function buildServiceItems(
@@ -151,9 +189,24 @@ export function WorktreeView({
   const worktreeName = worktree?.name ?? 'unknown'
   const baseUrl = `http://${worktreeName}.${config.domain}`
   const services = buildServiceItems(worktree, hostServices, config, worktreeName)
+  const {
+    mode,
+    highlightQuery,
+    highlightMatches,
+    handleKey: handleFilterKey,
+  } = useFilterNavigation({
+    items: services,
+    setSelectedIndex,
+    getSearchText: serviceSearchText,
+  })
 
   useKeyboard(event => {
     if (event.ctrl || event.meta || busy) return
+    const keySequence = (event as { sequence?: string }).sequence
+
+    if (handleFilterKey({ eventName: event.name, keySequence })) {
+      return
+    }
 
     const maxIndex = Math.max(services.length - 1, 0)
 
@@ -253,12 +306,27 @@ export function WorktreeView({
               .map((service, i) => {
                 const globalIndex = services.findIndex(s => s === service)
                 const isSelected = globalIndex === selectedIndex
+                const labelText = serviceLabelText(service)
+                const matchRanges = highlightQuery
+                  ? findSubstringMatchRanges(labelText, highlightQuery)
+                  : []
 
                 return (
                   <box key={`${service.name}-${service.port}-${i}`} flexDirection="row" gap={1}>
                     <text>{isSelected ? '>' : ' '}</text>
-                    <text>{isSelected ? <b>{service.name}</b> : service.name}</text>
-                    {service.port > 0 && <text fg="#888888">:{service.port}</text>}
+                    <text>
+                      {isSelected ? (
+                        <b>
+                          {matchRanges.length > 0
+                            ? buildHighlightedSegments(labelText, matchRanges)
+                            : labelText}
+                        </b>
+                      ) : matchRanges.length > 0 ? (
+                        buildHighlightedSegments(labelText, matchRanges)
+                      ) : (
+                        labelText
+                      )}
+                    </text>
                     <StatusIndicator running={service.running} />
                     <text fg="#888888">{service.running ? 'running' : 'stopped'}</text>
                   </box>
@@ -280,15 +348,27 @@ export function WorktreeView({
               .map(service => {
                 const globalIndex = services.findIndex(s => s === service)
                 const isSelected = globalIndex === selectedIndex
+                const labelText = serviceLabelText(service)
+                const matchRanges = highlightQuery
+                  ? findSubstringMatchRanges(labelText, highlightQuery)
+                  : []
 
                 return (
                   <box key={`host-${service.port}`} flexDirection="row" gap={1}>
                     <text>{isSelected ? '>' : ' '}</text>
-                    <text>{isSelected ? <b>{service.name}</b> : service.name}</text>
-                    <text fg="#888888">
-                      :{service.port} → :{service.actualPort}
+                    <text>
+                      {isSelected ? (
+                        <b>
+                          {matchRanges.length > 0
+                            ? buildHighlightedSegments(labelText, matchRanges)
+                            : labelText}
+                        </b>
+                      ) : matchRanges.length > 0 ? (
+                        buildHighlightedSegments(labelText, matchRanges)
+                      ) : (
+                        labelText
+                      )}
                     </text>
-                    <text fg="#888888">PID {service.pid}</text>
                     <StatusIndicator running={service.running} />
                   </box>
                 )
@@ -308,16 +388,52 @@ export function WorktreeView({
         </text>
       )}
 
+      {mode !== 'normal' && (
+        <text
+          fg={
+            mode === 'query'
+              ? highlightQuery.length === 0
+                ? '#888888'
+                : highlightMatches.length > 0
+                  ? '#00AAFF'
+                  : '#FFAA00'
+              : '#00AAFF'
+          }
+        >
+          /{highlightQuery}{' '}
+          {highlightQuery.length === 0
+            ? '(type to filter)'
+            : `(${highlightMatches.length} match${highlightMatches.length === 1 ? '' : 'es'})`}
+        </text>
+      )}
+
       {/* Key hints */}
       <KeyHints
-        hints={[
-          { key: 'Enter', action: 'open in browser' },
-          { key: 'd', action: 'down' },
-          { key: 'x', action: 'kill host svc' },
-          { key: 'Esc', action: 'back' },
-          { key: 'r', action: 'refresh' },
-          { key: 'q', action: 'quit' },
-        ]}
+        hints={
+          mode === 'query'
+            ? [
+                { key: 'Type', action: 'filter' },
+                { key: 'Backspace', action: 'delete' },
+                { key: 'Enter', action: 'apply' },
+                { key: 'Esc', action: 'cancel' },
+              ]
+            : mode === 'filtered-nav'
+              ? [
+                  { key: 'j/k', action: 'next/prev match' },
+                  { key: '/', action: 'edit filter' },
+                  { key: 'Esc', action: 'clear filter' },
+                  { key: 'Enter', action: 'open in browser' },
+                ]
+              : [
+                  { key: 'Enter', action: 'open in browser' },
+                  { key: '/', action: 'filter' },
+                  { key: 'd', action: 'down' },
+                  { key: 'x', action: 'kill host svc' },
+                  { key: 'Esc', action: 'back' },
+                  { key: 'r', action: 'refresh' },
+                  { key: 'q', action: 'quit' },
+                ]
+        }
       />
     </box>
   )
