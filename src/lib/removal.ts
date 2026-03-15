@@ -26,6 +26,8 @@ export interface RemoveWorktreeOptions {
   branchAction: 'archive' | 'delete' | 'keep'
   /** Whether the worktree is at a non-standard path */
   nonStandardPath?: string
+  /** Skip stopping services (used by batched prune workflows) */
+  skipServices?: boolean
   /** Suppress per-step output (for batch operations) */
   quiet?: boolean
 }
@@ -34,6 +36,47 @@ export interface RemoveWorktreeResult {
   success: boolean
   error?: string
   archivedBranch?: string
+}
+
+interface StopWorktreeServicesOptions {
+  /** Whether the worktree is at a non-standard path */
+  nonStandardPath?: string
+  /** Suppress output while stopping services */
+  quiet?: boolean
+}
+
+/**
+ * Stop docker-compose services for a worktree.
+ *
+ * Non-zero compose exit codes are treated as non-fatal to match existing
+ * remove semantics.
+ */
+export async function stopWorktreeServices(
+  ctx: RemovalContext,
+  branch: string,
+  options: StopWorktreeServicesOptions = {}
+): Promise<void> {
+  const sanitized = sanitizeBranchName(branch)
+  const worktreePath = options.nonStandardPath ?? getWorktreePath(ctx.repoRoot, branch)
+  const worktreePathExists = existsSync(worktreePath)
+  const log = options.quiet ? () => {} : output.info
+
+  if (!worktreePathExists) {
+    return
+  }
+
+  const projectName = getProjectName(ctx.repoRoot, sanitized)
+  log(`Stopping services in ${output.branch(sanitized)}...`)
+
+  const { exitCode } = await runCompose(worktreePath, ctx.composeFile, projectName, ['down'], {
+    repoRoot: ctx.repoRoot,
+    branch: sanitized,
+    domain: ctx.domain,
+  })
+
+  if (exitCode !== 0 && !options.quiet) {
+    output.warn('Failed to stop services')
+  }
 }
 
 /**
@@ -56,19 +99,18 @@ export async function removeWorktreeAndCleanup(
   const sanitized = sanitizeBranchName(branch)
   const worktreePath = options.nonStandardPath ?? getWorktreePath(ctx.repoRoot, branch)
   const worktreePathExists = existsSync(worktreePath)
-  const log = options.quiet ? () => {} : output.info
 
   // 1. Stop Docker services
-  const projectName = getProjectName(ctx.repoRoot, sanitized)
-  if (worktreePathExists) {
-    log(`Stopping services in ${output.branch(sanitized)}...`)
-    const { exitCode } = await runCompose(worktreePath, ctx.composeFile, projectName, ['down'], {
-      repoRoot: ctx.repoRoot,
-      branch: sanitized,
-      domain: ctx.domain,
-    })
-    if (exitCode !== 0 && !options.quiet) {
-      output.warn('Failed to stop services')
+  if (!options.skipServices) {
+    try {
+      await stopWorktreeServices(ctx, branch, {
+        nonStandardPath: options.nonStandardPath,
+        quiet: options.quiet,
+      })
+    } catch (error) {
+      if (!options.quiet) {
+        output.warn(`Failed to stop services: ${error}`)
+      }
     }
   }
 
