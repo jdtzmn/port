@@ -215,7 +215,10 @@ program
   .action(hook)
 
 // port open
-program.command('open').description('Run the post-up hook in the current worktree').action(open)
+program
+  .command('open')
+  .description('Run the post-up hook in the current repo/worktree context')
+  .action(open)
 
 // port completion <shell>
 program

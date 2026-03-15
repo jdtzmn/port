@@ -6,6 +6,8 @@ import { tmpdir } from 'os'
 import {
   getHooksDir,
   getHookPath,
+  HOOK_NAMES,
+  canRunHookInContext,
   getLogsDir,
   getLogPath,
   hookExists,
@@ -74,6 +76,17 @@ describe('Path helper functions', () => {
 
   test('getLogPath returns correct path', () => {
     expect(getLogPath(repoRoot)).toBe(`${repoRoot}/${PORT_DIR}/${LOGS_DIR}/${LATEST_LOG}`)
+  })
+})
+
+describe('hook definitions', () => {
+  test('includes all hook names from definitions', () => {
+    expect(HOOK_NAMES).toEqual(['post-create', 'post-up'])
+  })
+
+  test('allows post-up in main repo but restricts post-create', () => {
+    expect(canRunHookInContext('post-up', true)).toBe(true)
+    expect(canRunHookInContext('post-create', true)).toBe(false)
   })
 })
 

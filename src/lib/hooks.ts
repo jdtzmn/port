@@ -4,17 +4,39 @@ import { access, mkdir, appendFile } from 'fs/promises'
 import { join } from 'path'
 import { getPortDir, HOOKS_DIR, LOGS_DIR, LATEST_LOG } from './config.ts'
 
-/**
- * Available hook types
- * Add new hooks here as they are implemented
- */
-export type HookName = 'post-create' | 'post-up'
+export type HookScope = 'worktree' | 'main'
+
+export interface HookDefinition {
+  /** Contexts where `port hook <name>` is allowed */
+  manualScopes: HookScope[]
+}
 
 /**
- * All available hook names
- * Keep in sync with HookName type above
+ * Hook definitions and policy metadata.
  */
-export const HOOK_NAMES: HookName[] = ['post-create', 'post-up']
+export const HOOK_DEFINITIONS = {
+  'post-create': {
+    manualScopes: ['worktree'],
+  },
+  'post-up': {
+    manualScopes: ['worktree', 'main'],
+  },
+} as const satisfies Record<string, HookDefinition>
+
+/** Available hook names derived from HOOK_DEFINITIONS */
+export type HookName = keyof typeof HOOK_DEFINITIONS
+
+/** All available hook names */
+export const HOOK_NAMES = Object.keys(HOOK_DEFINITIONS) as HookName[]
+
+/**
+ * Check if a hook can be run manually in the current context.
+ */
+export function canRunHookInContext(hookName: HookName, isMainRepo: boolean): boolean {
+  const currentScope: HookScope = isMainRepo ? 'main' : 'worktree'
+  const allowedScopes = HOOK_DEFINITIONS[hookName].manualScopes as readonly HookScope[]
+  return allowedScopes.includes(currentScope)
+}
 
 /**
  * Environment variables passed to hooks

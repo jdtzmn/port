@@ -221,28 +221,28 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 
 ## Commands
 
-| Command                                          | Description                                           |
-| ------------------------------------------------ | ----------------------------------------------------- |
-| `port init`                                      | Initialize `.port/` directory structure               |
-| `port onboard`                                   | Print recommended workflow and command usage guide    |
-| `port install [--dns-ip IP] [--domain DOMAIN]`   | Set up DNS for wildcard domain (default from config)  |
-| `port shell-hook <bash\|zsh\|fish>`              | Print shell integration code for automatic cd         |
-| `port enter <branch>`                            | Enter a worktree explicitly (including command names) |
-| `port <branch>`                                  | Enter a worktree (creates if doesn't exist)           |
-| `port exit`                                      | Exit the current worktree and return to repo root     |
-| `port up`                                        | Start docker-compose services in current worktree     |
-| `port open`                                      | Re-run the `post-up` hook in the current worktree     |
-| `port down`                                      | Stop docker-compose services and host processes       |
-| `port run <port> -- <command...>`                | Run a host process with Traefik routing               |
-| `port kill [port]`                               | Stop host services (optionally by logical port)       |
-| `port remove <branch> [--force] [--keep-branch]` | Remove worktree and archive local branch              |
-| `port compose <args...>`                         | Run docker compose with auto `-f` flags               |
-| `port list`                                      | Print worktree names, one per line                    |
-| `port status`                                    | Show service status across all worktrees              |
-| `port urls [service]`                            | Show service URLs for current worktree                |
-| `port cleanup`                                   | Delete archived local branches with confirmation      |
-| `port uninstall [--yes] [--domain DOMAIN]`       | Remove DNS configuration for wildcard domain          |
-| `port hook [hook-name] [--list]`                 | List or manually run a configured lifecycle hook      |
+| Command                                          | Description                                                    |
+| ------------------------------------------------ | -------------------------------------------------------------- |
+| `port init`                                      | Initialize `.port/` directory structure                        |
+| `port onboard`                                   | Print recommended workflow and command usage guide             |
+| `port install [--dns-ip IP] [--domain DOMAIN]`   | Set up DNS for wildcard domain (default from config)           |
+| `port shell-hook <bash\|zsh\|fish>`              | Print shell integration code for automatic cd                  |
+| `port enter <branch>`                            | Enter a worktree explicitly (including command names)          |
+| `port <branch>`                                  | Enter a worktree (creates if doesn't exist)                    |
+| `port exit`                                      | Exit the current worktree and return to repo root              |
+| `port up`                                        | Start docker-compose services in current worktree              |
+| `port open`                                      | Re-run the `post-up` hook in the current repo/worktree context |
+| `port down`                                      | Stop docker-compose services and host processes                |
+| `port run <port> -- <command...>`                | Run a host process with Traefik routing                        |
+| `port kill [port]`                               | Stop host services (optionally by logical port)                |
+| `port remove <branch> [--force] [--keep-branch]` | Remove worktree and archive local branch                       |
+| `port compose <args...>`                         | Run docker compose with auto `-f` flags                        |
+| `port list`                                      | Print worktree names, one per line                             |
+| `port status`                                    | Show service status across all worktrees                       |
+| `port urls [service]`                            | Show service URLs for current worktree                         |
+| `port cleanup`                                   | Delete archived local branches with confirmation               |
+| `port uninstall [--yes] [--domain DOMAIN]`       | Remove DNS configuration for wildcard domain                   |
+| `port hook [hook-name] [--list]`                 | List or manually run a configured lifecycle hook               |
 
 ## Hooks
 

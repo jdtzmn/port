@@ -14,8 +14,18 @@ const mocks = vi.hoisted(() => ({
   command: vi.fn((s: string) => s),
 }))
 
+const configMocks = vi.hoisted(() => ({
+  configExists: vi.fn(),
+  loadConfig: vi.fn(),
+}))
+
 vi.mock('../lib/worktree.ts', () => ({
   detectWorktree: mocks.detectWorktree,
+}))
+
+vi.mock('../lib/config.ts', () => ({
+  configExists: configMocks.configExists,
+  loadConfig: configMocks.loadConfig,
 }))
 
 vi.mock('../lib/hooks.ts', async importOriginal => {
@@ -50,6 +60,8 @@ describe('hook command', () => {
     })
     mocks.hookExists.mockResolvedValue(true)
     mocks.runHook.mockResolvedValue({ success: true, exitCode: 0 })
+    configMocks.configExists.mockReturnValue(false)
+    configMocks.loadConfig.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
   })
 
   // -----------------------------------------------------------------------
@@ -139,7 +151,49 @@ describe('hook command', () => {
 
     await expect(hook('post-create', {})).rejects.toBeInstanceOf(CliError)
     expect(mocks.error).toHaveBeenCalledWith(
-      'Must be inside a worktree to run hooks. Use `port enter <branch>` first.'
+      'Hook "post-create" can only be run from inside a worktree.'
+    )
+  })
+
+  test('allows post-up hook from main repo', async () => {
+    mocks.detectWorktree.mockReturnValue({
+      repoRoot: '/repo',
+      worktreePath: '/repo',
+      name: 'main',
+      isMainRepo: true,
+    })
+
+    await hook('post-up', {})
+
+    expect(mocks.runHook).toHaveBeenCalledWith(
+      '/repo',
+      'post-up',
+      {
+        PORT_ROOT_PATH: '/repo',
+        PORT_WORKTREE_PATH: '/repo',
+        PORT_BRANCH: 'main',
+        PORT_DOMAIN: undefined,
+      },
+      'main'
+    )
+  })
+
+  test('passes domain when config exists', async () => {
+    configMocks.configExists.mockReturnValue(true)
+    configMocks.loadConfig.mockResolvedValue({ domain: 'custom', compose: 'docker-compose.yml' })
+
+    await hook('post-up', {})
+
+    expect(mocks.runHook).toHaveBeenCalledWith(
+      '/repo',
+      'post-up',
+      {
+        PORT_ROOT_PATH: '/repo',
+        PORT_WORKTREE_PATH: '/repo/.port/trees/my-branch',
+        PORT_BRANCH: 'my-branch',
+        PORT_DOMAIN: 'custom',
+      },
+      'my-branch'
     )
   })
 
@@ -171,6 +225,7 @@ describe('hook command', () => {
         PORT_ROOT_PATH: '/repo',
         PORT_WORKTREE_PATH: '/repo/.port/trees/my-branch',
         PORT_BRANCH: 'my-branch',
+        PORT_DOMAIN: undefined,
       },
       'my-branch'
     )
@@ -188,6 +243,7 @@ describe('hook command', () => {
         PORT_ROOT_PATH: '/repo',
         PORT_WORKTREE_PATH: '/repo/.port/trees/my-branch',
         PORT_BRANCH: 'my-branch',
+        PORT_DOMAIN: undefined,
       },
       'my-branch'
     )
