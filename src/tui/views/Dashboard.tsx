@@ -7,13 +7,8 @@ import type { ActionResult } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
 import { KeyHints } from '../components/KeyHints.tsx'
 import { Confirm } from '../components/Confirm.tsx'
-import {
-  findAdjacentMatchIndex,
-  findInitialFilteredSelection,
-  findMatchingIndices,
-  findSubstringMatchRanges,
-  type MatchRange,
-} from '../lib/filtering.ts'
+import { useFilterNavigation } from '../hooks/useFilterNavigation.ts'
+import { findSubstringMatchRanges, type MatchRange } from '../lib/filtering.ts'
 
 interface Actions {
   upWorktree: (worktreePath: string, worktreeName: string) => Promise<ActionResult>
@@ -40,7 +35,6 @@ interface DashboardProps {
 }
 
 type PendingAction = 'archive' | null
-type JumpMode = 'normal' | 'query' | 'filtered-nav'
 
 /**
  * Build a plain-text summary of services for a worktree row.
@@ -92,11 +86,18 @@ export function Dashboard({
   })
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
   const [busy, setBusy] = useState(false)
-  const [jumpMode, setJumpMode] = useState<JumpMode>('normal')
-  const [appliedQuery, setAppliedQuery] = useState('')
-  const [draftQuery, setDraftQuery] = useState('')
   const initialSelectionAppliedRef = useRef(false)
   const scrollRef = useRef<ScrollBoxRenderable>(null)
+  const {
+    mode,
+    highlightQuery,
+    highlightMatches,
+    handleKey: handleFilterKey,
+  } = useFilterNavigation({
+    items: worktrees,
+    setSelectedIndex,
+    getSearchText: worktree => worktree.name,
+  })
 
   // Keep selected row visible inside the scrollbox
   useEffect(() => {
@@ -131,114 +132,20 @@ export function Dashboard({
     initialSelectionAppliedRef.current = true
   }, [initialSelectedName, worktrees])
 
-  const jumpModeRef = useRef<JumpMode>(jumpMode)
-  const appliedQueryRef = useRef(appliedQuery)
-  const draftQueryRef = useRef(draftQuery)
-
-  jumpModeRef.current = jumpMode
-  appliedQueryRef.current = appliedQuery
-  draftQueryRef.current = draftQuery
-
-  const updateJumpMode = (nextMode: JumpMode) => {
-    jumpModeRef.current = nextMode
-    setJumpMode(nextMode)
-  }
-
-  const updateAppliedQuery = (nextQuery: string) => {
-    appliedQueryRef.current = nextQuery
-    setAppliedQuery(nextQuery)
-  }
-
-  const updateDraftQuery = (nextQuery: string) => {
-    draftQueryRef.current = nextQuery
-    setDraftQuery(nextQuery)
-  }
-
   const selectedWorktree = worktrees[selectedIndex]
   const isRootSelected = selectedIndex === 0
-  const highlightQuery =
-    jumpMode === 'query' ? draftQuery : jumpMode === 'filtered-nav' ? appliedQuery : ''
-  const highlightMatches = findMatchingIndices(worktrees, highlightQuery)
+
   useKeyboard(event => {
     if (event.ctrl || event.meta || busy) return
 
     const keySequence = (event as { sequence?: string }).sequence
     const maxIndex = worktrees.length - 1
-    const currentJumpMode = jumpModeRef.current
-    const currentAppliedQuery = appliedQueryRef.current
-    const currentDraftQuery = draftQueryRef.current
 
     // If we're in a confirm dialog, don't handle navigation
     if (pendingAction) return
 
-    if (currentJumpMode === 'query') {
-      switch (event.name) {
-        case 'escape':
-        case 'esc':
-          updateDraftQuery(currentAppliedQuery)
-          updateJumpMode(currentAppliedQuery.length > 0 ? 'filtered-nav' : 'normal')
-          return
-        case 'return':
-          if (currentDraftQuery.length === 0) {
-            updateAppliedQuery('')
-            updateJumpMode('normal')
-            return
-          }
-
-          {
-            const matchingIndices = findMatchingIndices(worktrees, currentDraftQuery)
-            updateAppliedQuery(currentDraftQuery)
-            updateJumpMode('filtered-nav')
-            setSelectedIndex(index => findInitialFilteredSelection(index, matchingIndices))
-          }
-          return
-        case 'backspace':
-        case 'delete':
-          updateDraftQuery(currentDraftQuery.slice(0, -1))
-          return
-        default:
-          if (event.name.length === 1) {
-            updateDraftQuery(`${currentDraftQuery}${event.name}`)
-            return
-          }
-
-          if (typeof keySequence === 'string' && keySequence.length === 1) {
-            updateDraftQuery(`${currentDraftQuery}${keySequence}`)
-            return
-          }
-          return
-      }
-    }
-
-    if (
-      event.name === 'slash' ||
-      event.name === 'forwardslash' ||
-      event.name === '/' ||
-      keySequence === '/'
-    ) {
-      updateDraftQuery(currentJumpMode === 'filtered-nav' ? '' : currentAppliedQuery)
-      updateJumpMode('query')
+    if (handleFilterKey({ eventName: event.name, keySequence })) {
       return
-    }
-
-    if (currentJumpMode === 'filtered-nav') {
-      const filteredMatches = findMatchingIndices(worktrees, currentAppliedQuery)
-      switch (event.name) {
-        case 'escape':
-        case 'esc':
-          updateJumpMode('normal')
-          updateAppliedQuery('')
-          updateDraftQuery('')
-          return
-        case 'j':
-        case 'down':
-          setSelectedIndex(index => findAdjacentMatchIndex(index, 1, filteredMatches))
-          return
-        case 'k':
-        case 'up':
-          setSelectedIndex(index => findAdjacentMatchIndex(index, -1, filteredMatches))
-          return
-      }
     }
 
     switch (event.name) {
@@ -410,10 +317,10 @@ export function Dashboard({
       )}
 
       {/* Jump prompt */}
-      {jumpMode !== 'normal' && (
+      {mode !== 'normal' && (
         <text
           fg={
-            jumpMode === 'query'
+            mode === 'query'
               ? highlightQuery.length === 0
                 ? '#888888'
                 : highlightMatches.length > 0
@@ -442,14 +349,14 @@ export function Dashboard({
       {!pendingAction && (
         <KeyHints
           hints={
-            jumpMode === 'query'
+            mode === 'query'
               ? [
                   { key: 'Type', action: 'filter' },
                   { key: 'Backspace', action: 'delete' },
                   { key: 'Enter', action: 'apply' },
                   { key: 'Esc', action: 'cancel' },
                 ]
-              : jumpMode === 'filtered-nav'
+              : mode === 'filtered-nav'
                 ? [
                     { key: 'j/k', action: 'next/prev match' },
                     { key: '/', action: 'edit filter' },

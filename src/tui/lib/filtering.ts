@@ -25,11 +25,19 @@ export function findSubstringMatchRanges(text: string, query: string): MatchRang
 }
 
 export function findMatchingIndices(worktrees: WorktreeStatus[], query: string): number[] {
+  return findMatchingIndicesByText(worktrees, worktree => worktree.name, query)
+}
+
+export function findMatchingIndicesByText<T>(
+  items: T[],
+  getSearchText: (item: T) => string,
+  query: string
+): number[] {
   if (query.length === 0) return []
 
-  return worktrees
-    .map((worktree, index) => ({ worktree, index }))
-    .filter(({ worktree }) => findSubstringMatchRanges(worktree.name, query).length > 0)
+  return items
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => findSubstringMatchRanges(getSearchText(item), query).length > 0)
     .map(({ index }) => index)
 }
 
