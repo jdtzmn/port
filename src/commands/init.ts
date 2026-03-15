@@ -8,6 +8,7 @@ import {
   TREES_DIR,
   HOOKS_DIR,
   POST_CREATE_HOOK,
+  POST_UP_HOOK,
   getPortDir,
   getConfigPath,
   getTreesDir,
@@ -58,6 +59,28 @@ const POST_CREATE_HOOK_TEMPLATE = `#!/bin/bash
 # echo "Setting up worktree for $PORT_BRANCH..."
 # ln -s "$PORT_ROOT_PATH/.env" "$PORT_WORKTREE_PATH/.env"
 # cd "$PORT_WORKTREE_PATH" && npm install
+`
+
+/** Post-up hook template */
+const POST_UP_HOOK_TEMPLATE = `#!/bin/bash
+# Port post-up hook
+# Runs after 'port up' succeeds in a worktree
+#
+# Available environment variables:
+#   PORT_ROOT_PATH     - Absolute path to the main repository root
+#   PORT_WORKTREE_PATH - Absolute path to the current worktree
+#   PORT_BRANCH        - The branch name (sanitized)
+#   PORT_DOMAIN        - Configured domain suffix (for example: port)
+#
+# Exit non-zero to report a warning. This does not stop services.
+#
+# Examples:
+#   open "http://$PORT_BRANCH.$PORT_DOMAIN:3000"      # macOS
+#   xdg-open "http://$PORT_BRANCH.$PORT_DOMAIN:3000"  # Linux
+
+# Uncomment and customize below:
+# echo "Opening app for $PORT_BRANCH..."
+# open "http://$PORT_BRANCH.$PORT_DOMAIN:3000"
 `
 
 /** User compose override template */
@@ -135,6 +158,7 @@ export async function init(): Promise<void> {
   // Create hooks directory and post-create hook template
   const hooksDir = getHooksDir(repoRoot)
   const postCreateHookPath = getHookPath(repoRoot, 'post-create')
+  const postUpHookPath = getHookPath(repoRoot, 'post-up')
 
   if (!existsSync(hooksDir)) {
     await mkdir(hooksDir, { recursive: true })
@@ -147,6 +171,14 @@ export async function init(): Promise<void> {
     output.success(`Created ${PORT_DIR}/${HOOKS_DIR}/${POST_CREATE_HOOK}`)
   } else {
     output.dim(`${PORT_DIR}/${HOOKS_DIR}/${POST_CREATE_HOOK} already exists`)
+  }
+
+  if (!existsSync(postUpHookPath)) {
+    await writeFile(postUpHookPath, POST_UP_HOOK_TEMPLATE)
+    await chmod(postUpHookPath, 0o755) // Make executable
+    output.success(`Created ${PORT_DIR}/${HOOKS_DIR}/${POST_UP_HOOK}`)
+  } else {
+    output.dim(`${PORT_DIR}/${HOOKS_DIR}/${POST_UP_HOOK} already exists`)
   }
 
   // Create user override compose template
