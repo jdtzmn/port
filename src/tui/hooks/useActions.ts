@@ -176,6 +176,10 @@ export function reduceActionState(state: ActionState, event: ActionEvent): Actio
       return {
         ...state,
         runningByWorktree: nextRunningByWorktree,
+        outputVisibleByWorktree: {
+          ...state.outputVisibleByWorktree,
+          [existing.worktreeName]: false,
+        },
         jobs: {
           ...state.jobs,
           [event.jobId]: {

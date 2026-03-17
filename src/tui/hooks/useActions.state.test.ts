@@ -185,6 +185,46 @@ describe('reduceActionState', () => {
     const autoShown = reduceActionState(shown, { type: 'enqueue', job: nextJob })
     expect(autoShown.outputVisibleByWorktree['feature-a']).toBe(true)
   })
+
+  test('auto-hides output on all terminal outcomes', () => {
+    const base = reduceActionState(INITIAL_ACTION_STATE, {
+      type: 'enqueue',
+      job: makeJob({ id: 'job-1', worktreeName: 'feature-a' }),
+    })
+
+    const success = reduceActionState(base, {
+      type: 'finish',
+      jobId: 'job-1',
+      status: 'success',
+      endedAt: 10,
+    })
+    expect(success.outputVisibleByWorktree['feature-a']).toBe(false)
+
+    const baseError = reduceActionState(INITIAL_ACTION_STATE, {
+      type: 'enqueue',
+      job: makeJob({ id: 'job-2', worktreeName: 'feature-b' }),
+    })
+    const error = reduceActionState(baseError, {
+      type: 'finish',
+      jobId: 'job-2',
+      status: 'error',
+      endedAt: 10,
+      error: 'boom',
+    })
+    expect(error.outputVisibleByWorktree['feature-b']).toBe(false)
+
+    const baseCancelled = reduceActionState(INITIAL_ACTION_STATE, {
+      type: 'enqueue',
+      job: makeJob({ id: 'job-3', worktreeName: 'feature-c' }),
+    })
+    const cancelled = reduceActionState(baseCancelled, {
+      type: 'finish',
+      jobId: 'job-3',
+      status: 'cancelled',
+      endedAt: 10,
+    })
+    expect(cancelled.outputVisibleByWorktree['feature-c']).toBe(false)
+  })
 })
 
 describe('waitForRunningActionsToDrain', () => {
