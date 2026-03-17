@@ -1,6 +1,11 @@
 import { spawn } from 'child_process'
 import { detectWorktree, getWorktreePath, worktreeExists } from '../lib/worktree.ts'
-import { loadConfig, configExists, getTreesDir, getComposeFile } from '../lib/config.ts'
+import {
+  loadConfigOrDefault,
+  getTreesDir,
+  getComposeFile,
+  ensurePortRuntimeDir,
+} from '../lib/config.ts'
 import { branchExists, createWorktree, remoteBranchExists, removeWorktree } from '../lib/git.ts'
 import { writeOverrideFile, parseComposeFile, getProjectName } from '../lib/compose.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
@@ -30,14 +35,10 @@ export async function enter(branch: string): Promise<void> {
     process.exit(1)
   }
 
-  // Check if port is initialized
-  if (!configExists(repoRoot)) {
-    output.error('Port not initialized. Run "port init" first.')
-    process.exit(1)
-  }
+  await ensurePortRuntimeDir(repoRoot)
 
-  // Load config
-  const config = await loadConfig(repoRoot)
+  // Load config (defaults when config file is absent)
+  const config = await loadConfigOrDefault(repoRoot)
 
   // Sanitize branch name
   const sanitized = sanitizeBranchName(branch)

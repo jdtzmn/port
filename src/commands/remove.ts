@@ -1,7 +1,7 @@
 import inquirer from 'inquirer'
 import { detectWorktree, worktreeExists } from '../lib/worktree.ts'
 import type { WorktreeInfo } from '../types.ts'
-import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
+import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import { findWorktreeByBranch } from '../lib/git.ts'
 import { hasRegisteredProjects } from '../lib/registry.ts'
 import { stopTraefik, isTraefikRunning } from '../lib/compose.ts'
@@ -34,10 +34,7 @@ export async function remove(
     failWithError('Not in a git repository')
   }
 
-  // Check if port is initialized
-  if (!configExists(repoRoot)) {
-    failWithError('Port not initialized. Run "port init" first.')
-  }
+  await ensurePortRuntimeDir(repoRoot)
 
   // Auto-detect branch from current worktree when not specified
   if (!branch) {
@@ -111,8 +108,8 @@ export async function remove(
     await exit()
   }
 
-  // Load config
-  const config = await loadConfig(repoRoot)
+  // Load config (defaults when config file is absent)
+  const config = await loadConfigOrDefault(repoRoot)
   const composeFile = getComposeFile(config)
 
   output.info(`Removing worktree: ${output.branch(sanitized)}...`)

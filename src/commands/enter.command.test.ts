@@ -4,8 +4,8 @@ const mocks = vi.hoisted(() => ({
   detectWorktree: vi.fn(),
   getWorktreePath: vi.fn(),
   worktreeExists: vi.fn(),
-  loadConfig: vi.fn(),
-  configExists: vi.fn(),
+  loadConfigOrDefault: vi.fn(),
+  ensurePortRuntimeDir: vi.fn(),
   getTreesDir: vi.fn(),
   getComposeFile: vi.fn(),
   branchExists: vi.fn(),
@@ -38,8 +38,8 @@ vi.mock('../lib/worktree.ts', () => ({
 }))
 
 vi.mock('../lib/config.ts', () => ({
-  loadConfig: mocks.loadConfig,
-  configExists: mocks.configExists,
+  loadConfigOrDefault: mocks.loadConfigOrDefault,
+  ensurePortRuntimeDir: mocks.ensurePortRuntimeDir,
   getTreesDir: mocks.getTreesDir,
   getComposeFile: mocks.getComposeFile,
 }))
@@ -112,8 +112,8 @@ describe('enter typo confirmation', () => {
       name: 'main',
       isMainRepo: true,
     })
-    mocks.configExists.mockReturnValue(true)
-    mocks.loadConfig.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
+    mocks.ensurePortRuntimeDir.mockResolvedValue(undefined)
+    mocks.loadConfigOrDefault.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
     mocks.getTreesDir.mockReturnValue('/tmp')
     mocks.getComposeFile.mockReturnValue('docker-compose.yml')
     mocks.worktreeExists.mockReturnValue(false)
@@ -238,8 +238,8 @@ describe('enter with shell hook eval file', () => {
       name: 'main',
       isMainRepo: true,
     })
-    mocks.configExists.mockReturnValue(true)
-    mocks.loadConfig.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
+    mocks.ensurePortRuntimeDir.mockResolvedValue(undefined)
+    mocks.loadConfigOrDefault.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
     mocks.getTreesDir.mockReturnValue('/tmp')
     mocks.getComposeFile.mockReturnValue('docker-compose.yml')
     mocks.worktreeExists.mockReturnValue(true)

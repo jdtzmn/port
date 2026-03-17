@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   prompt: vi.fn(),
   detectWorktree: vi.fn(),
-  configExists: vi.fn(),
-  loadConfig: vi.fn(),
+  ensurePortRuntimeDir: vi.fn(),
+  loadConfigOrDefault: vi.fn(),
   getComposeFile: vi.fn(),
   unregisterProject: vi.fn(),
   hasRegisteredProjects: vi.fn(),
@@ -35,8 +35,8 @@ vi.mock('../lib/worktree.ts', () => ({
 }))
 
 vi.mock('../lib/config.ts', () => ({
-  configExists: mocks.configExists,
-  loadConfig: mocks.loadConfig,
+  ensurePortRuntimeDir: mocks.ensurePortRuntimeDir,
+  loadConfigOrDefault: mocks.loadConfigOrDefault,
   getComposeFile: mocks.getComposeFile,
 }))
 
@@ -78,8 +78,8 @@ describe('down fallback behavior', () => {
       throw new Error('Not in a git repository')
     })
 
-    mocks.configExists.mockReturnValue(true)
-    mocks.loadConfig.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
+    mocks.ensurePortRuntimeDir.mockResolvedValue(undefined)
+    mocks.loadConfigOrDefault.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
     mocks.getComposeFile.mockReturnValue('docker-compose.yml')
 
     mocks.unregisterProject.mockResolvedValue(undefined)
@@ -118,20 +118,19 @@ describe('down fallback behavior', () => {
     expect(mocks.stopTraefik).toHaveBeenCalledTimes(1)
   })
 
-  test('falls back to global Traefik shutdown when repo is not initialized', async () => {
+  test('uses defaults and runs compose down when repo has no config file', async () => {
     mocks.detectWorktree.mockReturnValue({
       repoRoot: '/repo',
       worktreePath: '/repo',
       name: 'main',
       isMainRepo: true,
     })
-    mocks.configExists.mockReturnValue(false)
+    mocks.loadConfigOrDefault.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
 
     await down({ yes: true })
 
-    expect(mocks.stopTraefik).toHaveBeenCalledTimes(1)
-    expect(mocks.runCompose).not.toHaveBeenCalled()
-    expect(mocks.unregisterProject).not.toHaveBeenCalled()
+    expect(mocks.runCompose).toHaveBeenCalledTimes(1)
+    expect(mocks.unregisterProject).toHaveBeenCalledWith('/repo', 'main')
   })
 
   test('exits cleanly when Traefik is not running', async () => {
@@ -150,7 +149,6 @@ describe('down fallback behavior', () => {
       name: 'main',
       isMainRepo: true,
     })
-    mocks.configExists.mockReturnValue(true)
     mocks.runCompose.mockRejectedValue(new Error('open .port/override.yml: no such file'))
     mocks.hasRegisteredProjects.mockResolvedValue(false)
     mocks.isTraefikRunning.mockResolvedValue(true)

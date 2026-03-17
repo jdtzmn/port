@@ -1,5 +1,5 @@
 import { detectWorktree } from '../lib/worktree.ts'
-import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
+import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import { registerProject } from '../lib/registry.ts'
 import { ensureTraefikPorts, traefikFilesExist, initTraefikFiles } from '../lib/traefik.ts'
 import {
@@ -34,11 +34,7 @@ export async function up(): Promise<void> {
 
   const { repoRoot, worktreePath, name } = worktreeInfo
 
-  // Check if port is initialized
-  if (!configExists(repoRoot)) {
-    output.error('Port not initialized. Run "port init" first.')
-    process.exit(1)
-  }
+  await ensurePortRuntimeDir(repoRoot)
 
   // Check docker-compose version
   const { supported, version } = await checkComposeVersion()
@@ -50,8 +46,8 @@ export async function up(): Promise<void> {
     output.warn(`docker-compose v${version} detected. v2.24.0+ recommended for !override support.`)
   }
 
-  // Load config
-  const config = await loadConfig(repoRoot)
+  // Load config (defaults when config file is absent)
+  const config = await loadConfigOrDefault(repoRoot)
   const composeFile = getComposeFile(config)
 
   const dnsConfigured = await checkDns(config.domain)

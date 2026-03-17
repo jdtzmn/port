@@ -1,3 +1,4 @@
+import { existsSync } from 'fs'
 import { describe, test, expect } from 'vitest'
 import { prepareSample, execPortAsync } from './utils'
 
@@ -49,12 +50,14 @@ describe('port urls command', () => {
     }
   })
 
-  test('errors when port is not initialized', async () => {
+  test('uses defaults and creates runtime .port/.gitignore when config is missing', async () => {
     const sample = await prepareSample('db-and-server', { gitInit: true })
 
     try {
-      const result = await execPortAsync(['urls'], sample.dir).catch(e => e)
-      expect(result.stderr).toContain('Port not initialized')
+      const result = await execPortAsync(['urls'], sample.dir)
+      expect(result.stderr).toContain(sample.urlWithPort(3000))
+      expect(result.stderr).toContain(sample.urlWithPort(5432))
+      expect(existsSync(`${sample.dir}/.port/.gitignore`)).toBe(true)
     } finally {
       await sample.cleanup()
     }

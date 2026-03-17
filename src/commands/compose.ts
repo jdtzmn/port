@@ -1,7 +1,7 @@
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { detectWorktree } from '../lib/worktree.ts'
-import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
+import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import { runCompose, getOverrideRelativePath, getProjectName } from '../lib/compose.ts'
 import * as output from '../lib/output.ts'
 
@@ -25,16 +25,12 @@ export async function compose(args: string[]): Promise<void> {
 
   const { repoRoot, worktreePath, name } = worktreeInfo
 
-  // Check if port is initialized
-  if (!configExists(repoRoot)) {
-    output.error('Port not initialized. Run "port init" first.')
-    process.exit(1)
-  }
+  await ensurePortRuntimeDir(repoRoot)
 
   // Load config
   let config
   try {
-    config = await loadConfig(repoRoot)
+    config = await loadConfigOrDefault(repoRoot)
   } catch (error) {
     output.error(`Failed to load config: ${error}`)
     process.exit(1)

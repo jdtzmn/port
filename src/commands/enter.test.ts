@@ -1,3 +1,4 @@
+import { existsSync } from 'fs'
 import { join } from 'path'
 import { execPortAsync, fetchWithTimeout, prepareSample, safeDown } from '@tests/utils'
 import { describe, test, expect } from 'vitest'
@@ -29,6 +30,35 @@ async function pollForText(url: string, maxWaitTime: number): Promise<string> {
 }
 
 describe('parallel worktrees', () => {
+  test(
+    'enter + up works without running port init first',
+    async () => {
+      const sample = await prepareSample('db-and-server', {
+        gitInit: true,
+      })
+
+      const branch = 'no-init-e2e'
+      const worktreeDir = join(sample.dir, `./.port/trees/${branch}`)
+      const url = `http://${branch}.port:3000`
+
+      try {
+        await execPortAsync(['enter', branch], sample.dir)
+        expect(existsSync(worktreeDir)).toBe(true)
+        expect(existsSync(join(sample.dir, '.port/.gitignore'))).toBe(true)
+
+        await execPortAsync(['up'], worktreeDir)
+        expect(existsSync(join(worktreeDir, '.port/override.yml'))).toBe(true)
+
+        const text = await pollForText(url, POLL_TIMEOUT)
+        expect(text).toContain('Hello from')
+      } finally {
+        await safeDown(worktreeDir)
+        await sample.cleanup()
+      }
+    },
+    TIMEOUT + 1000
+  )
+
   test(
     'separate worktrees have separate domains without conflict',
     async () => {

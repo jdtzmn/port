@@ -28,11 +28,12 @@ describe('port compose command', () => {
     await sample.cleanup()
   })
 
-  test('errors when port is not initialized', async () => {
+  test('uses default runtime config when port is not initialized', async () => {
     const sample = await prepareSample('db-and-server', { gitInit: true })
-    // Initialize git but not port
+    // Initialize git but not port config
     const result = await execPortAsync(['compose', 'ps'], sample.dir).catch(e => e)
-    expect(result.stderr).toContain('Port not initialized')
+    expect(result.stderr).toContain('Override file not found')
+    expect(result.stderr).toContain('port up')
     await sample.cleanup()
   })
 

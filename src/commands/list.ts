@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from 'fs'
 import { detectWorktree } from '../lib/worktree.ts'
-import { configExists, getTreesDir } from '../lib/config.ts'
+import { getTreesDir } from '../lib/config.ts'
 import { sanitizeBranchName, sanitizeFolderName } from '../lib/sanitize.ts'
 import { listWorktrees } from '../lib/git.ts'
 
@@ -82,12 +82,11 @@ export async function getWorktreeNamesWithOriginals(repoRoot: string): Promise<s
 export async function list(): Promise<void> {
   try {
     const repoRoot = detectWorktree().repoRoot
-    if (!configExists(repoRoot)) return
     const names = await getWorktreeNamesWithOriginals(repoRoot)
     for (const name of names) {
       console.log(name)
     }
   } catch {
-    // Not in a git repo or no port config — output nothing
+    // Not in a git repo — output nothing
   }
 }

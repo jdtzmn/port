@@ -1,5 +1,5 @@
 import { detectWorktree } from '../lib/worktree.ts'
-import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
+import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import { parseComposeFile, getServicePorts, composePs, getProjectName } from '../lib/compose.ts'
 import * as output from '../lib/output.ts'
 
@@ -17,12 +17,9 @@ export async function urls(serviceName?: string): Promise<void> {
 
   const { repoRoot, worktreePath, name } = worktreeInfo
 
-  if (!configExists(repoRoot)) {
-    output.error('Port not initialized. Run "port init" first.')
-    process.exit(1)
-  }
+  await ensurePortRuntimeDir(repoRoot)
 
-  const config = await loadConfig(repoRoot)
+  const config = await loadConfigOrDefault(repoRoot)
   const composeFile = getComposeFile(config)
   const projectName = getProjectName(repoRoot, name)
 

@@ -9,6 +9,7 @@ import {
   HOOKS_DIR,
   POST_CREATE_HOOK,
   POST_UP_HOOK,
+  PORT_RUNTIME_GITIGNORE,
   getPortDir,
   getConfigPath,
   getTreesDir,
@@ -26,18 +27,6 @@ const CONFIG_TEMPLATE = `{
   // Path to docker-compose file (default: docker-compose.yml)
   "compose": "docker-compose.yml"
 }
-`
-
-/** .gitignore content for .port directory */
-const GITIGNORE_CONTENT = `# Ignore worktrees (they're local only)
-trees/
-
-# Generated override file for main repo
-override.yml
-override.user.yml
-
-# Hook logs
-logs/
 `
 
 /** Post-create hook template */
@@ -199,7 +188,7 @@ export async function init(): Promise<void> {
 
   // Create .gitignore if it doesn't exist
   if (!existsSync(gitignorePath)) {
-    await writeFile(gitignorePath, GITIGNORE_CONTENT)
+    await writeFile(gitignorePath, PORT_RUNTIME_GITIGNORE)
     output.success(`Created ${PORT_DIR}/.gitignore`)
   }
 

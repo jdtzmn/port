@@ -50,13 +50,13 @@ Want a guided workflow in the CLI?
 port onboard
 ```
 
-### 1. Initialize Project
+### 1. (Optional) Initialize Project
 
 ```bash
 port init
 ```
 
-This sets up the `.port/` directory structure and checks DNS configuration.
+This scaffolds `.port/config.jsonc`, hooks, and templates. Core worktree commands can run without this step.
 
 ### 2. Configure Project
 

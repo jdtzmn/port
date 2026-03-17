@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'child_process'
 import inquirer from 'inquirer'
 import { detectWorktree } from '../lib/worktree.ts'
-import { loadConfig, configExists } from '../lib/config.ts'
+import { loadConfigOrDefault, ensurePortRuntimeDir } from '../lib/config.ts'
 import { getHostService } from '../lib/registry.ts'
 import { ensureTraefikPorts, traefikFilesExist, initTraefikFiles } from '../lib/traefik.ts'
 import { startTraefik, isTraefikRunning, restartTraefik } from '../lib/compose.ts'
@@ -46,14 +46,10 @@ export async function run(logicalPort: number, command: string[]): Promise<void>
 
   const { repoRoot, name: branch } = worktreeInfo
 
-  // Check if port is initialized
-  if (!configExists(repoRoot)) {
-    output.error('Port not initialized. Run "port init" first.')
-    process.exit(1)
-  }
+  await ensurePortRuntimeDir(repoRoot)
 
-  // Load config to get domain
-  const config = await loadConfig(repoRoot)
+  // Load config to get domain (defaults when config file is absent)
+  const config = await loadConfigOrDefault(repoRoot)
   const domain = config.domain
 
   // Clean up stale host services

@@ -6,8 +6,8 @@ const mocks = vi.hoisted(() => ({
   detectWorktree: vi.fn(),
   worktreeExists: vi.fn(),
   getWorktreePath: vi.fn(),
-  configExists: vi.fn(),
-  loadConfig: vi.fn(),
+  ensurePortRuntimeDir: vi.fn(),
+  loadConfigOrDefault: vi.fn(),
   getComposeFile: vi.fn(),
   findWorktreeByBranch: vi.fn(),
   archiveBranch: vi.fn(),
@@ -44,8 +44,8 @@ vi.mock('../lib/worktree.ts', () => ({
 }))
 
 vi.mock('../lib/config.ts', () => ({
-  configExists: mocks.configExists,
-  loadConfig: mocks.loadConfig,
+  ensurePortRuntimeDir: mocks.ensurePortRuntimeDir,
+  loadConfigOrDefault: mocks.loadConfigOrDefault,
   getComposeFile: mocks.getComposeFile,
 }))
 
@@ -106,8 +106,8 @@ describe('remove command', () => {
     mocks.worktreeExists.mockReturnValue(true)
     mocks.getWorktreePath.mockReturnValue('/repo/.port/trees/demo-2')
 
-    mocks.configExists.mockReturnValue(true)
-    mocks.loadConfig.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
+    mocks.ensurePortRuntimeDir.mockResolvedValue(undefined)
+    mocks.loadConfigOrDefault.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
     mocks.getComposeFile.mockReturnValue('docker-compose.yml')
 
     mocks.findWorktreeByBranch.mockResolvedValue(null)
