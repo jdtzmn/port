@@ -293,10 +293,16 @@ export function Dashboard({
   const selectedOutputVisible = selectedWorktree
     ? actions.isOutputVisible(selectedWorktree.name)
     : true
-  const showOutput = Boolean(
+  const hasOutputContext = Boolean(
     selectedWorktree &&
-    selectedOutputVisible &&
-    (selectedRunningAction || selectedOutputTail.length > 0 || selectedOutputLines.length > 0)
+    (selectedRunningAction ||
+      selectedOutputTail.length > 0 ||
+      selectedOutputLines.length > 0 ||
+      selectedLatestJob)
+  )
+  const showOutput = Boolean(selectedWorktree && selectedOutputVisible && hasOutputContext)
+  const showOutputPlaceholder = Boolean(
+    selectedWorktree && !selectedOutputVisible && hasOutputContext
   )
   const prevOutputVisibilityRef = useRef(false)
   const prevOutputWorktreeRef = useRef<string | null>(null)
@@ -611,7 +617,7 @@ export function Dashboard({
               <b>
                 {formatOutputTitle(selectedWorktree.name, selectedLatestJob, selectedRunningAction)}
               </b>{' '}
-              <span fg="#CCCCCC">[l]</span> toggle
+              <span fg="#CCCCCC">[l]</span> hide
             </text>
             <scrollbox
               ref={node => {
@@ -638,6 +644,15 @@ export function Dashboard({
               {selectedOutputLines.length === 0 && <text fg="#666666">No output yet...</text>}
             </scrollbox>
           </box>
+        )}
+
+        {showOutputPlaceholder && selectedWorktree && (
+          <text fg="#888888" flexShrink={0}>
+            <b>
+              {formatOutputTitle(selectedWorktree.name, selectedLatestJob, selectedRunningAction)}
+            </b>{' '}
+            <span fg="#CCCCCC">[l]</span> show
+          </text>
         )}
       </box>
 

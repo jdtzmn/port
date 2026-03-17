@@ -430,7 +430,7 @@ describe('Dashboard', () => {
     const frame = captureCharFrame()
 
     expect(frame).toContain('Output (myapp)')
-    expect(frame).toContain('[l] toggle')
+    expect(frame).toContain('[l] hide')
     expect(frame).toContain('Building app...')
     expect(frame).toContain('warning: cache miss')
   })
@@ -459,7 +459,7 @@ describe('Dashboard', () => {
     expect(toggled).toEqual(['myapp'])
   })
 
-  test('hides output section when selected worktree output is toggled off', async () => {
+  test('shows output placeholder when selected worktree output is toggled off', async () => {
     const tail = [{ stream: 'stdout' as const, line: 'line-1' }]
 
     const { renderer, renderOnce, captureCharFrame } = await testRender(
@@ -478,7 +478,8 @@ describe('Dashboard', () => {
 
     await renderOnce()
     const frame = captureCharFrame()
-    expect(frame).not.toContain('Output (myapp)')
+    expect(frame).toContain('Output (myapp)')
+    expect(frame).toContain('[l] show')
     expect(frame).not.toContain('line-1')
   })
 
@@ -498,7 +499,8 @@ describe('Dashboard', () => {
     currentRenderer = renderer
 
     await renderOnce()
-    expect(captureCharFrame()).not.toContain('Output (myapp)')
+    expect(captureCharFrame()).toContain('Output (myapp)')
+    expect(captureCharFrame()).toContain('[l] show')
 
     await pressAndRender(mockInput, renderOnce, 'j')
     const frame = captureCharFrame()

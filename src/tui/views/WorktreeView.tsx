@@ -221,8 +221,10 @@ export function WorktreeView({
       .filter(isOutputEntry)
       .map(entry => ({ stream: entry.stream, line: entry.line })) ?? outputTail
   const outputVisible = actions.isOutputVisible(worktreeName)
-  const showOutput =
-    outputVisible && (runningAction || outputTail.length > 0 || outputLines.length > 0)
+  const hasOutputContext =
+    runningAction || outputTail.length > 0 || outputLines.length > 0 || Boolean(latestJob)
+  const showOutput = outputVisible && hasOutputContext
+  const showOutputPlaceholder = !outputVisible && hasOutputContext
   const prevOutputVisibleRef = useRef(false)
 
   useKeyboard(event => {
@@ -332,7 +334,7 @@ export function WorktreeView({
         <box flexDirection="column" flexShrink={0}>
           <text fg="#888888">
             <b>{formatOutputTitle(worktreeName, latestJob, runningAction)}</b>{' '}
-            <span fg="#CCCCCC">[l]</span> toggle
+            <span fg="#CCCCCC">[l]</span> hide
           </text>
           <scrollbox
             ref={outputScrollRef}
@@ -352,6 +354,13 @@ export function WorktreeView({
             {outputLines.length === 0 && <text fg="#666666">No output yet...</text>}
           </scrollbox>
         </box>
+      )}
+
+      {showOutputPlaceholder && (
+        <text fg="#888888" flexShrink={0}>
+          <b>{formatOutputTitle(worktreeName, latestJob, runningAction)}</b>{' '}
+          <span fg="#CCCCCC">[l]</span> show
+        </text>
       )}
 
       <box height={1} flexShrink={0} />

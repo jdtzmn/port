@@ -480,7 +480,7 @@ describe('WorktreeView', () => {
     await renderOnce()
     const frame = captureCharFrame()
     expect(frame).toContain('Output (feature-auth)')
-    expect(frame).toContain('[l] toggle')
+    expect(frame).toContain('[l] hide')
     expect(frame).toContain('Stopping services...')
     expect(frame).toContain('warning: network busy')
   })
@@ -517,7 +517,7 @@ describe('WorktreeView', () => {
     expect(toggled).toEqual(['feature-auth'])
   })
 
-  test('hides output section when visibility is off for worktree', async () => {
+  test('shows output placeholder when visibility is off for worktree', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <WorktreeView
         worktree={mockWorktree}
@@ -541,7 +541,8 @@ describe('WorktreeView', () => {
 
     await renderOnce()
     const frame = captureCharFrame()
-    expect(frame).not.toContain('Output (feature-auth)')
+    expect(frame).toContain('Output (feature-auth)')
+    expect(frame).toContain('[l] show')
     expect(frame).not.toContain('line-1')
   })
 
