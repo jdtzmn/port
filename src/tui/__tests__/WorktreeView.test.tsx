@@ -38,6 +38,8 @@ const mockActions = {
   isWorktreeBusy: () => false,
   latestJobByWorktree: new Map(),
   getOutputTail: () => [],
+  isOutputVisible: () => true,
+  toggleOutputVisible: noop,
   cancelWorktreeAction: () => false,
 }
 
@@ -478,8 +480,69 @@ describe('WorktreeView', () => {
     await renderOnce()
     const frame = captureCharFrame()
     expect(frame).toContain('Output (feature-auth)')
+    expect(frame).toContain('[l] toggle')
     expect(frame).toContain('Stopping services...')
     expect(frame).toContain('warning: network busy')
+  })
+
+  test('l toggles output visibility for current worktree', async () => {
+    const toggled: string[] = []
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          getOutputTail: () => [{ stream: 'stdout', line: 'line-1' }],
+          toggleOutputVisible: (name: string) => toggled.push(name),
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 90, height: 22 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('l')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    expect(toggled).toEqual(['feature-auth'])
+  })
+
+  test('hides output section when visibility is off for worktree', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          isOutputVisible: () => false,
+          getOutputTail: () => [{ stream: 'stdout', line: 'line-1' }],
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 90, height: 22 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+    expect(frame).not.toContain('Output (feature-auth)')
+    expect(frame).not.toContain('line-1')
   })
 
   test('shows running and finished output titles with elapsed seconds', async () => {

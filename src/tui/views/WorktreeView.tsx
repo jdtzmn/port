@@ -13,6 +13,8 @@ interface Actions {
   isWorktreeBusy: (worktreeName: string) => boolean
   latestJobByWorktree: Map<string, ActionJob>
   getOutputTail: (worktreeName: string) => OutputTailLine[]
+  isOutputVisible: (worktreeName: string) => boolean
+  toggleOutputVisible: (worktreeName: string) => void
   cancelWorktreeAction: (worktreeName: string) => boolean
 }
 
@@ -138,6 +140,13 @@ function formatOutputTitle(
   return base
 }
 
+function isOutputEntry(entry: {
+  stream: 'stdout' | 'stderr' | 'system'
+  line: string
+}): entry is { stream: 'stdout' | 'stderr'; line: string } {
+  return entry.stream === 'stdout' || entry.stream === 'stderr'
+}
+
 export function WorktreeView({
   worktree,
   hostServices,
@@ -150,6 +159,7 @@ export function WorktreeView({
 }: WorktreeViewProps) {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const scrollRef = useRef<ScrollBoxRenderable>(null)
+  const outputScrollRef = useRef<ScrollBoxRenderable>(null)
 
   // Keep selected service visible inside the scrollbox.
   // Estimate the content line for the selected item accounting for section
@@ -205,9 +215,23 @@ export function WorktreeView({
   const services = buildServiceItems(worktree, hostServices, config, worktreeName)
   const latestJob = actions.latestJobByWorktree.get(worktreeName)
   const runningAction = actions.isWorktreeBusy(worktreeName)
+  const outputTail = actions.getOutputTail(worktreeName)
+  const outputLines =
+    latestJob?.logs
+      .filter(isOutputEntry)
+      .map(entry => ({ stream: entry.stream, line: entry.line })) ?? outputTail
+  const outputVisible = actions.isOutputVisible(worktreeName)
+  const showOutput =
+    outputVisible && (runningAction || outputTail.length > 0 || outputLines.length > 0)
+  const prevOutputVisibleRef = useRef(false)
 
   useKeyboard(event => {
     if (event.ctrl || event.meta) return
+
+    if (event.name === 'l') {
+      actions.toggleOutputVisible(worktreeName)
+      return
+    }
 
     if (event.name === 'c') {
       if (!actions.cancelWorktreeAction(worktreeName)) {
@@ -266,6 +290,23 @@ export function WorktreeView({
     }
   })
 
+  useEffect(() => {
+    if (!showOutput) {
+      prevOutputVisibleRef.current = false
+      return
+    }
+
+    const shouldJump = !prevOutputVisibleRef.current || runningAction
+    if (shouldJump) {
+      const sb = outputScrollRef.current
+      if (sb) {
+        sb.scrollTop = Number.MAX_SAFE_INTEGER
+      }
+    }
+
+    prevOutputVisibleRef.current = true
+  }, [showOutput, runningAction, outputLines.length])
+
   return (
     <box flexDirection="column" width="100%" height="100%">
       {/* Header */}
@@ -287,22 +328,29 @@ export function WorktreeView({
 
       <box height={1} flexShrink={0} />
 
-      {(runningAction || actions.getOutputTail(worktreeName).length > 0) && (
+      {showOutput && (
         <box flexDirection="column" flexShrink={0}>
           <text fg="#888888">
-            <b>{formatOutputTitle(worktreeName, latestJob, runningAction)}</b>
+            <b>{formatOutputTitle(worktreeName, latestJob, runningAction)}</b>{' '}
+            <span fg="#CCCCCC">[l]</span> toggle
           </text>
-          {actions.getOutputTail(worktreeName).map((entry, index) => (
-            <text
-              key={`${worktreeName}-tail-${index}`}
-              fg={entry.stream === 'stderr' ? '#FF8888' : '#888888'}
-            >
-              {entry.line}
-            </text>
-          ))}
-          {actions.getOutputTail(worktreeName).length === 0 && (
-            <text fg="#666666">No output yet...</text>
-          )}
+          <scrollbox
+            ref={outputScrollRef}
+            height={3}
+            scrollY
+            scrollX={false}
+            contentOptions={{ flexDirection: 'column', width: '100%' }}
+          >
+            {outputLines.map((entry, index) => (
+              <text
+                key={`${worktreeName}-tail-${index}`}
+                fg={entry.stream === 'stderr' ? '#FF8888' : '#888888'}
+              >
+                {entry.line}
+              </text>
+            ))}
+            {outputLines.length === 0 && <text fg="#666666">No output yet...</text>}
+          </scrollbox>
         </box>
       )}
 
@@ -391,6 +439,7 @@ export function WorktreeView({
       <KeyHints
         hints={[
           { key: 'Enter', action: 'open in browser' },
+          { key: 'l', action: 'toggle output' },
           { key: 'd', action: 'down' },
           { key: 'x', action: 'kill host svc' },
           ...(runningAction ? [{ key: 'c', action: 'cancel running' }] : []),

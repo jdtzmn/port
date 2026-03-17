@@ -72,6 +72,8 @@ const mockActions = {
   isWorktreeBusy: () => false,
   latestJobByWorktree: new Map(),
   getOutputTail: () => [],
+  isOutputVisible: () => true,
+  toggleOutputVisible: noop,
   cancelWorktreeAction: () => false,
 }
 
@@ -428,8 +430,80 @@ describe('Dashboard', () => {
     const frame = captureCharFrame()
 
     expect(frame).toContain('Output (myapp)')
+    expect(frame).toContain('[l] toggle')
     expect(frame).toContain('Building app...')
     expect(frame).toContain('warning: cache miss')
+  })
+
+  test('l toggles output visibility for selected worktree', async () => {
+    const toggled: string[] = []
+    const tail = [{ stream: 'stdout' as const, line: 'line-1' }]
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            getOutputTail: () => tail,
+            toggleOutputVisible: (name: string) => toggled.push(name),
+          },
+        })}
+      />,
+      { width: 100, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    await pressAndRender(mockInput, renderOnce, 'l')
+
+    expect(toggled).toEqual(['myapp'])
+  })
+
+  test('hides output section when selected worktree output is toggled off', async () => {
+    const tail = [{ stream: 'stdout' as const, line: 'line-1' }]
+
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            getOutputTail: () => tail,
+            isOutputVisible: () => false,
+          },
+        })}
+      />,
+      { width: 100, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+    expect(frame).not.toContain('Output (myapp)')
+    expect(frame).not.toContain('line-1')
+  })
+
+  test('respects per-worktree output visibility while switching selection', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            getOutputTail: (name: string) => [{ stream: 'stdout', line: `${name}-output` }],
+            isOutputVisible: (name: string) => name !== 'myapp',
+          },
+        })}
+      />,
+      { width: 100, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    expect(captureCharFrame()).not.toContain('Output (myapp)')
+
+    await pressAndRender(mockInput, renderOnce, 'j')
+    const frame = captureCharFrame()
+    expect(frame).toContain('Output (feature-auth)')
+    expect(frame).toContain('feature-auth-output')
   })
 
   test('shows filter prompt without hiding output lines while filtering', async () => {

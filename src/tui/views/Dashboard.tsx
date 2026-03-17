@@ -15,6 +15,8 @@ interface Actions {
   isWorktreeBusy: (worktreeName: string) => boolean
   latestJobByWorktree: Map<string, ActionJob>
   getOutputTail: (worktreeName: string) => OutputTailLine[]
+  isOutputVisible: (worktreeName: string) => boolean
+  toggleOutputVisible: (worktreeName: string) => void
   cancelWorktreeAction: (worktreeName: string) => boolean
 }
 
@@ -183,6 +185,13 @@ function formatOutputTitle(
   return base
 }
 
+function isOutputEntry(entry: {
+  stream: 'stdout' | 'stderr' | 'system'
+  line: string
+}): entry is { stream: 'stdout' | 'stderr'; line: string } {
+  return entry.stream === 'stdout' || entry.stream === 'stderr'
+}
+
 export function Dashboard({
   repoName,
   worktrees,
@@ -279,11 +288,18 @@ export function Dashboard({
   const selectedOutputTail = selectedWorktree ? actions.getOutputTail(selectedWorktree.name) : []
   const selectedOutputLines =
     selectedLatestJob?.logs
-      .filter(entry => entry.stream === 'stdout' || entry.stream === 'stderr')
+      .filter(isOutputEntry)
       .map(entry => ({ stream: entry.stream, line: entry.line })) ?? selectedOutputTail
+  const selectedOutputVisible = selectedWorktree
+    ? actions.isOutputVisible(selectedWorktree.name)
+    : true
   const showOutput = Boolean(
-    selectedWorktree && (selectedRunningAction || selectedOutputTail.length > 0)
+    selectedWorktree &&
+    selectedOutputVisible &&
+    (selectedRunningAction || selectedOutputTail.length > 0 || selectedOutputLines.length > 0)
   )
+  const prevOutputVisibilityRef = useRef(false)
+  const prevOutputWorktreeRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!selectedWorktree || !selectedRunningAction) {
@@ -297,6 +313,26 @@ export function Dashboard({
 
     sb.scrollTop = Number.MAX_SAFE_INTEGER
   }, [selectedOutputLines.length, selectedRunningAction, selectedWorktree])
+
+  useEffect(() => {
+    const currentWorktree = selectedWorktree?.name ?? null
+    const visibilityChangedToShown = showOutput && !prevOutputVisibilityRef.current
+    const switchedWorktreeWhileVisible =
+      showOutput &&
+      prevOutputVisibilityRef.current &&
+      prevOutputWorktreeRef.current !== null &&
+      prevOutputWorktreeRef.current !== currentWorktree
+
+    if (visibilityChangedToShown || switchedWorktreeWhileVisible) {
+      const sb = outputScrollRef.current
+      if (sb) {
+        sb.scrollTop = Number.MAX_SAFE_INTEGER
+      }
+    }
+
+    prevOutputVisibilityRef.current = showOutput
+    prevOutputWorktreeRef.current = currentWorktree
+  }, [showOutput, selectedWorktree])
 
   useKeyboard(event => {
     if (event.ctrl || event.meta) return
@@ -384,6 +420,11 @@ export function Dashboard({
       if (!actions.cancelWorktreeAction(selectedWorktree.name)) {
         showStatus('No running action selected to cancel', 'error')
       }
+      return
+    }
+
+    if (event.name === 'l' && selectedWorktree) {
+      actions.toggleOutputVisible(selectedWorktree.name)
       return
     }
 
@@ -566,7 +607,8 @@ export function Dashboard({
           <text fg="#888888" flexShrink={0}>
             <b>
               {formatOutputTitle(selectedWorktree.name, selectedLatestJob, selectedRunningAction)}
-            </b>
+            </b>{' '}
+            <span fg="#CCCCCC">[l]</span> toggle
           </text>
           <scrollbox
             ref={node => {
@@ -651,6 +693,7 @@ export function Dashboard({
                       { key: 'Enter', action: 'inspect' },
                       { key: 'o', action: 'open' },
                       { key: '/', action: 'filter' },
+                      { key: 'l', action: 'toggle output' },
                       { key: 'u', action: 'up' },
                       { key: 'd', action: 'down' },
                       { key: 'a', action: 'archive' },
