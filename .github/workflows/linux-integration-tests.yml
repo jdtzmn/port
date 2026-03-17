@@ -8,11 +8,25 @@ on:
         required: false
         type: boolean
         default: true
+      shards:
+        description: JSON array of shard indexes (for matrix)
+        required: false
+        type: string
+        default: '[1,2,3]'
+      total-shards:
+        description: Total number of Vitest shards
+        required: false
+        type: number
+        default: 3
 
 jobs:
   linux-integration:
-    name: Linux Integration Tests
+    name: Linux Integration Tests (Shard ${{ matrix.shard }}/${{ inputs.total-shards }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(inputs.shards) }}
 
     steps:
       - name: Checkout code
@@ -62,7 +76,7 @@ jobs:
           sudo env PATH=$PATH port install --domain test -y
 
       - name: Run tests
-        run: bun run test
+        run: bunx vitest --shard=${{ matrix.shard }}/${{ inputs.total-shards }}
 
       - name: Traefik diagnostics
         if: failure() && inputs.run-traefik-diagnostics
@@ -79,3 +93,24 @@ jobs:
           docker exec port-traefik wget -qO- http://127.0.0.1:8080/api/http/routers 2>&1 || echo "(API unavailable)"
           echo "=== Traefik entrypoints ==="
           docker exec port-traefik wget -qO- http://127.0.0.1:8080/api/entrypoints 2>&1 || echo "(API unavailable)"
+
+      - name: Capture shard diagnostics artifact
+        if: failure() && inputs.run-traefik-diagnostics
+        run: |
+          artifact_dir="$RUNNER_TEMP/traefik-diagnostics-shard-${{ matrix.shard }}"
+          mkdir -p "$artifact_dir"
+
+          docker ps -a > "$artifact_dir/docker-ps.txt"
+          docker network ls > "$artifact_dir/docker-network-ls.txt"
+
+          docker logs --tail 200 port-traefik > "$artifact_dir/traefik-logs.txt" 2>&1 || true
+          docker exec port-traefik cat /etc/traefik/traefik.yml > "$artifact_dir/traefik-config.yml" 2>&1 || true
+          docker exec port-traefik wget -qO- http://127.0.0.1:8080/api/http/routers > "$artifact_dir/traefik-routers.json" 2>&1 || true
+          docker exec port-traefik wget -qO- http://127.0.0.1:8080/api/entrypoints > "$artifact_dir/traefik-entrypoints.json" 2>&1 || true
+
+      - name: Upload shard diagnostics artifact
+        if: failure() && inputs.run-traefik-diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-integration-diagnostics-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/traefik-diagnostics-shard-${{ matrix.shard }}
