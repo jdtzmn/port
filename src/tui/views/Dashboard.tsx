@@ -21,6 +21,7 @@ interface Actions {
   toggleLog: () => void
   selectNextLogJob: () => void
   selectPrevLogJob: () => void
+  cancelActiveLogJob: () => boolean
 }
 
 interface DashboardProps {
@@ -325,6 +326,13 @@ export function Dashboard({
       return
     }
 
+    if (actions.logOpen && event.name === 'c') {
+      if (!actions.cancelActiveLogJob()) {
+        showStatus('No running action selected to cancel', 'error')
+      }
+      return
+    }
+
     switch (event.name) {
       case 'j':
       case 'down':
@@ -562,6 +570,7 @@ export function Dashboard({
                     { key: 'a', action: 'archive' },
                     { key: 'l', action: 'log' },
                     { key: '[ ]', action: 'cycle jobs' },
+                    { key: 'c', action: 'cancel job' },
                     { key: 'r', action: 'refresh' },
                     { key: 'q', action: 'quit' },
                   ]

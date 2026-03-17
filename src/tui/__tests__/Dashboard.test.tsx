@@ -77,6 +77,7 @@ const mockActions = {
   toggleLog: noop,
   selectNextLogJob: noop,
   selectPrevLogJob: noop,
+  cancelActiveLogJob: () => false,
 }
 
 /** Common Dashboard props with defaults for testing */

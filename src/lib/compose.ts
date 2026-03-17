@@ -4,7 +4,7 @@ import { basename, join } from 'path'
 import { stringify as yamlStringify } from 'yaml'
 import type { ParsedComposeFile, ParsedComposeService } from '../types.ts'
 import { TRAEFIK_NETWORK, TRAEFIK_DIR } from './traefik.ts'
-import { execAsync, execWithStdio } from './exec.ts'
+import { execAsync, execStreaming, execWithStdio } from './exec.ts'
 import { sanitizeFolderName } from './sanitize.ts'
 
 /** Override file name */
@@ -507,7 +507,10 @@ export interface ComposeRunOptions {
    * 'inherit' streams output to the terminal (default, used by CLI commands).
    * 'capture' captures stdout/stderr and returns them (used by TUI).
    */
-  stdio?: 'inherit' | 'capture'
+  stdio?: 'inherit' | 'capture' | 'stream'
+  onStdoutLine?: (line: string) => void
+  onStderrLine?: (line: string) => void
+  signal?: AbortSignal
 }
 
 /** Result from a compose command run in capture mode */
@@ -591,6 +594,15 @@ export async function runCompose(
         stderr: err.stderr ?? '',
       }
     }
+  }
+
+  if (options?.stdio === 'stream') {
+    return execStreaming(fullCommand, {
+      cwd,
+      onStdoutLine: options.onStdoutLine,
+      onStderrLine: options.onStderrLine,
+      signal: options.signal,
+    })
   }
 
   return execWithStdio(fullCommand, { cwd })

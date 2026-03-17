@@ -43,6 +43,7 @@ const mockActions = {
   toggleLog: noop,
   selectNextLogJob: noop,
   selectPrevLogJob: noop,
+  cancelActiveLogJob: () => false,
 }
 
 let currentRenderer: TestRenderer | null = null

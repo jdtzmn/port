@@ -19,6 +19,7 @@ interface Actions {
   toggleLog: () => void
   selectNextLogJob: () => void
   selectPrevLogJob: () => void
+  cancelActiveLogJob: () => boolean
 }
 
 interface WorktreeViewProps {
@@ -181,6 +182,13 @@ export function WorktreeView({
 
     if (actions.logOpen && isNextLogKey) {
       actions.selectNextLogJob()
+      return
+    }
+
+    if (actions.logOpen && event.name === 'c') {
+      if (!actions.cancelActiveLogJob()) {
+        showStatus('No running action selected to cancel', 'error')
+      }
       return
     }
 
@@ -349,6 +357,7 @@ export function WorktreeView({
           { key: 'x', action: 'kill host svc' },
           { key: 'l', action: 'log' },
           { key: '[ ]', action: 'cycle jobs' },
+          { key: 'c', action: 'cancel job' },
           { key: 'Esc', action: 'back' },
           { key: 'r', action: 'refresh' },
           { key: 'q', action: 'quit' },

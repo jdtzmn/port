@@ -1,5 +1,6 @@
 import { exec, spawn, type SpawnOptions } from 'child_process'
 import { promisify } from 'util'
+import { createInterface } from 'readline'
 
 /**
  * Promisified version of child_process.exec
@@ -136,6 +137,76 @@ export async function execWithStdio(
       // which keeps the event loop alive after the child exits. Unref it
       // so the parent process can exit naturally once all work is done.
       process.stdin.unref()
+      resolve({ exitCode: code ?? 0 })
+    })
+  })
+}
+
+interface ExecStreamingOptions {
+  cwd?: string
+  signal?: AbortSignal
+  onStdoutLine?: (line: string) => void
+  onStderrLine?: (line: string) => void
+}
+
+/**
+ * Execute a command and stream stdout/stderr line-by-line to callbacks.
+ */
+export async function execStreaming(
+  command: string,
+  options: ExecStreamingOptions = {}
+): Promise<{ exitCode: number }> {
+  return new Promise((resolve, reject) => {
+    const spawnOptions: SpawnOptions = {
+      cwd: options.cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: true,
+    }
+
+    const child = spawn(command, [], spawnOptions)
+
+    const stdoutReader = child.stdout
+      ? createInterface({ input: child.stdout, crlfDelay: Infinity })
+      : null
+    const stderrReader = child.stderr
+      ? createInterface({ input: child.stderr, crlfDelay: Infinity })
+      : null
+
+    stdoutReader?.on('line', line => {
+      options.onStdoutLine?.(line)
+    })
+
+    stderrReader?.on('line', line => {
+      options.onStderrLine?.(line)
+    })
+
+    let killTimer: ReturnType<typeof setTimeout> | null = null
+    const abortHandler = () => {
+      child.kill('SIGINT')
+      killTimer = setTimeout(() => {
+        child.kill('SIGTERM')
+      }, 1500)
+    }
+
+    if (options.signal) {
+      if (options.signal.aborted) {
+        abortHandler()
+      } else {
+        options.signal.addEventListener('abort', abortHandler, { once: true })
+      }
+    }
+
+    child.on('error', error => {
+      stdoutReader?.close()
+      stderrReader?.close()
+      if (killTimer) clearTimeout(killTimer)
+      reject(error)
+    })
+
+    child.on('close', code => {
+      stdoutReader?.close()
+      stderrReader?.close()
+      if (killTimer) clearTimeout(killTimer)
       resolve({ exitCode: code ?? 0 })
     })
   })

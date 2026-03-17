@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useReducer } from 'react'
+import { useCallback, useMemo, useReducer, useRef } from 'react'
 import type { PortConfig, HostService } from '../../types.ts'
 import { getComposeFile } from '../../lib/config.ts'
 import {
@@ -11,7 +11,6 @@ import {
   parseComposeFile,
   getAllPorts,
   getProjectName,
-  type ComposeCapturedResult,
 } from '../../lib/compose.ts'
 import { registerProject, unregisterProject } from '../../lib/registry.ts'
 import { ensureTraefikPorts, traefikFilesExist, initTraefikFiles } from '../../lib/traefik.ts'
@@ -202,21 +201,47 @@ function createJobId(kind: ActionKind, worktreeName: string): string {
 export function useActions(repoRoot: string, config: PortConfig, refresh: () => void) {
   const composeFile = getComposeFile(config)
   const [state, dispatch] = useReducer(reduceActionState, INITIAL_STATE)
+  const controllersRef = useRef(new Map<string, AbortController>())
+  const infraLockRef = useRef<Promise<void>>(Promise.resolve())
+
+  const withInfraLock = useCallback(async <T>(work: () => Promise<T>): Promise<T> => {
+    const previous = infraLockRef.current
+    let releaseLock!: () => void
+    const current = new Promise<void>(resolve => {
+      releaseLock = resolve
+    })
+    infraLockRef.current = current
+
+    await previous
+    try {
+      return await work()
+    } finally {
+      releaseLock()
+    }
+  }, [])
 
   const appendSystemLog = useCallback((jobId: string, line: string) => {
     dispatch({ type: 'log', jobId, stream: 'system', line, ts: Date.now() })
   }, [])
 
   const runJob = useCallback(
-    async (job: ActionJob, executor: (jobId: string) => Promise<ActionResult>): Promise<void> => {
+    async (
+      job: ActionJob,
+      executor: (jobId: string, signal: AbortSignal) => Promise<ActionResult>
+    ): Promise<void> => {
+      const controller = new AbortController()
+      controllersRef.current.set(job.id, controller)
       dispatch({ type: 'start', jobId: job.id, startedAt: Date.now() })
       appendSystemLog(job.id, `Starting ${job.kind} on ${job.worktreeName}`)
 
       try {
-        const result = await executor(job.id)
+        const result = await executor(job.id, controller.signal)
         if (result.success) {
           appendSystemLog(job.id, result.message)
           dispatch({ type: 'finish', jobId: job.id, status: 'success', endedAt: Date.now() })
+        } else if (controller.signal.aborted) {
+          appendSystemLog(job.id, 'Action cancelled')
+          dispatch({ type: 'finish', jobId: job.id, status: 'cancelled', endedAt: Date.now() })
         } else {
           appendSystemLog(job.id, result.message)
           dispatch({
@@ -229,15 +254,21 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        appendSystemLog(job.id, message)
-        dispatch({
-          type: 'finish',
-          jobId: job.id,
-          status: 'error',
-          endedAt: Date.now(),
-          error: message,
-        })
+        if (controller.signal.aborted) {
+          appendSystemLog(job.id, 'Action cancelled')
+          dispatch({ type: 'finish', jobId: job.id, status: 'cancelled', endedAt: Date.now() })
+        } else {
+          appendSystemLog(job.id, message)
+          dispatch({
+            type: 'finish',
+            jobId: job.id,
+            status: 'error',
+            endedAt: Date.now(),
+            error: message,
+          })
+        }
       } finally {
+        controllersRef.current.delete(job.id)
         refresh()
       }
     },
@@ -250,7 +281,7 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
       worktreePath: string,
       worktreeName: string,
       summary: string,
-      executor: (jobId: string) => Promise<ActionResult>
+      executor: (jobId: string, signal: AbortSignal) => Promise<ActionResult>
     ): EnqueueResult => {
       if (state.runningByWorktree[worktreeName]) {
         return {
@@ -279,28 +310,35 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
 
   /**
    * Bring services up for a worktree.
-   * Mirrors the logic in commands/up.ts but uses capture mode for stdio.
+   * Mirrors the logic in commands/up.ts but streams output into the action log.
    */
   const runUpWorktree = useCallback(
-    async (worktreePath: string, worktreeName: string): Promise<ActionResult> => {
+    async (
+      worktreePath: string,
+      worktreeName: string,
+      jobId: string,
+      signal: AbortSignal
+    ): Promise<ActionResult> => {
       try {
         // Parse compose file
         const parsedCompose = await parseComposeFile(worktreePath, composeFile)
         const ports = getAllPorts(parsedCompose)
 
-        // Ensure Traefik files
-        if (!traefikFilesExist()) {
-          await initTraefikFiles(ports)
-        }
-        await ensureTraefikPorts(ports)
+        await withInfraLock(async () => {
+          // Ensure Traefik files
+          if (!traefikFilesExist()) {
+            await initTraefikFiles(ports)
+          }
+          await ensureTraefikPorts(ports)
 
-        // Ensure Traefik is running
-        const traefikRunning = await isTraefikRunning()
-        if (!traefikRunning) {
-          await startTraefik()
-        } else if (!(await traefikHasRequiredPorts(ports))) {
-          await restartTraefik()
-        }
+          // Ensure Traefik is running
+          const traefikRunning = await isTraefikRunning()
+          if (!traefikRunning) {
+            await startTraefik()
+          } else if (!(await traefikHasRequiredPorts(ports))) {
+            await restartTraefik()
+          }
+        })
 
         const projectName = getProjectName(repoRoot, worktreeName)
 
@@ -313,48 +351,66 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
           projectName
         )
 
-        // Start services (capture mode - don't stomp TUI)
-        const result = (await runCompose(
+        // Start services and stream output into the action log.
+        const result = await runCompose(
           worktreePath,
           composeFile,
           projectName,
           ['up', '-d'],
           { repoRoot, branch: worktreeName, domain: config.domain },
-          { stdio: 'capture' }
-        )) as ComposeCapturedResult
+          {
+            stdio: 'stream',
+            signal,
+            onStdoutLine: line =>
+              dispatch({ type: 'log', jobId, stream: 'stdout', line, ts: Date.now() }),
+            onStderrLine: line =>
+              dispatch({ type: 'log', jobId, stream: 'stderr', line, ts: Date.now() }),
+          }
+        )
 
         if (result.exitCode !== 0) {
-          return { success: false, message: result.stderr || 'Failed to start services' }
+          return { success: false, message: 'Failed to start services' }
         }
 
         // Register project
         await registerProject(repoRoot, worktreeName, ports)
-        refresh()
         return { success: true, message: `Services started in ${worktreeName}` }
       } catch (err) {
         return { success: false, message: err instanceof Error ? err.message : String(err) }
       }
     },
-    [repoRoot, config, composeFile, refresh]
+    [repoRoot, config, composeFile, refresh, withInfraLock]
   )
 
   /**
    * Bring services down for a worktree.
-   * Mirrors the logic in commands/down.ts but uses capture mode.
+   * Mirrors the logic in commands/down.ts but streams output into the action log.
    */
   const runDownWorktree = useCallback(
-    async (worktreePath: string, worktreeName: string): Promise<ActionResult> => {
+    async (
+      worktreePath: string,
+      worktreeName: string,
+      jobId: string,
+      signal: AbortSignal
+    ): Promise<ActionResult> => {
       try {
         const projectName = getProjectName(repoRoot, worktreeName)
 
-        const result = (await runCompose(
+        const result = await runCompose(
           worktreePath,
           composeFile,
           projectName,
           ['down'],
           { repoRoot, branch: worktreeName, domain: config.domain },
-          { stdio: 'capture' }
-        )) as ComposeCapturedResult
+          {
+            stdio: 'stream',
+            signal,
+            onStdoutLine: line =>
+              dispatch({ type: 'log', jobId, stream: 'stdout', line, ts: Date.now() }),
+            onStderrLine: line =>
+              dispatch({ type: 'log', jobId, stream: 'stderr', line, ts: Date.now() }),
+          }
+        )
 
         // Unregister project
         await unregisterProject(repoRoot, worktreeName)
@@ -369,10 +425,8 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
           }
         }
 
-        refresh()
-
         if (result.exitCode !== 0) {
-          return { success: false, message: result.stderr || 'Failed to stop services' }
+          return { success: false, message: 'Failed to stop services' }
         }
 
         return { success: true, message: `Services stopped in ${worktreeName}` }
@@ -387,7 +441,12 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
    * Archive a worktree (stop services, remove worktree, archive branch).
    */
   const runArchiveWorktree = useCallback(
-    async (worktreePath: string, worktreeName: string): Promise<ActionResult> => {
+    async (
+      worktreePath: string,
+      worktreeName: string,
+      jobId: string,
+      signal: AbortSignal
+    ): Promise<ActionResult> => {
       try {
         // Stop services first
         const projectName = getProjectName(repoRoot, worktreeName)
@@ -397,7 +456,14 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
           projectName,
           ['down'],
           { repoRoot, branch: worktreeName, domain: config.domain },
-          { stdio: 'capture' }
+          {
+            stdio: 'stream',
+            signal,
+            onStdoutLine: line =>
+              dispatch({ type: 'log', jobId, stream: 'stdout', line, ts: Date.now() }),
+            onStderrLine: line =>
+              dispatch({ type: 'log', jobId, stream: 'stderr', line, ts: Date.now() }),
+          }
         )
 
         await unregisterProject(repoRoot, worktreeName)
@@ -418,7 +484,6 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
         // Archive branch
         await archiveBranch(repoRoot, worktreeName)
 
-        refresh()
         return { success: true, message: `Worktree ${worktreeName} archived` }
       } catch (err) {
         return { success: false, message: err instanceof Error ? err.message : String(err) }
@@ -445,8 +510,12 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
 
   const upWorktree = useCallback(
     (worktreePath: string, worktreeName: string): EnqueueResult => {
-      return enqueue('up', worktreePath, worktreeName, `Starting services in ${worktreeName}`, () =>
-        runUpWorktree(worktreePath, worktreeName)
+      return enqueue(
+        'up',
+        worktreePath,
+        worktreeName,
+        `Starting services in ${worktreeName}`,
+        (jobId, signal) => runUpWorktree(worktreePath, worktreeName, jobId, signal)
       )
     },
     [enqueue, runUpWorktree]
@@ -459,7 +528,7 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
         worktreePath,
         worktreeName,
         `Stopping services in ${worktreeName}`,
-        () => runDownWorktree(worktreePath, worktreeName)
+        (jobId, signal) => runDownWorktree(worktreePath, worktreeName, jobId, signal)
       )
     },
     [enqueue, runDownWorktree]
@@ -467,8 +536,12 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
 
   const archiveWorktree = useCallback(
     (worktreePath: string, worktreeName: string): EnqueueResult => {
-      return enqueue('archive', worktreePath, worktreeName, `Archiving ${worktreeName}`, () =>
-        runArchiveWorktree(worktreePath, worktreeName)
+      return enqueue(
+        'archive',
+        worktreePath,
+        worktreeName,
+        `Archiving ${worktreeName}`,
+        (jobId, signal) => runArchiveWorktree(worktreePath, worktreeName, jobId, signal)
       )
     },
     [enqueue, runArchiveWorktree]
@@ -523,6 +596,26 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
     dispatch({ type: 'prev-log-job' })
   }, [])
 
+  const cancelActiveLogJob = useCallback((): boolean => {
+    if (!state.activeLogJobId) {
+      return false
+    }
+
+    const job = state.jobs[state.activeLogJobId]
+    if (!job || job.status !== 'running') {
+      return false
+    }
+
+    const controller = controllersRef.current.get(job.id)
+    if (!controller) {
+      return false
+    }
+
+    appendSystemLog(job.id, 'Cancellation requested')
+    controller.abort()
+    return true
+  }, [appendSystemLog, state.activeLogJobId, state.jobs])
+
   return {
     upWorktree,
     downWorktree,
@@ -536,5 +629,6 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
     toggleLog,
     selectNextLogJob,
     selectPrevLogJob,
+    cancelActiveLogJob,
   }
 }
