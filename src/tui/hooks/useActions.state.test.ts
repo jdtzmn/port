@@ -162,6 +162,29 @@ describe('reduceActionState', () => {
     expect(trimmed.runningByWorktree['old']).toBeUndefined()
     expect(trimmed.runningByWorktree['new']).toBe('job-new')
   })
+
+  test('tracks per-worktree output visibility and auto-shows on enqueue', () => {
+    const job = makeJob({ id: 'job-1', worktreeName: 'feature-a' })
+    const queued = reduceActionState(INITIAL_ACTION_STATE, { type: 'enqueue', job })
+    expect(queued.outputVisibleByWorktree['feature-a']).toBe(true)
+
+    const hidden = reduceActionState(queued, {
+      type: 'toggle-output-visible',
+      worktreeName: 'feature-a',
+    })
+    expect(hidden.outputVisibleByWorktree['feature-a']).toBe(false)
+
+    const shown = reduceActionState(hidden, {
+      type: 'set-output-visible',
+      worktreeName: 'feature-a',
+      visible: true,
+    })
+    expect(shown.outputVisibleByWorktree['feature-a']).toBe(true)
+
+    const nextJob = makeJob({ id: 'job-2', worktreeName: 'feature-a' })
+    const autoShown = reduceActionState(shown, { type: 'enqueue', job: nextJob })
+    expect(autoShown.outputVisibleByWorktree['feature-a']).toBe(true)
+  })
 })
 
 describe('waitForRunningActionsToDrain', () => {

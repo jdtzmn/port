@@ -75,6 +75,7 @@ export interface ActionState {
   jobs: Record<string, ActionJob>
   runningByWorktree: Record<string, string>
   outputTailByWorktree: Record<string, OutputTailLine[]>
+  outputVisibleByWorktree: Record<string, boolean>
 }
 
 export type ActionEvent =
@@ -89,12 +90,15 @@ export type ActionEvent =
       error?: string
     }
   | { type: 'trim'; maxJobs: number; maxLinesPerJob: number }
+  | { type: 'toggle-output-visible'; worktreeName: string }
+  | { type: 'set-output-visible'; worktreeName: string; visible: boolean }
 
 export const INITIAL_ACTION_STATE: ActionState = {
   order: [],
   jobs: {},
   runningByWorktree: {},
   outputTailByWorktree: {},
+  outputVisibleByWorktree: {},
 }
 
 export function reduceActionState(state: ActionState, event: ActionEvent): ActionState {
@@ -114,6 +118,10 @@ export function reduceActionState(state: ActionState, event: ActionEvent): Actio
         outputTailByWorktree: {
           ...state.outputTailByWorktree,
           [event.job.worktreeName]: [],
+        },
+        outputVisibleByWorktree: {
+          ...state.outputVisibleByWorktree,
+          [event.job.worktreeName]: true,
         },
       }
     }
@@ -225,6 +233,27 @@ export function reduceActionState(state: ActionState, event: ActionEvent): Actio
         order: keptOrder,
         jobs: nextJobs,
         runningByWorktree: nextRunningByWorktree,
+      }
+    }
+
+    case 'toggle-output-visible': {
+      const current = state.outputVisibleByWorktree[event.worktreeName] ?? true
+      return {
+        ...state,
+        outputVisibleByWorktree: {
+          ...state.outputVisibleByWorktree,
+          [event.worktreeName]: !current,
+        },
+      }
+    }
+
+    case 'set-output-visible': {
+      return {
+        ...state,
+        outputVisibleByWorktree: {
+          ...state.outputVisibleByWorktree,
+          [event.worktreeName]: event.visible,
+        },
       }
     }
 
@@ -686,6 +715,19 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
     [state.outputTailByWorktree]
   )
 
+  const isOutputVisible = useCallback(
+    (worktreeName: string): boolean => state.outputVisibleByWorktree[worktreeName] ?? true,
+    [state.outputVisibleByWorktree]
+  )
+
+  const toggleOutputVisible = useCallback((worktreeName: string): void => {
+    dispatch({ type: 'toggle-output-visible', worktreeName })
+  }, [])
+
+  const showOutputForWorktree = useCallback((worktreeName: string): void => {
+    dispatch({ type: 'set-output-visible', worktreeName, visible: true })
+  }, [])
+
   const cancelWorktreeAction = useCallback(
     (worktreeName: string): boolean => {
       const runningJobId = state.runningByWorktree[worktreeName]
@@ -743,6 +785,9 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
     latestJobByWorktree,
     isWorktreeBusy,
     getOutputTail,
+    isOutputVisible,
+    toggleOutputVisible,
+    showOutputForWorktree,
     cancelWorktreeAction,
     getRunningActionCount,
     shutdownJobs,
