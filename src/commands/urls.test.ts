@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   detectWorktree: vi.fn(),
-  configExists: vi.fn(),
-  loadConfig: vi.fn(),
+  ensurePortRuntimeDir: vi.fn(),
+  loadConfigOrDefault: vi.fn(),
   getComposeFile: vi.fn(),
   parseComposeFile: vi.fn(),
   getServicePorts: vi.fn(),
@@ -21,8 +21,8 @@ vi.mock('../lib/worktree.ts', () => ({
 }))
 
 vi.mock('../lib/config.ts', () => ({
-  configExists: mocks.configExists,
-  loadConfig: mocks.loadConfig,
+  ensurePortRuntimeDir: mocks.ensurePortRuntimeDir,
+  loadConfigOrDefault: mocks.loadConfigOrDefault,
   getComposeFile: mocks.getComposeFile,
 }))
 
@@ -55,8 +55,8 @@ describe('urls command', () => {
       name: 'feature-1',
       isMainRepo: false,
     })
-    mocks.configExists.mockReturnValue(true)
-    mocks.loadConfig.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
+    mocks.ensurePortRuntimeDir.mockResolvedValue(undefined)
+    mocks.loadConfigOrDefault.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
     mocks.getComposeFile.mockReturnValue('docker-compose.yml')
     mocks.branch.mockImplementation((value: string) => value)
     mocks.getProjectName.mockReturnValue('repo-feature-1')

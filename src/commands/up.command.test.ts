@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   detectWorktree: vi.fn(),
-  configExists: vi.fn(),
-  loadConfig: vi.fn(),
+  ensurePortRuntimeDir: vi.fn(),
+  loadConfigOrDefault: vi.fn(),
   getComposeFile: vi.fn(),
   checkDns: vi.fn(),
   registerProject: vi.fn(),
@@ -40,8 +40,8 @@ vi.mock('../lib/worktree.ts', () => ({
 }))
 
 vi.mock('../lib/config.ts', () => ({
-  configExists: mocks.configExists,
-  loadConfig: mocks.loadConfig,
+  ensurePortRuntimeDir: mocks.ensurePortRuntimeDir,
+  loadConfigOrDefault: mocks.loadConfigOrDefault,
   getComposeFile: mocks.getComposeFile,
 }))
 
@@ -106,8 +106,8 @@ describe('up DNS preflight', () => {
       name: 'main',
       isMainRepo: true,
     })
-    mocks.configExists.mockReturnValue(true)
-    mocks.loadConfig.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
+    mocks.ensurePortRuntimeDir.mockResolvedValue(undefined)
+    mocks.loadConfigOrDefault.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
     mocks.getComposeFile.mockReturnValue('docker-compose.yml')
     mocks.checkDns.mockResolvedValue(true)
 
@@ -151,7 +151,7 @@ describe('up DNS preflight', () => {
   })
 
   test('exits early with custom-domain install command when DNS is not configured', async () => {
-    mocks.loadConfig.mockResolvedValue({ domain: 'custom', compose: 'docker-compose.yml' })
+    mocks.loadConfigOrDefault.mockResolvedValue({ domain: 'custom', compose: 'docker-compose.yml' })
     mocks.checkDns.mockResolvedValue(false)
 
     await expect(up()).rejects.toThrow('process.exit:1')

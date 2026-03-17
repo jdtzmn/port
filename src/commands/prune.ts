@@ -1,6 +1,6 @@
 import inquirer from 'inquirer'
 import { detectWorktree } from '../lib/worktree.ts'
-import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
+import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import {
   getDefaultBranch,
   getMergedBranches,
@@ -116,9 +116,7 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
     failWithError('Not in a git repository')
   }
 
-  if (!configExists(repoRoot)) {
-    failWithError('Port not initialized. Run "port init" first.')
-  }
+  await ensurePortRuntimeDir(repoRoot)
 
   // 1. Fetch and prune remote refs
   if (!options.noFetch) {
@@ -240,7 +238,7 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
   }
 
   // 9. Remove each candidate
-  const config = await loadConfig(repoRoot)
+  const config = await loadConfigOrDefault(repoRoot)
   const composeFile = getComposeFile(config)
   const ctx = { repoRoot, composeFile, domain: config.domain }
 

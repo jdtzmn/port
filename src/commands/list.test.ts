@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   detectWorktree: vi.fn(),
-  configExists: vi.fn(),
   getTreesDir: vi.fn(),
   listWorktrees: vi.fn(),
 }))
@@ -13,7 +12,6 @@ vi.mock('../lib/worktree.ts', () => ({
 }))
 
 vi.mock('../lib/config.ts', () => ({
-  configExists: mocks.configExists,
   getTreesDir: mocks.getTreesDir,
 }))
 
@@ -36,7 +34,6 @@ describe('list command', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.detectWorktree.mockReturnValue({ repoRoot: '/repo' })
-    mocks.configExists.mockReturnValue(true)
     mocks.getTreesDir.mockReturnValue('/repo/.port/trees')
     mocks.listWorktrees.mockResolvedValue([])
   })
@@ -118,13 +115,14 @@ describe('list command', () => {
     logSpy.mockRestore()
   })
 
-  test('outputs nothing when config does not exist', async () => {
+  test('still lists names when config does not exist', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
-    mocks.configExists.mockReturnValue(false)
+    vi.mocked(existsSync).mockReturnValue(false)
 
     await list()
 
-    expect(logSpy).not.toHaveBeenCalled()
+    const outputLines = logSpy.mock.calls.map(call => call[0])
+    expect(outputLines).toEqual(['repo'])
     logSpy.mockRestore()
   })
 
