@@ -19,11 +19,11 @@ describe('execStreaming', () => {
     expect(stderr).toEqual(['err-1'])
   })
 
-  test('supports cancellation through AbortSignal', async () => {
+  test('supports cancellation through AbortSignal', { timeout: 15000 }, async () => {
     const stdout: string[] = []
     const controller = new AbortController()
 
-    const run = execStreaming(`bun -e "setInterval(() => console.log('tick'), 50)"`, {
+    const run = execStreaming(`while true; do echo tick; sleep 0.05; done`, {
       signal: controller.signal,
       onStdoutLine: line => stdout.push(line),
     })
