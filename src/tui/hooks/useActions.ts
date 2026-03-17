@@ -59,7 +59,7 @@ interface EnqueueRejected {
 
 export type EnqueueResult = EnqueueSuccess | EnqueueRejected
 
-interface ActionState {
+export interface ActionState {
   order: string[]
   jobs: Record<string, ActionJob>
   runningByWorktree: Record<string, string>
@@ -67,7 +67,7 @@ interface ActionState {
   logOpen: boolean
 }
 
-type ActionEvent =
+export type ActionEvent =
   | { type: 'enqueue'; job: ActionJob }
   | { type: 'start'; jobId: string; startedAt: number }
   | { type: 'log'; jobId: string; stream: ActionLogLine['stream']; line: string; ts: number }
@@ -81,8 +81,9 @@ type ActionEvent =
   | { type: 'toggle-log' }
   | { type: 'next-log-job' }
   | { type: 'prev-log-job' }
+  | { type: 'trim'; maxJobs: number; maxLinesPerJob: number }
 
-const INITIAL_STATE: ActionState = {
+export const INITIAL_ACTION_STATE: ActionState = {
   order: [],
   jobs: {},
   runningByWorktree: {},
@@ -90,7 +91,7 @@ const INITIAL_STATE: ActionState = {
   logOpen: false,
 }
 
-function reduceActionState(state: ActionState, event: ActionEvent): ActionState {
+export function reduceActionState(state: ActionState, event: ActionEvent): ActionState {
   switch (event.type) {
     case 'enqueue': {
       return {
@@ -191,6 +192,94 @@ function reduceActionState(state: ActionState, event: ActionEvent): ActionState 
         activeLogJobId: state.order[prevIndex] ?? null,
       }
     }
+
+    case 'trim': {
+      if (state.order.length <= event.maxJobs) {
+        let changed = false
+        const nextJobs: Record<string, ActionJob> = {}
+        for (const jobId of state.order) {
+          const job = state.jobs[jobId]
+          if (!job) continue
+          const trimmedLogs =
+            job.logs.length > event.maxLinesPerJob
+              ? job.logs.slice(-event.maxLinesPerJob)
+              : job.logs
+          if (trimmedLogs.length !== job.logs.length) {
+            changed = true
+            nextJobs[jobId] = { ...job, logs: trimmedLogs }
+          } else {
+            nextJobs[jobId] = job
+          }
+        }
+        if (!changed) return state
+        return { ...state, jobs: nextJobs }
+      }
+
+      const keptOrder = state.order.slice(0, event.maxJobs)
+      const nextJobs: Record<string, ActionJob> = {}
+      for (const jobId of keptOrder) {
+        const job = state.jobs[jobId]
+        if (!job) continue
+        nextJobs[jobId] = {
+          ...job,
+          logs: job.logs.slice(-event.maxLinesPerJob),
+        }
+      }
+
+      const nextRunningByWorktree: Record<string, string> = {}
+      for (const [worktree, jobId] of Object.entries(state.runningByWorktree)) {
+        if (nextJobs[jobId]) {
+          nextRunningByWorktree[worktree] = jobId
+        }
+      }
+
+      return {
+        ...state,
+        order: keptOrder,
+        jobs: nextJobs,
+        runningByWorktree: nextRunningByWorktree,
+        activeLogJobId:
+          state.activeLogJobId && nextJobs[state.activeLogJobId]
+            ? state.activeLogJobId
+            : (keptOrder[0] ?? null),
+      }
+    }
+  }
+}
+
+interface EnqueueDecisionAccepted {
+  accepted: true
+  job: ActionJob
+}
+
+type EnqueueDecision = EnqueueDecisionAccepted | EnqueueRejected
+
+export function createEnqueueDecision(params: {
+  state: ActionState
+  kind: ActionKind
+  worktreePath: string
+  worktreeName: string
+  summary: string
+}): EnqueueDecision {
+  if (params.state.runningByWorktree[params.worktreeName]) {
+    return {
+      accepted: false,
+      reason: 'worktree_busy',
+      message: `Action already running for ${params.worktreeName}`,
+    }
+  }
+
+  return {
+    accepted: true,
+    job: {
+      id: createJobId(params.kind, params.worktreeName),
+      kind: params.kind,
+      worktreePath: params.worktreePath,
+      worktreeName: params.worktreeName,
+      status: 'queued',
+      summary: params.summary,
+      logs: [],
+    },
   }
 }
 
@@ -200,7 +289,7 @@ function createJobId(kind: ActionKind, worktreeName: string): string {
 
 export function useActions(repoRoot: string, config: PortConfig, refresh: () => void) {
   const composeFile = getComposeFile(config)
-  const [state, dispatch] = useReducer(reduceActionState, INITIAL_STATE)
+  const [state, dispatch] = useReducer(reduceActionState, INITIAL_ACTION_STATE)
   const controllersRef = useRef(new Map<string, AbortController>())
   const infraLockRef = useRef<Promise<void>>(Promise.resolve())
 
@@ -283,27 +372,23 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
       summary: string,
       executor: (jobId: string, signal: AbortSignal) => Promise<ActionResult>
     ): EnqueueResult => {
-      if (state.runningByWorktree[worktreeName]) {
-        return {
-          accepted: false,
-          reason: 'worktree_busy',
-          message: `Action already running for ${worktreeName}`,
-        }
-      }
-
-      const jobId = createJobId(kind, worktreeName)
-      const job: ActionJob = {
-        id: jobId,
+      const decision = createEnqueueDecision({
+        state,
         kind,
         worktreePath,
         worktreeName,
-        status: 'queued',
         summary,
-        logs: [],
+      })
+
+      if (!decision.accepted) {
+        return decision
       }
+
+      const job = decision.job
       dispatch({ type: 'enqueue', job })
+      dispatch({ type: 'trim', maxJobs: 20, maxLinesPerJob: 300 })
       void runJob(job, executor)
-      return { accepted: true, jobId }
+      return { accepted: true, jobId: job.id }
     },
     [runJob, state.runningByWorktree]
   )
