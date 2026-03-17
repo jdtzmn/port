@@ -225,6 +225,201 @@ describe('Dashboard', () => {
     expect(frame2).toContain('feature-auth')
   })
 
+  test('navigation remains active when selected worktree is busy', async () => {
+    let selectedName = ''
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            isWorktreeBusy: () => true,
+          },
+          onSelectWorktree: (name: string) => {
+            selectedName = name
+          },
+        })}
+      />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    await pressAndRender(mockInput, renderOnce, 'j')
+    mockInput.pressEnter()
+    await renderOnce()
+
+    expect(selectedName).toBe('feature-auth')
+  })
+
+  test('u shows error status when action is rejected for busy worktree', async () => {
+    const statusCalls: Array<{ text: string; type: 'success' | 'error' }> = []
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            upWorktree: () => ({
+              accepted: false,
+              reason: 'worktree_busy',
+              message: 'Action already running for myapp',
+            }),
+          },
+          showStatus: (text: string, type: 'success' | 'error') => {
+            statusCalls.push({ text, type })
+          },
+        })}
+      />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    await pressAndRender(mockInput, renderOnce, 'u')
+
+    expect(statusCalls).toEqual([{ text: 'Action already running for myapp', type: 'error' }])
+  })
+
+  test('shows running and failed row markers from latest job state', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            isWorktreeBusy: (name: string) => name === 'myapp',
+            latestJobByWorktree: new Map([
+              [
+                'myapp',
+                {
+                  id: 'job-running',
+                  kind: 'up',
+                  worktreeName: 'myapp',
+                  worktreePath: '/repo',
+                  status: 'running',
+                  summary: 'up',
+                  logs: [],
+                },
+              ],
+              [
+                'feature-auth',
+                {
+                  id: 'job-error',
+                  kind: 'down',
+                  worktreeName: 'feature-auth',
+                  worktreePath: '/repo/.port/trees/feature-auth',
+                  status: 'error',
+                  summary: 'down',
+                  logs: [],
+                },
+              ],
+            ]),
+          },
+        })}
+      />,
+      { width: 90, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+
+    expect(frame).toContain('up...')
+    expect(frame).toContain('down failed')
+  })
+
+  test('supports log toggle and job cycling keys', async () => {
+    const toggles: string[] = []
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            logOpen: true,
+            toggleLog: () => {
+              toggles.push('toggle')
+            },
+            selectPrevLogJob: () => {
+              toggles.push('prev')
+            },
+            selectNextLogJob: () => {
+              toggles.push('next')
+            },
+          },
+        })}
+      />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    await pressAndRender(mockInput, renderOnce, '[')
+    await pressAndRender(mockInput, renderOnce, ']')
+    await pressAndRender(mockInput, renderOnce, 'l')
+
+    expect(toggles).toEqual(['prev', 'next', 'toggle'])
+  })
+
+  test('shows cancel status error when no running job is selected', async () => {
+    const statusCalls: Array<{ text: string; type: 'success' | 'error' }> = []
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            logOpen: true,
+            cancelActiveLogJob: () => false,
+          },
+          showStatus: (text: string, type: 'success' | 'error') => {
+            statusCalls.push({ text, type })
+          },
+        })}
+      />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    await pressAndRender(mockInput, renderOnce, 'c')
+
+    expect(statusCalls).toEqual([{ text: 'No running action selected to cancel', type: 'error' }])
+  })
+
+  test('renders action log panel when log is open', async () => {
+    const activeJob = {
+      id: 'job-1',
+      kind: 'up',
+      worktreeName: 'myapp',
+      worktreePath: '/repo',
+      status: 'running' as const,
+      summary: 'up',
+      logs: [{ ts: 1, stream: 'system' as const, line: 'Starting up' }],
+    }
+
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            logOpen: true,
+            jobs: [activeJob],
+            activeLogJob: activeJob,
+          },
+        })}
+      />,
+      { width: 90, height: 24 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+
+    expect(frame).toContain('Action Log')
+    expect(frame).toContain('myapp up running')
+  })
+
   test('Enter calls onSelectWorktree', async () => {
     let selectedName = ''
     const onSelect = (name: string) => {

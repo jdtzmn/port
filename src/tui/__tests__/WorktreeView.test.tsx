@@ -273,4 +273,192 @@ describe('WorktreeView', () => {
     expect(serviceLines.length).toBeLessThan(20)
     expect(serviceLines.length).toBeGreaterThan(0)
   })
+
+  test('d shows error status when action is rejected for busy worktree', async () => {
+    const statusCalls: Array<{ text: string; type: 'success' | 'error' }> = []
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          downWorktree: () => ({
+            accepted: false,
+            reason: 'worktree_busy',
+            message: 'Action already running for feature-auth',
+          }),
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={(text: string, type: 'success' | 'error') => statusCalls.push({ text, type })}
+      />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('d')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    expect(statusCalls).toEqual([
+      { text: 'Action already running for feature-auth', type: 'error' },
+    ])
+  })
+
+  test('shows running and failed markers from latest job state', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          isWorktreeBusy: () => true,
+          latestJobByWorktree: new Map([
+            [
+              'feature-auth',
+              {
+                id: 'job-running',
+                kind: 'down',
+                worktreeName: 'feature-auth',
+                worktreePath: '/repo/.port/trees/feature-auth',
+                status: 'running',
+                summary: 'down',
+                logs: [],
+              },
+            ],
+          ]),
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+    expect(frame).toContain('down...')
+  })
+
+  test('supports log toggle and job cycling keys', async () => {
+    const calls: string[] = []
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          logOpen: true,
+          toggleLog: () => calls.push('toggle'),
+          selectPrevLogJob: () => calls.push('prev'),
+          selectNextLogJob: () => calls.push('next'),
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 90, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('[')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+    mockInput.pressKey(']')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+    mockInput.pressKey('l')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    expect(calls).toEqual(['prev', 'next', 'toggle'])
+  })
+
+  test('shows cancel status error when no running job is selected', async () => {
+    const statusCalls: Array<{ text: string; type: 'success' | 'error' }> = []
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          logOpen: true,
+          cancelActiveLogJob: () => false,
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={(text: string, type: 'success' | 'error') => statusCalls.push({ text, type })}
+      />,
+      { width: 90, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('c')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    expect(statusCalls).toEqual([{ text: 'No running action selected to cancel', type: 'error' }])
+  })
+
+  test('renders action log panel when log is open', async () => {
+    const activeJob = {
+      id: 'job-1',
+      kind: 'down' as const,
+      worktreeName: 'feature-auth',
+      worktreePath: '/repo/.port/trees/feature-auth',
+      status: 'running' as const,
+      summary: 'down',
+      logs: [{ ts: 1, stream: 'system' as const, line: 'Stopping services' }],
+    }
+
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          logOpen: true,
+          jobs: [activeJob],
+          activeLogJob: activeJob,
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 90, height: 22 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+    expect(frame).toContain('Action Log')
+    expect(frame).toContain('feature-auth down running')
+  })
 })
