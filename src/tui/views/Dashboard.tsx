@@ -517,124 +517,129 @@ export function Dashboard({
         <b>Worktrees</b>
       </text>
 
-      {/* Worktree rows */}
-      <scrollbox
-        ref={scrollRef}
-        flexGrow={0}
-        flexShrink={1}
-        scrollY
-        scrollX={false}
-        contentOptions={{ flexDirection: 'column', width: '100%' }}
-      >
-        {worktrees.length === 0 && !loading && <text fg="#888888">No worktrees found</text>}
+      <box flexDirection="column" flexGrow={1} flexShrink={1} minHeight={0}>
+        {/* Worktree rows */}
+        <scrollbox
+          ref={scrollRef}
+          flexGrow={0}
+          flexShrink={1}
+          scrollY
+          scrollX={false}
+          contentOptions={{ flexDirection: 'column', width: '100%' }}
+        >
+          {worktrees.length === 0 && !loading && <text fg="#888888">No worktrees found</text>}
 
-        {worktrees.map((worktree, index) => {
-          const isSelected = index === selectedIndex
-          const isRoot = index === 0
-          const isActive = worktree.name === activeWorktreeName
-          const sortedServices = [...worktree.services].sort(
-            (a, b) => Number(b.running) - Number(a.running)
-          )
-          const servicesText = buildServicesText(sortedServices)
-          const totalCount = worktree.services.length
-          const nameStr = worktree.name + (isRoot ? ' (root)' : '')
-          const matchRanges = highlightQuery
-            ? findSubstringMatchRanges(nameStr, highlightQuery)
-            : []
-          const latestJob = actions.latestJobByWorktree.get(worktree.name)
-          const runningAction = actions.isWorktreeBusy(worktree.name)
+          {worktrees.map((worktree, index) => {
+            const isSelected = index === selectedIndex
+            const isRoot = index === 0
+            const isActive = worktree.name === activeWorktreeName
+            const sortedServices = [...worktree.services].sort(
+              (a, b) => Number(b.running) - Number(a.running)
+            )
+            const servicesText = buildServicesText(sortedServices)
+            const totalCount = worktree.services.length
+            const nameStr = worktree.name + (isRoot ? ' (root)' : '')
+            const matchRanges = highlightQuery
+              ? findSubstringMatchRanges(nameStr, highlightQuery)
+              : []
+            const latestJob = actions.latestJobByWorktree.get(worktree.name)
+            const runningAction = actions.isWorktreeBusy(worktree.name)
 
-          return (
-            <box key={worktree.name} flexDirection="row" height={1} overflow="hidden">
-              <text wrapMode="none" flexShrink={0}>
-                {isSelected ? '> ' : '  '}
-              </text>
-              {isActive && (
-                <text wrapMode="none" flexShrink={0} fg="#FFFF00">
-                  ★{' '}
-                </text>
-              )}
-              <text flexShrink={1} wrapMode="none">
-                {matchRanges.length > 0 ? buildHighlightedSegments(nameStr, matchRanges) : nameStr}
-              </text>
-              {runningAction && latestJob && (
-                <text wrapMode="none" flexShrink={0} fg="#FFFF00">
-                  {'  ' + latestJob.kind + '...'}
-                </text>
-              )}
-              {!runningAction && latestJob?.status === 'error' && (
-                <text wrapMode="none" flexShrink={0} fg="#FF4444">
-                  {'  ' + latestJob.kind + ' failed'}
-                </text>
-              )}
-              {totalCount === 0 && loading && (
-                <text wrapMode="none" flexShrink={0} fg="#555555">
-                  {' ...'}
-                </text>
-              )}
-              {totalCount > 0 && (
+            return (
+              <box key={worktree.name} flexDirection="row" height={1} overflow="hidden">
                 <text wrapMode="none" flexShrink={0}>
-                  {'  '}
+                  {isSelected ? '> ' : '  '}
                 </text>
-              )}
-              {totalCount > 0 && (
-                <text fg="#888888" flexShrink={100} wrapMode="none">
-                  {servicesText}
+                {isActive && (
+                  <text wrapMode="none" flexShrink={0} fg="#FFFF00">
+                    ★{' '}
+                  </text>
+                )}
+                <text flexShrink={1} wrapMode="none">
+                  {matchRanges.length > 0
+                    ? buildHighlightedSegments(nameStr, matchRanges)
+                    : nameStr}
                 </text>
-              )}
-              {totalCount > 0 && (
-                <text wrapMode="none" flexShrink={0} fg="#555555">
-                  {'  ' + totalCount + ' total'}
-                </text>
-              )}
-            </box>
-          )
-        })}
-      </scrollbox>
+                {runningAction && latestJob && (
+                  <text wrapMode="none" flexShrink={0} fg="#FFFF00">
+                    {'  ' + latestJob.kind + '...'}
+                  </text>
+                )}
+                {!runningAction && latestJob?.status === 'error' && (
+                  <text wrapMode="none" flexShrink={0} fg="#FF4444">
+                    {'  ' + latestJob.kind + ' failed'}
+                  </text>
+                )}
+                {totalCount === 0 && loading && (
+                  <text wrapMode="none" flexShrink={0} fg="#555555">
+                    {' ...'}
+                  </text>
+                )}
+                {totalCount > 0 && (
+                  <text wrapMode="none" flexShrink={0}>
+                    {'  '}
+                  </text>
+                )}
+                {totalCount > 0 && (
+                  <text fg="#888888" flexShrink={100} wrapMode="none">
+                    {servicesText}
+                  </text>
+                )}
+                {totalCount > 0 && (
+                  <text wrapMode="none" flexShrink={0} fg="#555555">
+                    {'  ' + totalCount + ' total'}
+                  </text>
+                )}
+              </box>
+            )
+          })}
+        </scrollbox>
 
-      <box height={1} flexShrink={0} />
+        <box height={1} flexShrink={0} />
 
-      {/* Status message */}
-      {statusMessage && (
-        <text fg={statusMessage.type === 'success' ? '#00FF00' : '#FF4444'} flexShrink={0}>
-          {statusMessage.text}
-        </text>
-      )}
-
-      {showOutput && selectedWorktree && (
-        <box flexDirection="column" flexGrow={1} flexShrink={1} minHeight={3}>
-          <box height={1} flexShrink={0} />
-          <text fg="#888888" flexShrink={0}>
-            <b>
-              {formatOutputTitle(selectedWorktree.name, selectedLatestJob, selectedRunningAction)}
-            </b>{' '}
-            <span fg="#CCCCCC">[l]</span> toggle
+        {/* Status message */}
+        {statusMessage && (
+          <text fg={statusMessage.type === 'success' ? '#00FF00' : '#FF4444'} flexShrink={0}>
+            {statusMessage.text}
           </text>
-          <scrollbox
-            ref={node => {
-              outputScrollRef.current = node
-              if (node && selectedRunningAction) {
-                node.scrollTop = Number.MAX_SAFE_INTEGER
-              }
-            }}
-            flexGrow={1}
-            flexShrink={1}
-            scrollY
-            scrollX={false}
-            contentOptions={{ flexDirection: 'column', width: '100%' }}
-          >
-            {selectedOutputLines.map((entry, index) => (
-              <text
-                key={`${selectedWorktree.name}-output-${index}`}
-                fg={entry.stream === 'stderr' ? '#FF8888' : '#888888'}
-              >
-                {entry.line}
-              </text>
-            ))}
-            {selectedOutputLines.length === 0 && <text fg="#666666">No output yet...</text>}
-          </scrollbox>
-        </box>
-      )}
+        )}
+
+        {showOutput && selectedWorktree && (
+          <box flexDirection="column" flexGrow={1} flexShrink={1} minHeight={0}>
+            <box flexGrow={1} />
+            <text fg="#888888" flexShrink={0}>
+              <b>
+                {formatOutputTitle(selectedWorktree.name, selectedLatestJob, selectedRunningAction)}
+              </b>{' '}
+              <span fg="#CCCCCC">[l]</span> toggle
+            </text>
+            <scrollbox
+              ref={node => {
+                outputScrollRef.current = node
+                if (node && selectedRunningAction) {
+                  node.scrollTop = Number.MAX_SAFE_INTEGER
+                }
+              }}
+              flexGrow={1}
+              flexShrink={1}
+              minHeight={2}
+              scrollY
+              scrollX={false}
+              contentOptions={{ flexDirection: 'column', width: '100%' }}
+            >
+              {selectedOutputLines.map((entry, index) => (
+                <text
+                  key={`${selectedWorktree.name}-output-${index}`}
+                  fg={entry.stream === 'stderr' ? '#FF8888' : '#888888'}
+                >
+                  {entry.line}
+                </text>
+              ))}
+              {selectedOutputLines.length === 0 && <text fg="#666666">No output yet...</text>}
+            </scrollbox>
+          </box>
+        )}
+      </box>
 
       {/* Jump prompt */}
       <text
