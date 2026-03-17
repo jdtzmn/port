@@ -17,6 +17,36 @@ export interface WorktreeStatus {
   running: boolean
 }
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<R>
+): Promise<R[]> {
+  const safeConcurrency = Math.max(1, Math.min(concurrency, items.length))
+  if (safeConcurrency === 0) {
+    return []
+  }
+
+  const results: R[] = new Array(items.length)
+  let nextIndex = 0
+
+  const runners = Array.from({ length: safeConcurrency }, async () => {
+    while (true) {
+      const index = nextIndex
+      nextIndex += 1
+
+      if (index >= items.length) {
+        return
+      }
+
+      results[index] = await worker(items[index] as T)
+    }
+  })
+
+  await Promise.all(runners)
+  return results
+}
+
 /**
  * Get worktree skeletons (names and paths) instantly from the filesystem.
  * No Docker calls — returns empty services arrays that get filled in later.
@@ -98,8 +128,7 @@ export async function fetchWorktreeServices(
 }
 
 /**
- * Collect full worktree statuses (sequential, used by CLI commands).
- * For the TUI, prefer getWorktreeSkeletons + fetchWorktreeServices in parallel.
+ * Collect full worktree statuses with bounded parallelism for CLI commands.
  */
 export async function collectWorktreeStatuses(
   repoRoot: string,
@@ -108,7 +137,7 @@ export async function collectWorktreeStatuses(
 ): Promise<WorktreeStatus[]> {
   const skeletons = getWorktreeSkeletons(repoRoot)
 
-  for (const wt of skeletons) {
+  const serviceResults = await mapWithConcurrency(skeletons, 4, async wt => {
     const projectName = getProjectName(repoRoot, wt.name)
     const services = await fetchWorktreeServices(
       repoRoot,
@@ -118,8 +147,20 @@ export async function collectWorktreeStatuses(
       composeFile,
       projectName
     )
-    wt.services = services
-    wt.running = services.some(s => s.running)
+
+    return {
+      services,
+      running: services.some(service => service.running),
+    }
+  })
+
+  for (let i = 0; i < skeletons.length; i++) {
+    const result = serviceResults[i]
+    if (!result) {
+      continue
+    }
+    skeletons[i]!.services = result.services
+    skeletons[i]!.running = result.running
   }
 
   return skeletons

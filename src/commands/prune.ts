@@ -9,7 +9,7 @@ import {
   listWorktrees,
 } from '../lib/git.ts'
 import { isGhAvailable, getMergedPrBranches, type MergedPrInfo } from '../lib/github.ts'
-import { removeWorktreeAndCleanup } from '../lib/removal.ts'
+import { removeWorktreeAndCleanup, stopWorktreeServices } from '../lib/removal.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import { failWithError } from '../lib/cli.ts'
 import * as output from '../lib/output.ts'
@@ -33,6 +33,36 @@ interface PruneCandidate {
   reason: PruneReason
   /** PR metadata if detected via gh */
   pr?: MergedPrInfo
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<R>
+): Promise<R[]> {
+  const safeConcurrency = Math.max(1, Math.min(concurrency, items.length))
+  if (safeConcurrency === 0) {
+    return []
+  }
+
+  const results: R[] = new Array(items.length)
+  let nextIndex = 0
+
+  const runners = Array.from({ length: safeConcurrency }, async () => {
+    while (true) {
+      const index = nextIndex
+      nextIndex += 1
+
+      if (index >= items.length) {
+        return
+      }
+
+      results[index] = await worker(items[index] as T)
+    }
+  })
+
+  await Promise.all(runners)
+  return results
 }
 
 function formatReason(candidate: PruneCandidate): string {
@@ -217,12 +247,37 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
   let removedCount = 0
   let failedCount = 0
 
+  // 9. Stop services in parallel first (most expensive part)
+  output.info('Stopping services for prune candidates...')
+  const stopResults = await mapWithConcurrency(candidates, 3, async candidate => {
+    try {
+      await stopWorktreeServices(ctx, candidate.branch, { quiet: true })
+      return { candidate, ok: true as const }
+    } catch (error) {
+      return {
+        candidate,
+        ok: false as const,
+        error: `Failed to stop services: ${error}`,
+      }
+    }
+  })
+
+  for (const stopResult of stopResults) {
+    if (!stopResult.ok) {
+      output.warn(
+        `Proceeding despite service shutdown failure for ${output.branch(stopResult.candidate.sanitized)}: ${stopResult.error}`
+      )
+    }
+  }
+
+  // 10. Remove each candidate (serial to avoid git lock contention)
   for (const candidate of candidates) {
     output.newline()
     output.info(`Removing ${output.branch(candidate.sanitized)}...`)
 
     const result = await removeWorktreeAndCleanup(ctx, candidate.branch, {
       branchAction: 'archive',
+      skipServices: true,
       quiet: true,
     })
 
@@ -235,7 +290,7 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
     }
   }
 
-  // 10. Summary
+  // 11. Summary
   output.newline()
   if (failedCount > 0) {
     output.warn(
