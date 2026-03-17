@@ -2,14 +2,12 @@ import { test, expect, describe } from 'vitest'
 import { prepareSample, renderCLI } from '@tests/utils'
 
 describe('port run command', () => {
-  test('errors when not in a port-managed project', async () => {
-    const sample = await prepareSample('db-and-server', {
-      gitInit: true,
-    })
+  test('errors when not in a git repository', async () => {
+    const sample = await prepareSample('db-and-server')
 
     const { findByError } = await renderCLI(['run', '3000', '--', 'echo', 'hello'], sample.dir)
 
-    const instance = await findByError('Port not initialized')
+    const instance = await findByError('Not in a git repository')
     expect(instance).toBeInTheConsole()
 
     await sample.cleanup()

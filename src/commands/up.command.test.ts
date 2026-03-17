@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   detectWorktree: vi.fn(),
-  configExists: vi.fn(),
-  loadConfig: vi.fn(),
+  ensurePortRuntimeDir: vi.fn(),
+  loadConfigOrDefault: vi.fn(),
   getComposeFile: vi.fn(),
   checkDns: vi.fn(),
   registerProject: vi.fn(),
@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
   getAllPorts: vi.fn(),
   getServicePorts: vi.fn(),
   getProjectName: vi.fn(),
+  hookExists: vi.fn(),
+  runPostUpHook: vi.fn(),
   success: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -38,8 +40,8 @@ vi.mock('../lib/worktree.ts', () => ({
 }))
 
 vi.mock('../lib/config.ts', () => ({
-  configExists: mocks.configExists,
-  loadConfig: mocks.loadConfig,
+  ensurePortRuntimeDir: mocks.ensurePortRuntimeDir,
+  loadConfigOrDefault: mocks.loadConfigOrDefault,
   getComposeFile: mocks.getComposeFile,
 }))
 
@@ -71,6 +73,11 @@ vi.mock('../lib/compose.ts', () => ({
   getProjectName: mocks.getProjectName,
 }))
 
+vi.mock('../lib/hooks.ts', () => ({
+  hookExists: mocks.hookExists,
+  runPostUpHook: mocks.runPostUpHook,
+}))
+
 vi.mock('../lib/output.ts', () => ({
   success: mocks.success,
   warn: mocks.warn,
@@ -99,8 +106,8 @@ describe('up DNS preflight', () => {
       name: 'main',
       isMainRepo: true,
     })
-    mocks.configExists.mockReturnValue(true)
-    mocks.loadConfig.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
+    mocks.ensurePortRuntimeDir.mockResolvedValue(undefined)
+    mocks.loadConfigOrDefault.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
     mocks.getComposeFile.mockReturnValue('docker-compose.yml')
     mocks.checkDns.mockResolvedValue(true)
 
@@ -116,6 +123,8 @@ describe('up DNS preflight', () => {
     mocks.runCompose.mockResolvedValue({ exitCode: 0 })
     mocks.registerProject.mockResolvedValue(undefined)
     mocks.getServicePorts.mockReturnValue([])
+    mocks.hookExists.mockResolvedValue(false)
+    mocks.runPostUpHook.mockResolvedValue({ success: true, exitCode: 0 })
 
     mocks.url.mockImplementation((value: string) => value)
     mocks.branch.mockImplementation((value: string) => value)
@@ -142,7 +151,7 @@ describe('up DNS preflight', () => {
   })
 
   test('exits early with custom-domain install command when DNS is not configured', async () => {
-    mocks.loadConfig.mockResolvedValue({ domain: 'custom', compose: 'docker-compose.yml' })
+    mocks.loadConfigOrDefault.mockResolvedValue({ domain: 'custom', compose: 'docker-compose.yml' })
     mocks.checkDns.mockResolvedValue(false)
 
     await expect(up()).rejects.toThrow('process.exit:1')
@@ -158,5 +167,30 @@ describe('up DNS preflight', () => {
     expect(mocks.checkDns).toHaveBeenCalledWith('port')
     expect(mocks.parseComposeFile).toHaveBeenCalledWith('/repo', 'docker-compose.yml')
     expect(mocks.runCompose).toHaveBeenCalled()
+  })
+
+  test('runs post-up hook when configured', async () => {
+    mocks.hookExists.mockResolvedValue(true)
+
+    await up()
+
+    expect(mocks.info).toHaveBeenCalledWith('Running post-up hook...')
+    expect(mocks.runPostUpHook).toHaveBeenCalledWith({
+      repoRoot: '/repo',
+      worktreePath: '/repo',
+      branch: 'main',
+      domain: 'port',
+    })
+    expect(mocks.success).toHaveBeenCalledWith('Post-up hook completed')
+  })
+
+  test('warns when post-up hook fails and still succeeds', async () => {
+    mocks.hookExists.mockResolvedValue(true)
+    mocks.runPostUpHook.mockResolvedValue({ success: false, exitCode: 7 })
+
+    await up()
+
+    expect(mocks.warn).toHaveBeenCalledWith('Post-up hook failed (exit code 7)')
+    expect(mocks.dim).toHaveBeenCalledWith('See .port/logs/latest.log for details')
   })
 })

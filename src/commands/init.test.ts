@@ -59,4 +59,13 @@ describe('Directory creation tests', () => {
 
     expect(existsSync(path.join(sampleDir, '.port', 'override-compose.yml'))).toBeTruthy()
   })
+
+  test('should create the post-up hook scaffold', async () => {
+    expect(existsSync(path.join(sampleDir, '.port', 'hooks', 'post-up.sh'))).toBeFalsy()
+
+    const { findByError } = await renderCLI(['init'], sampleDir)
+    await findByError('Initialization complete', {}, { timeout: 10000 })
+
+    expect(existsSync(path.join(sampleDir, '.port', 'hooks', 'post-up.sh'))).toBeTruthy()
+  })
 })

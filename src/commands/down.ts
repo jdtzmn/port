@@ -1,6 +1,6 @@
 import inquirer from 'inquirer'
 import { detectWorktree } from '../lib/worktree.ts'
-import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
+import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import {
   unregisterProject,
   hasRegisteredProjects,
@@ -72,15 +72,10 @@ export async function down(options?: { yes?: boolean }): Promise<void> {
 
   const { repoRoot, worktreePath, name } = worktreeInfo
 
-  // Check if port is initialized
-  if (!configExists(repoRoot)) {
-    output.info('Port is not initialized in this repository. Attempting global Traefik shutdown...')
-    await stopTraefikGlobally(options)
-    return
-  }
+  await ensurePortRuntimeDir(repoRoot)
 
-  // Load config
-  const config = await loadConfig(repoRoot)
+  // Load config (defaults when config file is absent)
+  const config = await loadConfigOrDefault(repoRoot)
   const composeFile = getComposeFile(config)
 
   // Stop docker-compose services

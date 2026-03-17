@@ -1,5 +1,12 @@
 import { detectWorktree } from '../lib/worktree.ts'
-import { hookExists, runHook, HOOK_NAMES, type HookName } from '../lib/hooks.ts'
+import {
+  hookExists,
+  runHook,
+  HOOK_NAMES,
+  canRunHookInContext,
+  type HookName,
+} from '../lib/hooks.ts'
+import { configExists, loadConfig } from '../lib/config.ts'
 import { CliError, failWithError } from '../lib/cli.ts'
 import * as output from '../lib/output.ts'
 
@@ -66,9 +73,19 @@ export async function hook(
     throw new CliError(`Unknown hook "${hookName}"`, { exitCode: 1, alreadyReported: true })
   }
 
-  // Must be in a worktree
-  if (isMainRepo) {
-    failWithError('Must be inside a worktree to run hooks. Use `port enter <branch>` first.')
+  // Respect hook-specific run context policy
+  if (!canRunHookInContext(hookName, isMainRepo)) {
+    failWithError(`Hook "${hookName}" can only be run from inside a worktree.`)
+  }
+
+  let domain: string | undefined
+  if (configExists(repoRoot)) {
+    try {
+      const config = await loadConfig(repoRoot)
+      domain = config.domain
+    } catch {
+      // Best-effort: hooks can still run without PORT_DOMAIN
+    }
   }
 
   // Check hook exists
@@ -88,6 +105,7 @@ export async function hook(
       PORT_ROOT_PATH: repoRoot,
       PORT_WORKTREE_PATH: worktreePath,
       PORT_BRANCH: name,
+      PORT_DOMAIN: domain,
     },
     name
   )
