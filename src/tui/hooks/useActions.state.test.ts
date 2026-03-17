@@ -3,6 +3,7 @@ import {
   INITIAL_ACTION_STATE,
   createEnqueueDecision,
   reduceActionState,
+  waitForRunningActionsToDrain,
   type ActionJob,
   type ActionState,
 } from './useActions.ts'
@@ -160,5 +161,42 @@ describe('reduceActionState', () => {
     expect(trimmed.jobs['job-new']?.logs).toEqual([{ ts: 4, stream: 'system', line: 'line-4' }])
     expect(trimmed.runningByWorktree['old']).toBeUndefined()
     expect(trimmed.runningByWorktree['new']).toBe('job-new')
+  })
+})
+
+describe('waitForRunningActionsToDrain', () => {
+  test('resolves when running actions drain before timeout', async () => {
+    let state: ActionState = {
+      ...INITIAL_ACTION_STATE,
+      runningByWorktree: { 'feature-a': 'job-a' },
+    }
+
+    const resultPromise = waitForRunningActionsToDrain({
+      getState: () => state,
+      timeoutMs: 100,
+      intervalMs: 1,
+      sleep: async () => {
+        state = { ...state, runningByWorktree: {} }
+      },
+    })
+
+    const result = await resultPromise
+    expect(result).toEqual({ timedOut: false, remaining: 0 })
+  })
+
+  test('returns timeout when running actions do not drain', async () => {
+    const state: ActionState = {
+      ...INITIAL_ACTION_STATE,
+      runningByWorktree: { 'feature-a': 'job-a' },
+    }
+
+    const result = await waitForRunningActionsToDrain({
+      getState: () => state,
+      timeoutMs: 0,
+      intervalMs: 1,
+      sleep: async () => {},
+    })
+
+    expect(result).toEqual({ timedOut: true, remaining: 1 })
   })
 })

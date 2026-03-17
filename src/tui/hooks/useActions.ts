@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { PortConfig, HostService } from '../../types.ts'
 import { getComposeFile } from '../../lib/config.ts'
 import {
@@ -63,6 +63,12 @@ interface EnqueueRejected {
 }
 
 export type EnqueueResult = EnqueueSuccess | EnqueueRejected
+
+export interface ShutdownJobsResult {
+  cancelledCount: number
+  timedOut: boolean
+  remaining: number
+}
 
 export interface ActionState {
   order: string[]
@@ -267,11 +273,44 @@ function createJobId(kind: ActionKind, worktreeName: string): string {
   return `${kind}-${worktreeName}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+export async function waitForRunningActionsToDrain(options: {
+  getState: () => ActionState
+  timeoutMs: number
+  intervalMs?: number
+  sleep?: (ms: number) => Promise<void>
+}): Promise<{ timedOut: boolean; remaining: number }> {
+  const intervalMs = options.intervalMs ?? 50
+  const sleep =
+    options.sleep ??
+    (async (ms: number) => {
+      await new Promise(resolve => setTimeout(resolve, ms))
+    })
+
+  const startedAt = Date.now()
+  while (true) {
+    const remainingCount = Object.keys(options.getState().runningByWorktree).length
+    if (remainingCount === 0) {
+      return { timedOut: false, remaining: 0 }
+    }
+
+    if (Date.now() - startedAt >= options.timeoutMs) {
+      return { timedOut: true, remaining: remainingCount }
+    }
+
+    await sleep(intervalMs)
+  }
+}
+
 export function useActions(repoRoot: string, config: PortConfig, refresh: () => void) {
   const composeFile = getComposeFile(config)
   const [state, dispatch] = useReducer(reduceActionState, INITIAL_ACTION_STATE)
+  const stateRef = useRef(state)
   const controllersRef = useRef(new Map<string, AbortController>())
   const infraLockRef = useRef<Promise<void>>(Promise.resolve())
+
+  useEffect(() => {
+    stateRef.current = state
+  }, [state])
 
   const withInfraLock = useCallback(async <T>(work: () => Promise<T>): Promise<T> => {
     const previous = infraLockRef.current
@@ -666,6 +705,36 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
     [appendSystemLog, state.runningByWorktree]
   )
 
+  const getRunningActionCount = useCallback(
+    (): number => Object.keys(state.runningByWorktree).length,
+    [state.runningByWorktree]
+  )
+
+  const shutdownJobs = useCallback(
+    async (options?: { timeoutMs?: number }): Promise<ShutdownJobsResult> => {
+      const runningJobIds = [...new Set(Object.values(stateRef.current.runningByWorktree))]
+
+      for (const jobId of runningJobIds) {
+        const controller = controllersRef.current.get(jobId)
+        if (!controller) continue
+        appendSystemLog(jobId, 'Cancellation requested (shutdown)')
+        controller.abort()
+      }
+
+      const drainResult = await waitForRunningActionsToDrain({
+        getState: () => stateRef.current,
+        timeoutMs: options?.timeoutMs ?? 5000,
+      })
+
+      return {
+        cancelledCount: runningJobIds.length,
+        timedOut: drainResult.timedOut,
+        remaining: drainResult.remaining,
+      }
+    },
+    [appendSystemLog]
+  )
+
   return {
     upWorktree,
     downWorktree,
@@ -675,5 +744,7 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
     isWorktreeBusy,
     getOutputTail,
     cancelWorktreeAction,
+    getRunningActionCount,
+    shutdownJobs,
   }
 }
