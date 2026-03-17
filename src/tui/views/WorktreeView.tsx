@@ -3,23 +3,17 @@ import { useKeyboard } from '@opentui/react'
 import type { ScrollBoxRenderable } from '@opentui/core'
 import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
-import type { ActionJob, EnqueueResult } from '../hooks/useActions.ts'
+import type { ActionJob, EnqueueResult, OutputTailLine } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
 import { KeyHints } from '../components/KeyHints.tsx'
-import { ActionLog } from '../components/ActionLog.tsx'
 
 interface Actions {
   downWorktree: (worktreePath: string, worktreeName: string) => EnqueueResult
   killHostService: (service: HostService) => EnqueueResult
   isWorktreeBusy: (worktreeName: string) => boolean
   latestJobByWorktree: Map<string, ActionJob>
-  jobs: ActionJob[]
-  logOpen: boolean
-  activeLogJob: ActionJob | null
-  toggleLog: () => void
-  selectNextLogJob: () => void
-  selectPrevLogJob: () => void
-  cancelActiveLogJob: () => boolean
+  getOutputTail: (worktreeName: string) => OutputTailLine[]
+  cancelWorktreeAction: (worktreeName: string) => boolean
 }
 
 interface WorktreeViewProps {
@@ -95,6 +89,46 @@ function buildServiceItems(
   return items
 }
 
+function formatElapsedSeconds(job: ActionJob): string | null {
+  if (typeof job.startedAt !== 'number' || typeof job.endedAt !== 'number') {
+    return null
+  }
+  const seconds = Math.max(1, Math.round((job.endedAt - job.startedAt) / 1000))
+  return `${seconds}s`
+}
+
+function formatOutputTitle(
+  worktreeName: string,
+  latestJob: ActionJob | undefined,
+  running: boolean
+): string {
+  const base = `Output (${worktreeName})`
+  if (!latestJob) {
+    return running ? `${base} - running` : base
+  }
+
+  if (running || latestJob.status === 'running') {
+    return `${base} - running`
+  }
+
+  const elapsed = formatElapsedSeconds(latestJob)
+  if (!elapsed) {
+    return base
+  }
+
+  if (latestJob.status === 'success') {
+    return `${base} - finished in ${elapsed}`
+  }
+  if (latestJob.status === 'error') {
+    return `${base} - failed in ${elapsed}`
+  }
+  if (latestJob.status === 'cancelled') {
+    return `${base} - cancelled in ${elapsed}`
+  }
+
+  return base
+}
+
 export function WorktreeView({
   worktree,
   hostServices,
@@ -166,27 +200,8 @@ export function WorktreeView({
   useKeyboard(event => {
     if (event.ctrl || event.meta) return
 
-    const keySequence = (event as { sequence?: string }).sequence
-    const isPrevLogKey = event.name === '[' || event.name === 'openbracket' || keySequence === '['
-    const isNextLogKey = event.name === ']' || event.name === 'closebracket' || keySequence === ']'
-
-    if (event.name === 'l') {
-      actions.toggleLog()
-      return
-    }
-
-    if (actions.logOpen && isPrevLogKey) {
-      actions.selectPrevLogJob()
-      return
-    }
-
-    if (actions.logOpen && isNextLogKey) {
-      actions.selectNextLogJob()
-      return
-    }
-
-    if (actions.logOpen && event.name === 'c') {
-      if (!actions.cancelActiveLogJob()) {
+    if (event.name === 'c') {
+      if (!actions.cancelWorktreeAction(worktreeName)) {
         showStatus('No running action selected to cancel', 'error')
       }
       return
@@ -260,6 +275,27 @@ export function WorktreeView({
       <text fg="#00AAFF" flexShrink={0}>
         {baseUrl}
       </text>
+
+      <box height={1} flexShrink={0} />
+
+      {(runningAction || actions.getOutputTail(worktreeName).length > 0) && (
+        <box flexDirection="column" flexShrink={0}>
+          <text fg="#888888">
+            <b>{formatOutputTitle(worktreeName, latestJob, runningAction)}</b>
+          </text>
+          {actions.getOutputTail(worktreeName).map((entry, index) => (
+            <text
+              key={`${worktreeName}-tail-${index}`}
+              fg={entry.stream === 'stderr' ? '#FF8888' : '#888888'}
+            >
+              {entry.line}
+            </text>
+          ))}
+          {actions.getOutputTail(worktreeName).length === 0 && (
+            <text fg="#666666">No output yet...</text>
+          )}
+        </box>
+      )}
 
       <box height={1} flexShrink={0} />
 
@@ -342,22 +378,13 @@ export function WorktreeView({
         </text>
       )}
 
-      {actions.logOpen && (
-        <>
-          <box height={1} flexShrink={0} />
-          <ActionLog jobs={actions.jobs} activeJob={actions.activeLogJob} />
-        </>
-      )}
-
       {/* Key hints */}
       <KeyHints
         hints={[
           { key: 'Enter', action: 'open in browser' },
           { key: 'd', action: 'down' },
           { key: 'x', action: 'kill host svc' },
-          { key: 'l', action: 'log' },
-          { key: '[ ]', action: 'cycle jobs' },
-          { key: 'c', action: 'cancel job' },
+          ...(runningAction ? [{ key: 'c', action: 'cancel running' }] : []),
           { key: 'Esc', action: 'back' },
           { key: 'r', action: 'refresh' },
           { key: 'q', action: 'quit' },

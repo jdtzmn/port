@@ -37,13 +37,8 @@ const mockActions = {
   killHostService: noopAction,
   isWorktreeBusy: () => false,
   latestJobByWorktree: new Map(),
-  jobs: [],
-  logOpen: false,
-  activeLogJob: null,
-  toggleLog: noop,
-  selectNextLogJob: noop,
-  selectPrevLogJob: noop,
-  cancelActiveLogJob: () => false,
+  getOutputTail: () => [],
+  cancelWorktreeAction: () => false,
 }
 
 let currentRenderer: TestRenderer | null = null
@@ -194,9 +189,47 @@ describe('WorktreeView', () => {
 
     expect(frame).toContain('[Enter]')
     expect(frame).toContain('[d]')
-    expect(frame).toContain('[Esc]')
-    expect(frame).toContain('[r]')
-    expect(frame).toContain('[q]')
+    expect(frame).toContain('[x]')
+    expect(frame).not.toContain('[c]')
+  })
+
+  test('shows cancel hint only while current worktree action is running', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          isWorktreeBusy: () => true,
+          latestJobByWorktree: new Map([
+            [
+              'feature-auth',
+              {
+                id: 'job-running',
+                kind: 'down',
+                worktreeName: 'feature-auth',
+                worktreePath: '/repo/.port/trees/feature-auth',
+                status: 'running',
+                summary: 'down',
+                logs: [],
+              },
+            ],
+          ]),
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 100, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    expect(captureCharFrame()).toContain('[c]')
   })
 
   test('shows no services message when empty', async () => {
@@ -351,7 +384,7 @@ describe('WorktreeView', () => {
     expect(frame).toContain('down...')
   })
 
-  test('supports log toggle and job cycling keys', async () => {
+  test('c triggers cancellation for current worktree', async () => {
     const calls: string[] = []
 
     const { renderer, mockInput, renderOnce } = await testRender(
@@ -363,10 +396,10 @@ describe('WorktreeView', () => {
         onBack={noop}
         actions={{
           ...mockActions,
-          logOpen: true,
-          toggleLog: () => calls.push('toggle'),
-          selectPrevLogJob: () => calls.push('prev'),
-          selectNextLogJob: () => calls.push('next'),
+          cancelWorktreeAction: (name: string) => {
+            calls.push(name)
+            return true
+          },
         }}
         refresh={noop}
         loading={false}
@@ -378,17 +411,11 @@ describe('WorktreeView', () => {
     currentRenderer = renderer
 
     await renderOnce()
-    mockInput.pressKey('[')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-    mockInput.pressKey(']')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-    mockInput.pressKey('l')
+    mockInput.pressKey('c')
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
-    expect(calls).toEqual(['prev', 'next', 'toggle'])
+    expect(calls).toEqual(['feature-auth'])
   })
 
   test('shows cancel status error when no running job is selected', async () => {
@@ -403,8 +430,7 @@ describe('WorktreeView', () => {
         onBack={noop}
         actions={{
           ...mockActions,
-          logOpen: true,
-          cancelActiveLogJob: () => false,
+          cancelWorktreeAction: () => false,
         }}
         refresh={noop}
         loading={false}
@@ -423,16 +449,11 @@ describe('WorktreeView', () => {
     expect(statusCalls).toEqual([{ text: 'No running action selected to cancel', type: 'error' }])
   })
 
-  test('renders action log panel when log is open', async () => {
-    const activeJob = {
-      id: 'job-1',
-      kind: 'down' as const,
-      worktreeName: 'feature-auth',
-      worktreePath: '/repo/.port/trees/feature-auth',
-      status: 'running' as const,
-      summary: 'down',
-      logs: [{ ts: 1, stream: 'system' as const, line: 'Stopping services' }],
-    }
+  test('renders two-line output tail', async () => {
+    const tail = [
+      { stream: 'stdout' as const, line: 'Stopping services...' },
+      { stream: 'stderr' as const, line: 'warning: network busy' },
+    ]
 
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <WorktreeView
@@ -443,9 +464,7 @@ describe('WorktreeView', () => {
         onBack={noop}
         actions={{
           ...mockActions,
-          logOpen: true,
-          jobs: [activeJob],
-          activeLogJob: activeJob,
+          getOutputTail: () => tail,
         }}
         refresh={noop}
         loading={false}
@@ -458,7 +477,119 @@ describe('WorktreeView', () => {
 
     await renderOnce()
     const frame = captureCharFrame()
-    expect(frame).toContain('Action Log')
-    expect(frame).toContain('feature-auth down running')
+    expect(frame).toContain('Output (feature-auth)')
+    expect(frame).toContain('Stopping services...')
+    expect(frame).toContain('warning: network busy')
+  })
+
+  test('shows running and finished output titles with elapsed seconds', async () => {
+    const runningJob = {
+      id: 'job-running',
+      kind: 'down' as const,
+      worktreeName: 'feature-auth',
+      worktreePath: '/repo/.port/trees/feature-auth',
+      status: 'running' as const,
+      summary: 'down',
+      startedAt: 500,
+      logs: [],
+    }
+    const finishedJob = {
+      ...runningJob,
+      id: 'job-finished',
+      status: 'success' as const,
+      endedAt: 3_000,
+    }
+
+    const {
+      renderer: runningRenderer,
+      renderOnce: renderRunning,
+      captureCharFrame: captureRunning,
+    } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          isWorktreeBusy: () => true,
+          latestJobByWorktree: new Map([['feature-auth', runningJob]]),
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 110, height: 22 }
+    )
+    currentRenderer = runningRenderer
+    await renderRunning()
+    expect(captureRunning()).toContain('Output (feature-auth) - running')
+
+    const {
+      renderer: finishedRenderer,
+      renderOnce: renderFinished,
+      captureCharFrame: captureFinished,
+    } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          latestJobByWorktree: new Map([['feature-auth', finishedJob]]),
+          getOutputTail: () => [{ stream: 'stdout', line: 'done' }],
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 110, height: 22 }
+    )
+    currentRenderer = finishedRenderer
+    await renderFinished()
+    expect(captureFinished()).toContain('Output (feature-auth) - finished in 3s')
+  })
+
+  test('shows failure-specific output title wording', async () => {
+    const failedJob = {
+      id: 'job-failed',
+      kind: 'down' as const,
+      worktreeName: 'feature-auth',
+      worktreePath: '/repo/.port/trees/feature-auth',
+      status: 'error' as const,
+      summary: 'down',
+      startedAt: 1_000,
+      endedAt: 5_900,
+      logs: [],
+    }
+
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          latestJobByWorktree: new Map([['feature-auth', failedJob]]),
+          getOutputTail: () => [{ stream: 'stderr', line: 'failed' }],
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 110, height: 22 }
+    )
+    currentRenderer = renderer
+    await renderOnce()
+
+    expect(captureCharFrame()).toContain('Output (feature-auth) - failed in 5s')
   })
 })

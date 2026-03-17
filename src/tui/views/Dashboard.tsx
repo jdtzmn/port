@@ -3,11 +3,10 @@ import { useKeyboard } from '@opentui/react'
 import type { ScrollBoxRenderable } from '@opentui/core'
 import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
-import type { ActionJob, EnqueueResult } from '../hooks/useActions.ts'
+import type { ActionJob, EnqueueResult, OutputTailLine } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
 import { KeyHints } from '../components/KeyHints.tsx'
 import { Confirm } from '../components/Confirm.tsx'
-import { ActionLog } from '../components/ActionLog.tsx'
 
 interface Actions {
   upWorktree: (worktreePath: string, worktreeName: string) => EnqueueResult
@@ -15,13 +14,8 @@ interface Actions {
   archiveWorktree: (worktreePath: string, worktreeName: string) => EnqueueResult
   isWorktreeBusy: (worktreeName: string) => boolean
   latestJobByWorktree: Map<string, ActionJob>
-  jobs: ActionJob[]
-  logOpen: boolean
-  activeLogJob: ActionJob | null
-  toggleLog: () => void
-  selectNextLogJob: () => void
-  selectPrevLogJob: () => void
-  cancelActiveLogJob: () => boolean
+  getOutputTail: (worktreeName: string) => OutputTailLine[]
+  cancelWorktreeAction: (worktreeName: string) => boolean
 }
 
 interface DashboardProps {
@@ -140,6 +134,46 @@ function buildHighlightedSegments(text: string, ranges: MatchRange[]): React.Rea
   return segments
 }
 
+function formatElapsedSeconds(job: ActionJob): string | null {
+  if (typeof job.startedAt !== 'number' || typeof job.endedAt !== 'number') {
+    return null
+  }
+  const seconds = Math.max(1, Math.round((job.endedAt - job.startedAt) / 1000))
+  return `${seconds}s`
+}
+
+function formatOutputTitle(
+  worktreeName: string,
+  latestJob: ActionJob | undefined,
+  running: boolean
+): string {
+  const base = `Output (${worktreeName})`
+  if (!latestJob) {
+    return running ? `${base} - running` : base
+  }
+
+  if (running || latestJob.status === 'running') {
+    return `${base} - running`
+  }
+
+  const elapsed = formatElapsedSeconds(latestJob)
+  if (!elapsed) {
+    return base
+  }
+
+  if (latestJob.status === 'success') {
+    return `${base} - finished in ${elapsed}`
+  }
+  if (latestJob.status === 'error') {
+    return `${base} - failed in ${elapsed}`
+  }
+  if (latestJob.status === 'cancelled') {
+    return `${base} - cancelled in ${elapsed}`
+  }
+
+  return base
+}
+
 export function Dashboard({
   repoName,
   worktrees,
@@ -222,6 +256,12 @@ export function Dashboard({
   }
 
   const selectedWorktree = worktrees[selectedIndex]
+  const selectedLatestJob = selectedWorktree
+    ? actions.latestJobByWorktree.get(selectedWorktree.name)
+    : undefined
+  const selectedRunningAction = selectedWorktree
+    ? actions.isWorktreeBusy(selectedWorktree.name)
+    : false
   const isRootSelected = selectedIndex === 0
   const highlightQuery =
     jumpMode === 'query' ? draftQuery : jumpMode === 'filtered-nav' ? appliedQuery : ''
@@ -308,26 +348,8 @@ export function Dashboard({
       }
     }
 
-    const isPrevLogKey = event.name === '[' || event.name === 'openbracket' || keySequence === '['
-    const isNextLogKey = event.name === ']' || event.name === 'closebracket' || keySequence === ']'
-
-    if (event.name === 'l') {
-      actions.toggleLog()
-      return
-    }
-
-    if (actions.logOpen && isPrevLogKey) {
-      actions.selectPrevLogJob()
-      return
-    }
-
-    if (actions.logOpen && isNextLogKey) {
-      actions.selectNextLogJob()
-      return
-    }
-
-    if (actions.logOpen && event.name === 'c') {
-      if (!actions.cancelActiveLogJob()) {
+    if (event.name === 'c' && selectedWorktree) {
+      if (!actions.cancelWorktreeAction(selectedWorktree.name)) {
         showStatus('No running action selected to cancel', 'error')
       }
       return
@@ -462,6 +484,16 @@ export function Dashboard({
               <text flexShrink={1} wrapMode="none">
                 {matchRanges.length > 0 ? buildHighlightedSegments(nameStr, matchRanges) : nameStr}
               </text>
+              {runningAction && latestJob && (
+                <text wrapMode="none" flexShrink={0} fg="#FFFF00">
+                  {'  ' + latestJob.kind + '...'}
+                </text>
+              )}
+              {!runningAction && latestJob?.status === 'error' && (
+                <text wrapMode="none" flexShrink={0} fg="#FF4444">
+                  {'  ' + latestJob.kind + ' failed'}
+                </text>
+              )}
               {totalCount === 0 && loading && (
                 <text wrapMode="none" flexShrink={0} fg="#555555">
                   {' ...'}
@@ -482,16 +514,6 @@ export function Dashboard({
                   {'  ' + totalCount + ' total'}
                 </text>
               )}
-              {runningAction && latestJob && (
-                <text wrapMode="none" flexShrink={0} fg="#FFFF00">
-                  {'  ' + latestJob.kind + '...'}
-                </text>
-              )}
-              {!runningAction && latestJob?.status === 'error' && (
-                <text wrapMode="none" flexShrink={0} fg="#FF4444">
-                  {'  ' + latestJob.kind + ' failed'}
-                </text>
-              )}
             </box>
           )
         })}
@@ -506,12 +528,27 @@ export function Dashboard({
         </text>
       )}
 
-      {actions.logOpen && (
-        <>
-          <box height={1} flexShrink={0} />
-          <ActionLog jobs={actions.jobs} activeJob={actions.activeLogJob} />
-        </>
-      )}
+      {selectedWorktree &&
+        (selectedRunningAction || actions.getOutputTail(selectedWorktree.name).length > 0) && (
+          <box flexDirection="column" flexShrink={0}>
+            <text fg="#888888">
+              <b>
+                {formatOutputTitle(selectedWorktree.name, selectedLatestJob, selectedRunningAction)}
+              </b>
+            </text>
+            {actions.getOutputTail(selectedWorktree.name).map((entry, index) => (
+              <text
+                key={`${selectedWorktree.name}-tail-${index}`}
+                fg={entry.stream === 'stderr' ? '#FF8888' : '#888888'}
+              >
+                {entry.line}
+              </text>
+            ))}
+            {actions.getOutputTail(selectedWorktree.name).length === 0 && (
+              <text fg="#666666">No output yet...</text>
+            )}
+          </box>
+        )}
 
       {/* Jump prompt */}
       {jumpMode !== 'normal' && (
@@ -568,9 +605,9 @@ export function Dashboard({
                     { key: 'u', action: 'up' },
                     { key: 'd', action: 'down' },
                     { key: 'a', action: 'archive' },
-                    { key: 'l', action: 'log' },
-                    { key: '[ ]', action: 'cycle jobs' },
-                    { key: 'c', action: 'cancel job' },
+                    ...(selectedWorktree && selectedRunningAction
+                      ? [{ key: 'c', action: 'cancel running' }]
+                      : []),
                     { key: 'r', action: 'refresh' },
                     { key: 'q', action: 'quit' },
                   ]

@@ -33,6 +33,11 @@ interface ActionLogLine {
   line: string
 }
 
+export interface OutputTailLine {
+  stream: 'stdout' | 'stderr'
+  line: string
+}
+
 export interface ActionJob {
   id: string
   kind: ActionKind
@@ -63,8 +68,7 @@ export interface ActionState {
   order: string[]
   jobs: Record<string, ActionJob>
   runningByWorktree: Record<string, string>
-  activeLogJobId: string | null
-  logOpen: boolean
+  outputTailByWorktree: Record<string, OutputTailLine[]>
 }
 
 export type ActionEvent =
@@ -78,17 +82,13 @@ export type ActionEvent =
       endedAt: number
       error?: string
     }
-  | { type: 'toggle-log' }
-  | { type: 'next-log-job' }
-  | { type: 'prev-log-job' }
   | { type: 'trim'; maxJobs: number; maxLinesPerJob: number }
 
 export const INITIAL_ACTION_STATE: ActionState = {
   order: [],
   jobs: {},
   runningByWorktree: {},
-  activeLogJobId: null,
-  logOpen: false,
+  outputTailByWorktree: {},
 }
 
 export function reduceActionState(state: ActionState, event: ActionEvent): ActionState {
@@ -97,7 +97,6 @@ export function reduceActionState(state: ActionState, event: ActionEvent): Actio
       return {
         ...state,
         order: [event.job.id, ...state.order],
-        activeLogJobId: state.activeLogJobId ?? event.job.id,
         jobs: {
           ...state.jobs,
           [event.job.id]: event.job,
@@ -105,6 +104,10 @@ export function reduceActionState(state: ActionState, event: ActionEvent): Actio
         runningByWorktree: {
           ...state.runningByWorktree,
           [event.job.worktreeName]: event.job.id,
+        },
+        outputTailByWorktree: {
+          ...state.outputTailByWorktree,
+          [event.job.worktreeName]: [],
         },
       }
     }
@@ -137,6 +140,16 @@ export function reduceActionState(state: ActionState, event: ActionEvent): Actio
             logs: [...existing.logs, { ts: event.ts, stream: event.stream, line: event.line }],
           },
         },
+        outputTailByWorktree:
+          event.stream === 'system'
+            ? state.outputTailByWorktree
+            : {
+                ...state.outputTailByWorktree,
+                [existing.worktreeName]: [
+                  ...(state.outputTailByWorktree[existing.worktreeName] ?? []),
+                  { stream: event.stream, line: event.line },
+                ].slice(-2),
+              },
       }
     }
 
@@ -158,38 +171,6 @@ export function reduceActionState(state: ActionState, event: ActionEvent): Actio
             error: event.error,
           },
         },
-      }
-    }
-
-    case 'toggle-log': {
-      const nextLogOpen = !state.logOpen
-      return {
-        ...state,
-        logOpen: nextLogOpen,
-        activeLogJobId: state.activeLogJobId ?? state.order[0] ?? null,
-      }
-    }
-
-    case 'next-log-job': {
-      if (state.order.length === 0) return state
-      const currentIndex = state.activeLogJobId ? state.order.indexOf(state.activeLogJobId) : -1
-      const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % state.order.length
-      return {
-        ...state,
-        activeLogJobId: state.order[nextIndex] ?? null,
-      }
-    }
-
-    case 'prev-log-job': {
-      if (state.order.length === 0) return state
-      const currentIndex = state.activeLogJobId ? state.order.indexOf(state.activeLogJobId) : -1
-      const prevIndex =
-        currentIndex < 0
-          ? state.order.length - 1
-          : (currentIndex - 1 + state.order.length) % state.order.length
-      return {
-        ...state,
-        activeLogJobId: state.order[prevIndex] ?? null,
       }
     }
 
@@ -238,12 +219,11 @@ export function reduceActionState(state: ActionState, event: ActionEvent): Actio
         order: keptOrder,
         jobs: nextJobs,
         runningByWorktree: nextRunningByWorktree,
-        activeLogJobId:
-          state.activeLogJobId && nextJobs[state.activeLogJobId]
-            ? state.activeLogJobId
-            : (keptOrder[0] ?? null),
       }
     }
+
+    default:
+      return state
   }
 }
 
@@ -645,8 +625,6 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
     [enqueue, runKillHostService]
   )
 
-  const jobs = useMemo(() => state.order.map(jobId => state.jobs[jobId]!).filter(Boolean), [state])
-
   const latestJobByWorktree = useMemo(() => {
     const entries = new Map<string, ActionJob>()
     for (const jobId of state.order) {
@@ -664,56 +642,38 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
     [state.runningByWorktree]
   )
 
-  const activeLogJob = useMemo(
-    () => (state.activeLogJobId ? (state.jobs[state.activeLogJobId] ?? null) : null),
-    [state.activeLogJobId, state.jobs]
+  const getOutputTail = useCallback(
+    (worktreeName: string): OutputTailLine[] => state.outputTailByWorktree[worktreeName] ?? [],
+    [state.outputTailByWorktree]
   )
 
-  const toggleLog = useCallback(() => {
-    dispatch({ type: 'toggle-log' })
-  }, [])
+  const cancelWorktreeAction = useCallback(
+    (worktreeName: string): boolean => {
+      const runningJobId = state.runningByWorktree[worktreeName]
+      if (!runningJobId) {
+        return false
+      }
 
-  const selectNextLogJob = useCallback(() => {
-    dispatch({ type: 'next-log-job' })
-  }, [])
+      const controller = controllersRef.current.get(runningJobId)
+      if (!controller) {
+        return false
+      }
 
-  const selectPrevLogJob = useCallback(() => {
-    dispatch({ type: 'prev-log-job' })
-  }, [])
-
-  const cancelActiveLogJob = useCallback((): boolean => {
-    if (!state.activeLogJobId) {
-      return false
-    }
-
-    const job = state.jobs[state.activeLogJobId]
-    if (!job || job.status !== 'running') {
-      return false
-    }
-
-    const controller = controllersRef.current.get(job.id)
-    if (!controller) {
-      return false
-    }
-
-    appendSystemLog(job.id, 'Cancellation requested')
-    controller.abort()
-    return true
-  }, [appendSystemLog, state.activeLogJobId, state.jobs])
+      appendSystemLog(runningJobId, 'Cancellation requested')
+      controller.abort()
+      return true
+    },
+    [appendSystemLog, state.runningByWorktree]
+  )
 
   return {
     upWorktree,
     downWorktree,
     archiveWorktree,
     killHostService,
-    jobs,
     latestJobByWorktree,
     isWorktreeBusy,
-    logOpen: state.logOpen,
-    activeLogJob,
-    toggleLog,
-    selectNextLogJob,
-    selectPrevLogJob,
-    cancelActiveLogJob,
+    getOutputTail,
+    cancelWorktreeAction,
   }
 }

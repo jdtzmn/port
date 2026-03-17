@@ -99,20 +99,36 @@ describe('reduceActionState', () => {
     expect(finished.runningByWorktree['feature-a']).toBeUndefined()
   })
 
-  test('cycles active log job with next/prev events', () => {
-    const first = makeJob({ id: 'job-1', worktreeName: 'one' })
-    const second = makeJob({ id: 'job-2', worktreeName: 'two' })
+  test('tracks only the last two streamed output lines per worktree', () => {
+    const job = makeJob({ id: 'job-1', worktreeName: 'feature-a' })
 
-    const stateAfterJobs = reduceActionState(
-      reduceActionState(INITIAL_ACTION_STATE, { type: 'enqueue', job: first }),
-      { type: 'enqueue', job: second }
-    )
+    const queued = reduceActionState(INITIAL_ACTION_STATE, { type: 'enqueue', job })
+    const afterOne = reduceActionState(queued, {
+      type: 'log',
+      jobId: 'job-1',
+      stream: 'stdout',
+      line: 'line-1',
+      ts: 1,
+    })
+    const afterTwo = reduceActionState(afterOne, {
+      type: 'log',
+      jobId: 'job-1',
+      stream: 'stderr',
+      line: 'line-2',
+      ts: 2,
+    })
+    const afterThree = reduceActionState(afterTwo, {
+      type: 'log',
+      jobId: 'job-1',
+      stream: 'stdout',
+      line: 'line-3',
+      ts: 3,
+    })
 
-    const next = reduceActionState(stateAfterJobs, { type: 'next-log-job' })
-    expect(next.activeLogJobId).toBe('job-2')
-
-    const prev = reduceActionState(next, { type: 'prev-log-job' })
-    expect(prev.activeLogJobId).toBe('job-1')
+    expect(afterThree.outputTailByWorktree['feature-a']).toEqual([
+      { stream: 'stderr', line: 'line-2' },
+      { stream: 'stdout', line: 'line-3' },
+    ])
   })
 
   test('trims old jobs and log lines', () => {
