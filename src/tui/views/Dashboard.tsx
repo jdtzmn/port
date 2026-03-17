@@ -142,6 +142,14 @@ function formatElapsedSeconds(job: ActionJob): string | null {
   return `${seconds}s`
 }
 
+function formatRunningSeconds(job: ActionJob): string | null {
+  if (typeof job.startedAt !== 'number') {
+    return null
+  }
+  const seconds = Math.max(1, Math.round((Date.now() - job.startedAt) / 1000))
+  return `${seconds}s`
+}
+
 function formatOutputTitle(
   worktreeName: string,
   latestJob: ActionJob | undefined,
@@ -153,7 +161,8 @@ function formatOutputTitle(
   }
 
   if (running || latestJob.status === 'running') {
-    return `${base} - running`
+    const elapsed = formatRunningSeconds(latestJob)
+    return elapsed ? `${base} - running for ${elapsed}` : `${base} - running`
   }
 
   const elapsed = formatElapsedSeconds(latestJob)
@@ -266,6 +275,14 @@ export function Dashboard({
   const highlightQuery =
     jumpMode === 'query' ? draftQuery : jumpMode === 'filtered-nav' ? appliedQuery : ''
   const highlightMatches = findMatchingIndices(worktrees, highlightQuery)
+  const selectedOutputTail = selectedWorktree ? actions.getOutputTail(selectedWorktree.name) : []
+  const selectedOutputLines =
+    selectedLatestJob?.logs
+      .filter(entry => entry.stream === 'stdout' || entry.stream === 'stderr')
+      .map(entry => ({ stream: entry.stream, line: entry.line })) ?? selectedOutputTail
+  const showOutput = Boolean(
+    selectedWorktree && (selectedRunningAction || selectedOutputTail.length > 0)
+  )
   useKeyboard(event => {
     if (event.ctrl || event.meta) return
 
@@ -447,7 +464,7 @@ export function Dashboard({
       {/* Worktree rows */}
       <scrollbox
         ref={scrollRef}
-        flexGrow={1}
+        flexGrow={0}
         flexShrink={1}
         scrollY
         scrollX={false}
@@ -523,52 +540,62 @@ export function Dashboard({
 
       {/* Status message */}
       {statusMessage && (
-        <text fg={statusMessage.type === 'success' ? '#00FF00' : '#FF4444'}>
+        <text fg={statusMessage.type === 'success' ? '#00FF00' : '#FF4444'} flexShrink={0}>
           {statusMessage.text}
         </text>
       )}
 
-      {selectedWorktree &&
-        (selectedRunningAction || actions.getOutputTail(selectedWorktree.name).length > 0) && (
-          <box flexDirection="column" flexShrink={0}>
-            <text fg="#888888">
-              <b>
-                {formatOutputTitle(selectedWorktree.name, selectedLatestJob, selectedRunningAction)}
-              </b>
-            </text>
-            {actions.getOutputTail(selectedWorktree.name).map((entry, index) => (
+      {showOutput && selectedWorktree && (
+        <box flexDirection="column" flexGrow={1} flexShrink={1} minHeight={3}>
+          <box height={1} flexShrink={0} />
+          <text fg="#888888" flexShrink={0}>
+            <b>
+              {formatOutputTitle(selectedWorktree.name, selectedLatestJob, selectedRunningAction)}
+            </b>
+          </text>
+          <scrollbox
+            flexGrow={1}
+            flexShrink={1}
+            scrollY
+            scrollX={false}
+            contentOptions={{ flexDirection: 'column', width: '100%' }}
+          >
+            {selectedOutputLines.map((entry, index) => (
               <text
-                key={`${selectedWorktree.name}-tail-${index}`}
+                key={`${selectedWorktree.name}-output-${index}`}
                 fg={entry.stream === 'stderr' ? '#FF8888' : '#888888'}
               >
                 {entry.line}
               </text>
             ))}
-            {actions.getOutputTail(selectedWorktree.name).length === 0 && (
-              <text fg="#666666">No output yet...</text>
-            )}
-          </box>
-        )}
+            {selectedOutputLines.length === 0 && <text fg="#666666">No output yet...</text>}
+          </scrollbox>
+        </box>
+      )}
 
       {/* Jump prompt */}
-      {jumpMode !== 'normal' && (
-        <text
-          fg={
-            jumpMode === 'query'
+      <text
+        flexShrink={0}
+        fg={
+          jumpMode === 'normal'
+            ? '#333333'
+            : jumpMode === 'query'
               ? highlightQuery.length === 0
                 ? '#888888'
                 : highlightMatches.length > 0
                   ? '#00AAFF'
                   : '#FFAA00'
               : '#00AAFF'
-          }
-        >
-          /{highlightQuery}{' '}
-          {highlightQuery.length === 0
-            ? '(type to filter)'
-            : `(${highlightMatches.length} match${highlightMatches.length === 1 ? '' : 'es'})`}
-        </text>
-      )}
+        }
+      >
+        {jumpMode === 'normal'
+          ? ' '
+          : `/${highlightQuery} ${
+              highlightQuery.length === 0
+                ? '(type to filter)'
+                : `(${highlightMatches.length} match${highlightMatches.length === 1 ? '' : 'es'})`
+            }`}
+      </text>
 
       {/* Confirmation dialog */}
       {pendingAction === 'archive' && selectedWorktree && (
@@ -581,38 +608,40 @@ export function Dashboard({
 
       {/* Key hints */}
       {!pendingAction && (
-        <KeyHints
-          hints={
-            jumpMode === 'query'
-              ? [
-                  { key: 'Type', action: 'filter' },
-                  { key: 'Backspace', action: 'delete' },
-                  { key: 'Enter', action: 'apply' },
-                  { key: 'Esc', action: 'cancel' },
-                ]
-              : jumpMode === 'filtered-nav'
+        <box flexShrink={0}>
+          <KeyHints
+            hints={
+              jumpMode === 'query'
                 ? [
-                    { key: 'j/k', action: 'next/prev match' },
-                    { key: '/', action: 'edit filter' },
-                    { key: 'Esc', action: 'clear filter' },
-                    { key: 'Enter', action: 'inspect' },
-                    { key: 'o', action: 'open' },
+                    { key: 'Type', action: 'filter' },
+                    { key: 'Backspace', action: 'delete' },
+                    { key: 'Enter', action: 'apply' },
+                    { key: 'Esc', action: 'cancel' },
                   ]
-                : [
-                    { key: 'Enter', action: 'inspect' },
-                    { key: 'o', action: 'open' },
-                    { key: '/', action: 'filter' },
-                    { key: 'u', action: 'up' },
-                    { key: 'd', action: 'down' },
-                    { key: 'a', action: 'archive' },
-                    ...(selectedWorktree && selectedRunningAction
-                      ? [{ key: 'c', action: 'cancel running' }]
-                      : []),
-                    { key: 'r', action: 'refresh' },
-                    { key: 'q', action: 'quit' },
-                  ]
-          }
-        />
+                : jumpMode === 'filtered-nav'
+                  ? [
+                      { key: 'j/k', action: 'next/prev match' },
+                      { key: '/', action: 'edit filter' },
+                      { key: 'Esc', action: 'clear filter' },
+                      { key: 'Enter', action: 'inspect' },
+                      { key: 'o', action: 'open' },
+                    ]
+                  : [
+                      { key: 'Enter', action: 'inspect' },
+                      { key: 'o', action: 'open' },
+                      { key: '/', action: 'filter' },
+                      { key: 'u', action: 'up' },
+                      { key: 'd', action: 'down' },
+                      { key: 'a', action: 'archive' },
+                      ...(selectedWorktree && selectedRunningAction
+                        ? [{ key: 'c', action: 'cancel running' }]
+                        : []),
+                      { key: 'r', action: 'refresh' },
+                      { key: 'q', action: 'quit' },
+                    ]
+            }
+          />
+        </box>
       )}
     </box>
   )
