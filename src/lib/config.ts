@@ -1,4 +1,4 @@
-import { readFile } from 'fs/promises'
+import { readFile, mkdir, writeFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { parse as parseJsonc, type ParseError } from 'jsonc-parser'
@@ -41,6 +41,18 @@ export const DEFAULT_DOMAIN = 'port'
 
 /** Default docker-compose file */
 export const DEFAULT_COMPOSE = 'docker-compose.yml'
+
+/** .gitignore content for runtime-only .port files */
+export const PORT_RUNTIME_GITIGNORE = `# Ignore worktrees (they're local only)
+trees/
+
+# Generated override file for main repo
+override.yml
+override.user.yml
+
+# Hook logs
+logs/
+`
 
 /**
  * Error thrown when config validation fails
@@ -141,6 +153,34 @@ export async function loadConfig(repoRoot: string): Promise<PortConfig> {
   }
 
   return validateConfig(config)
+}
+
+/**
+ * Load project config when present, otherwise return defaults.
+ */
+export async function loadConfigOrDefault(repoRoot: string): Promise<PortConfig> {
+  if (!configExists(repoRoot)) {
+    return {
+      domain: DEFAULT_DOMAIN,
+      compose: DEFAULT_COMPOSE,
+    }
+  }
+
+  return loadConfig(repoRoot)
+}
+
+/**
+ * Ensure runtime .port directory exists with a local .gitignore.
+ */
+export async function ensurePortRuntimeDir(repoRoot: string): Promise<void> {
+  const portDir = getPortDir(repoRoot)
+  const gitignorePath = join(portDir, '.gitignore')
+
+  await mkdir(portDir, { recursive: true })
+
+  if (!existsSync(gitignorePath)) {
+    await writeFile(gitignorePath, PORT_RUNTIME_GITIGNORE)
+  }
 }
 
 /**
