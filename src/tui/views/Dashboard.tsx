@@ -207,6 +207,7 @@ export function Dashboard({
   const [draftQuery, setDraftQuery] = useState('')
   const initialSelectionAppliedRef = useRef(false)
   const scrollRef = useRef<ScrollBoxRenderable>(null)
+  const outputScrollRef = useRef<ScrollBoxRenderable>(null)
 
   // Keep selected row visible inside the scrollbox
   useEffect(() => {
@@ -283,6 +284,20 @@ export function Dashboard({
   const showOutput = Boolean(
     selectedWorktree && (selectedRunningAction || selectedOutputTail.length > 0)
   )
+
+  useEffect(() => {
+    if (!selectedWorktree || !selectedRunningAction) {
+      return
+    }
+
+    const sb = outputScrollRef.current
+    if (!sb) {
+      return
+    }
+
+    sb.scrollTop = Number.MAX_SAFE_INTEGER
+  }, [selectedOutputLines.length, selectedRunningAction, selectedWorktree])
+
   useKeyboard(event => {
     if (event.ctrl || event.meta) return
 
@@ -554,6 +569,12 @@ export function Dashboard({
             </b>
           </text>
           <scrollbox
+            ref={node => {
+              outputScrollRef.current = node
+              if (node && selectedRunningAction) {
+                node.scrollTop = Number.MAX_SAFE_INTEGER
+              }
+            }}
             flexGrow={1}
             flexShrink={1}
             scrollY

@@ -432,6 +432,34 @@ describe('Dashboard', () => {
     expect(frame).toContain('warning: cache miss')
   })
 
+  test('shows filter prompt without hiding output lines while filtering', async () => {
+    const tail = [
+      { stream: 'stdout' as const, line: 'first output line' },
+      { stream: 'stderr' as const, line: 'second output line' },
+    ]
+
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            getOutputTail: () => tail,
+          },
+        })}
+      />,
+      { width: 100, height: 24 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    await pressAndRender(mockInput, renderOnce, '/')
+
+    const frame = captureCharFrame()
+    expect(frame).toContain('(type to filter)')
+    expect(frame).toContain('first output line')
+    expect(frame).toContain('second output line')
+  })
+
   test('shows running and finished output titles with elapsed seconds', async () => {
     const runningJob = {
       id: 'job-running',
@@ -468,7 +496,7 @@ describe('Dashboard', () => {
     )
     currentRenderer = runningRenderer
     await renderRunning()
-    expect(captureRunning()).toContain('Output (myapp) - running')
+    expect(captureRunning()).toContain('Output (myapp) - running for ')
 
     const {
       renderer: finishedRenderer,
@@ -520,6 +548,43 @@ describe('Dashboard', () => {
     await renderOnce()
 
     expect(captureCharFrame()).toContain('Output (myapp) - failed in 4s')
+  })
+
+  test('keeps key hints visible while running output is shown', async () => {
+    const runningJob = {
+      id: 'job-running',
+      kind: 'up' as const,
+      worktreeName: 'myapp',
+      worktreePath: '/repo',
+      status: 'running' as const,
+      summary: 'up',
+      startedAt: 1_000,
+      logs: Array.from({ length: 20 }, (_, index) => ({
+        ts: index + 1,
+        stream: 'stdout' as const,
+        line: `log-${index + 1}`,
+      })),
+    }
+
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            isWorktreeBusy: (name: string) => name === 'myapp',
+            latestJobByWorktree: new Map([['myapp', runningJob]]),
+          },
+        })}
+      />,
+      { width: 90, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+
+    expect(frame).toContain('Output (myapp) - running for ')
+    expect(frame).toContain('[q]')
   })
 
   test('Enter calls onSelectWorktree', async () => {
