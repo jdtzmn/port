@@ -3,15 +3,17 @@ import { useKeyboard } from '@opentui/react'
 import type { ScrollBoxRenderable } from '@opentui/core'
 import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
-import type { ActionResult } from '../hooks/useActions.ts'
+import type { ActionJob, EnqueueResult } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
 import { KeyHints } from '../components/KeyHints.tsx'
 import { Confirm } from '../components/Confirm.tsx'
 
 interface Actions {
-  upWorktree: (worktreePath: string, worktreeName: string) => Promise<ActionResult>
-  downWorktree: (worktreePath: string, worktreeName: string) => Promise<ActionResult>
-  archiveWorktree: (worktreePath: string, worktreeName: string) => Promise<ActionResult>
+  upWorktree: (worktreePath: string, worktreeName: string) => EnqueueResult
+  downWorktree: (worktreePath: string, worktreeName: string) => EnqueueResult
+  archiveWorktree: (worktreePath: string, worktreeName: string) => EnqueueResult
+  isWorktreeBusy: (worktreeName: string) => boolean
+  latestJobByWorktree: Map<string, ActionJob>
 }
 
 interface DashboardProps {
@@ -149,7 +151,6 @@ export function Dashboard({
     return idx >= 0 ? idx : 0
   })
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
-  const [busy, setBusy] = useState(false)
   const [jumpMode, setJumpMode] = useState<JumpMode>('normal')
   const [appliedQuery, setAppliedQuery] = useState('')
   const [draftQuery, setDraftQuery] = useState('')
@@ -218,7 +219,7 @@ export function Dashboard({
     jumpMode === 'query' ? draftQuery : jumpMode === 'filtered-nav' ? appliedQuery : ''
   const highlightMatches = findMatchingIndices(worktrees, highlightQuery)
   useKeyboard(event => {
-    if (event.ctrl || event.meta || busy) return
+    if (event.ctrl || event.meta) return
 
     const keySequence = (event as { sequence?: string }).sequence
     const maxIndex = worktrees.length - 1
@@ -315,24 +316,18 @@ export function Dashboard({
         break
       case 'u':
         if (selectedWorktree) {
-          setBusy(true)
-          actions
-            .upWorktree(selectedWorktree.path, selectedWorktree.name)
-            .then(result => {
-              showStatus(result.message, result.success ? 'success' : 'error')
-            })
-            .finally(() => setBusy(false))
+          const result = actions.upWorktree(selectedWorktree.path, selectedWorktree.name)
+          if (!result.accepted) {
+            showStatus(result.message, 'error')
+          }
         }
         break
       case 'd':
         if (selectedWorktree) {
-          setBusy(true)
-          actions
-            .downWorktree(selectedWorktree.path, selectedWorktree.name)
-            .then(result => {
-              showStatus(result.message, result.success ? 'success' : 'error')
-            })
-            .finally(() => setBusy(false))
+          const result = actions.downWorktree(selectedWorktree.path, selectedWorktree.name)
+          if (!result.accepted) {
+            showStatus(result.message, 'error')
+          }
         }
         break
       case 'o':
@@ -351,17 +346,17 @@ export function Dashboard({
   const handleConfirmArchive = () => {
     if (!selectedWorktree) return
     setPendingAction(null)
-    setBusy(true)
-    actions
-      .archiveWorktree(selectedWorktree.path, selectedWorktree.name)
-      .then(result => {
-        showStatus(result.message, result.success ? 'success' : 'error')
-        // Adjust selection if needed
-        if (selectedIndex >= worktrees.length - 1) {
-          setSelectedIndex(Math.max(0, worktrees.length - 2))
-        }
-      })
-      .finally(() => setBusy(false))
+
+    const result = actions.archiveWorktree(selectedWorktree.path, selectedWorktree.name)
+    if (!result.accepted) {
+      showStatus(result.message, 'error')
+      return
+    }
+
+    // Optimistically adjust selection while archive runs.
+    if (selectedIndex >= worktrees.length - 1) {
+      setSelectedIndex(Math.max(0, worktrees.length - 2))
+    }
   }
 
   const handleCancelAction = () => {
@@ -376,7 +371,6 @@ export function Dashboard({
           <b>port: {repoName}</b>
         </text>
         {loading && <text fg="#888888"> refreshing...</text>}
-        {busy && <text fg="#FFFF00"> working...</text>}
       </box>
 
       <box height={1} flexShrink={0} />
@@ -419,6 +413,8 @@ export function Dashboard({
           const matchRanges = highlightQuery
             ? findSubstringMatchRanges(nameStr, highlightQuery)
             : []
+          const latestJob = actions.latestJobByWorktree.get(worktree.name)
+          const runningAction = actions.isWorktreeBusy(worktree.name)
 
           return (
             <box key={worktree.name} flexDirection="row" height={1} overflow="hidden">
@@ -451,6 +447,16 @@ export function Dashboard({
               {totalCount > 0 && (
                 <text wrapMode="none" flexShrink={0} fg="#555555">
                   {'  ' + totalCount + ' total'}
+                </text>
+              )}
+              {runningAction && latestJob && (
+                <text wrapMode="none" flexShrink={0} fg="#FFFF00">
+                  {'  ' + latestJob.kind + '...'}
+                </text>
+              )}
+              {!runningAction && latestJob?.status === 'error' && (
+                <text wrapMode="none" flexShrink={0} fg="#FF4444">
+                  {'  ' + latestJob.kind + ' failed'}
                 </text>
               )}
             </box>

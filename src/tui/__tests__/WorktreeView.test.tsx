@@ -3,7 +3,7 @@ import { testRender } from '@opentui/react/test-utils'
 import type { TestRenderer } from '@opentui/core/testing'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { HostService, PortConfig } from '../../types.ts'
-import type { ActionResult } from '../hooks/useActions.ts'
+import type { EnqueueResult } from '../hooks/useActions.ts'
 import { WorktreeView } from '../views/WorktreeView.tsx'
 
 const mockConfig: PortConfig = { domain: 'port' }
@@ -31,10 +31,12 @@ const mockHostServices: HostService[] = [
 ]
 
 const noop = () => {}
-const noopAsync = async (): Promise<ActionResult> => ({ success: true, message: '' })
+const noopAction = (): EnqueueResult => ({ accepted: true, jobId: 'job-1' })
 const mockActions = {
-  downWorktree: noopAsync,
-  killHostService: noopAsync,
+  downWorktree: noopAction,
+  killHostService: noopAction,
+  isWorktreeBusy: () => false,
+  latestJobByWorktree: new Map(),
 }
 
 let currentRenderer: TestRenderer | null = null

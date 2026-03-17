@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo, useReducer } from 'react'
 import type { PortConfig, HostService } from '../../types.ts'
 import { getComposeFile } from '../../lib/config.ts'
 import {
@@ -25,14 +25,223 @@ export interface ActionResult {
   message: string
 }
 
+export type ActionKind = 'up' | 'down' | 'archive' | 'kill-host-service'
+export type ActionJobStatus = 'queued' | 'running' | 'success' | 'error' | 'cancelled'
+
+interface ActionLogLine {
+  ts: number
+  stream: 'stdout' | 'stderr' | 'system'
+  line: string
+}
+
+export interface ActionJob {
+  id: string
+  kind: ActionKind
+  worktreeName: string
+  worktreePath: string
+  status: ActionJobStatus
+  summary: string
+  startedAt?: number
+  endedAt?: number
+  error?: string
+  logs: ActionLogLine[]
+}
+
+interface EnqueueSuccess {
+  accepted: true
+  jobId: string
+}
+
+interface EnqueueRejected {
+  accepted: false
+  reason: 'worktree_busy'
+  message: string
+}
+
+export type EnqueueResult = EnqueueSuccess | EnqueueRejected
+
+interface ActionState {
+  order: string[]
+  jobs: Record<string, ActionJob>
+  runningByWorktree: Record<string, string>
+}
+
+type ActionEvent =
+  | { type: 'enqueue'; job: ActionJob }
+  | { type: 'start'; jobId: string; startedAt: number }
+  | { type: 'log'; jobId: string; stream: ActionLogLine['stream']; line: string; ts: number }
+  | {
+      type: 'finish'
+      jobId: string
+      status: Extract<ActionJobStatus, 'success' | 'error' | 'cancelled'>
+      endedAt: number
+      error?: string
+    }
+
+const INITIAL_STATE: ActionState = {
+  order: [],
+  jobs: {},
+  runningByWorktree: {},
+}
+
+function reduceActionState(state: ActionState, event: ActionEvent): ActionState {
+  switch (event.type) {
+    case 'enqueue': {
+      return {
+        ...state,
+        order: [event.job.id, ...state.order],
+        jobs: {
+          ...state.jobs,
+          [event.job.id]: event.job,
+        },
+        runningByWorktree: {
+          ...state.runningByWorktree,
+          [event.job.worktreeName]: event.job.id,
+        },
+      }
+    }
+
+    case 'start': {
+      const existing = state.jobs[event.jobId]
+      if (!existing) return state
+      return {
+        ...state,
+        jobs: {
+          ...state.jobs,
+          [event.jobId]: {
+            ...existing,
+            status: 'running',
+            startedAt: event.startedAt,
+          },
+        },
+      }
+    }
+
+    case 'log': {
+      const existing = state.jobs[event.jobId]
+      if (!existing) return state
+      return {
+        ...state,
+        jobs: {
+          ...state.jobs,
+          [event.jobId]: {
+            ...existing,
+            logs: [...existing.logs, { ts: event.ts, stream: event.stream, line: event.line }],
+          },
+        },
+      }
+    }
+
+    case 'finish': {
+      const existing = state.jobs[event.jobId]
+      if (!existing) return state
+      const nextRunningByWorktree = { ...state.runningByWorktree }
+      delete nextRunningByWorktree[existing.worktreeName]
+
+      return {
+        ...state,
+        runningByWorktree: nextRunningByWorktree,
+        jobs: {
+          ...state.jobs,
+          [event.jobId]: {
+            ...existing,
+            status: event.status,
+            endedAt: event.endedAt,
+            error: event.error,
+          },
+        },
+      }
+    }
+  }
+}
+
+function createJobId(kind: ActionKind, worktreeName: string): string {
+  return `${kind}-${worktreeName}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 export function useActions(repoRoot: string, config: PortConfig, refresh: () => void) {
   const composeFile = getComposeFile(config)
+  const [state, dispatch] = useReducer(reduceActionState, INITIAL_STATE)
+
+  const appendSystemLog = useCallback((jobId: string, line: string) => {
+    dispatch({ type: 'log', jobId, stream: 'system', line, ts: Date.now() })
+  }, [])
+
+  const runJob = useCallback(
+    async (job: ActionJob, executor: (jobId: string) => Promise<ActionResult>): Promise<void> => {
+      dispatch({ type: 'start', jobId: job.id, startedAt: Date.now() })
+      appendSystemLog(job.id, `Starting ${job.kind} on ${job.worktreeName}`)
+
+      try {
+        const result = await executor(job.id)
+        if (result.success) {
+          appendSystemLog(job.id, result.message)
+          dispatch({ type: 'finish', jobId: job.id, status: 'success', endedAt: Date.now() })
+        } else {
+          appendSystemLog(job.id, result.message)
+          dispatch({
+            type: 'finish',
+            jobId: job.id,
+            status: 'error',
+            endedAt: Date.now(),
+            error: result.message,
+          })
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        appendSystemLog(job.id, message)
+        dispatch({
+          type: 'finish',
+          jobId: job.id,
+          status: 'error',
+          endedAt: Date.now(),
+          error: message,
+        })
+      } finally {
+        refresh()
+      }
+    },
+    [appendSystemLog, refresh]
+  )
+
+  const enqueue = useCallback(
+    (
+      kind: ActionKind,
+      worktreePath: string,
+      worktreeName: string,
+      summary: string,
+      executor: (jobId: string) => Promise<ActionResult>
+    ): EnqueueResult => {
+      if (state.runningByWorktree[worktreeName]) {
+        return {
+          accepted: false,
+          reason: 'worktree_busy',
+          message: `Action already running for ${worktreeName}`,
+        }
+      }
+
+      const jobId = createJobId(kind, worktreeName)
+      const job: ActionJob = {
+        id: jobId,
+        kind,
+        worktreePath,
+        worktreeName,
+        status: 'queued',
+        summary,
+        logs: [],
+      }
+      dispatch({ type: 'enqueue', job })
+      void runJob(job, executor)
+      return { accepted: true, jobId }
+    },
+    [runJob, state.runningByWorktree]
+  )
 
   /**
    * Bring services up for a worktree.
    * Mirrors the logic in commands/up.ts but uses capture mode for stdio.
    */
-  const upWorktree = useCallback(
+  const runUpWorktree = useCallback(
     async (worktreePath: string, worktreeName: string): Promise<ActionResult> => {
       try {
         // Parse compose file
@@ -93,7 +302,7 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
    * Bring services down for a worktree.
    * Mirrors the logic in commands/down.ts but uses capture mode.
    */
-  const downWorktree = useCallback(
+  const runDownWorktree = useCallback(
     async (worktreePath: string, worktreeName: string): Promise<ActionResult> => {
       try {
         const projectName = getProjectName(repoRoot, worktreeName)
@@ -137,7 +346,7 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
   /**
    * Archive a worktree (stop services, remove worktree, archive branch).
    */
-  const archiveWorktree = useCallback(
+  const runArchiveWorktree = useCallback(
     async (worktreePath: string, worktreeName: string): Promise<ActionResult> => {
       try {
         // Stop services first
@@ -181,7 +390,7 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
   /**
    * Kill a specific host service.
    */
-  const killHostService = useCallback(
+  const runKillHostService = useCallback(
     async (service: HostService): Promise<ActionResult> => {
       try {
         await stopHostService(service)
@@ -194,5 +403,76 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
     [refresh]
   )
 
-  return { upWorktree, downWorktree, archiveWorktree, killHostService }
+  const upWorktree = useCallback(
+    (worktreePath: string, worktreeName: string): EnqueueResult => {
+      return enqueue('up', worktreePath, worktreeName, `Starting services in ${worktreeName}`, () =>
+        runUpWorktree(worktreePath, worktreeName)
+      )
+    },
+    [enqueue, runUpWorktree]
+  )
+
+  const downWorktree = useCallback(
+    (worktreePath: string, worktreeName: string): EnqueueResult => {
+      return enqueue(
+        'down',
+        worktreePath,
+        worktreeName,
+        `Stopping services in ${worktreeName}`,
+        () => runDownWorktree(worktreePath, worktreeName)
+      )
+    },
+    [enqueue, runDownWorktree]
+  )
+
+  const archiveWorktree = useCallback(
+    (worktreePath: string, worktreeName: string): EnqueueResult => {
+      return enqueue('archive', worktreePath, worktreeName, `Archiving ${worktreeName}`, () =>
+        runArchiveWorktree(worktreePath, worktreeName)
+      )
+    },
+    [enqueue, runArchiveWorktree]
+  )
+
+  const killHostService = useCallback(
+    (service: HostService): EnqueueResult => {
+      return enqueue(
+        'kill-host-service',
+        '',
+        service.branch,
+        `Stopping host service on ${service.branch}:${service.logicalPort}`,
+        () => runKillHostService(service)
+      )
+    },
+    [enqueue, runKillHostService]
+  )
+
+  const jobs = useMemo(() => state.order.map(jobId => state.jobs[jobId]!).filter(Boolean), [state])
+
+  const latestJobByWorktree = useMemo(() => {
+    const entries = new Map<string, ActionJob>()
+    for (const jobId of state.order) {
+      const job = state.jobs[jobId]
+      if (!job) continue
+      if (!entries.has(job.worktreeName)) {
+        entries.set(job.worktreeName, job)
+      }
+    }
+    return entries
+  }, [state])
+
+  const isWorktreeBusy = useCallback(
+    (worktreeName: string): boolean => Boolean(state.runningByWorktree[worktreeName]),
+    [state.runningByWorktree]
+  )
+
+  return {
+    upWorktree,
+    downWorktree,
+    archiveWorktree,
+    killHostService,
+    jobs,
+    latestJobByWorktree,
+    isWorktreeBusy,
+  }
 }

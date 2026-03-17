@@ -3,13 +3,15 @@ import { useKeyboard } from '@opentui/react'
 import type { ScrollBoxRenderable } from '@opentui/core'
 import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
-import type { ActionResult } from '../hooks/useActions.ts'
+import type { ActionJob, EnqueueResult } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
 import { KeyHints } from '../components/KeyHints.tsx'
 
 interface Actions {
-  downWorktree: (worktreePath: string, worktreeName: string) => Promise<ActionResult>
-  killHostService: (service: HostService) => Promise<ActionResult>
+  downWorktree: (worktreePath: string, worktreeName: string) => EnqueueResult
+  killHostService: (service: HostService) => EnqueueResult
+  isWorktreeBusy: (worktreeName: string) => boolean
+  latestJobByWorktree: Map<string, ActionJob>
 }
 
 interface WorktreeViewProps {
@@ -96,7 +98,6 @@ export function WorktreeView({
   showStatus,
 }: WorktreeViewProps) {
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [busy, setBusy] = useState(false)
   const scrollRef = useRef<ScrollBoxRenderable>(null)
 
   // Keep selected service visible inside the scrollbox.
@@ -151,9 +152,11 @@ export function WorktreeView({
   const worktreeName = worktree?.name ?? 'unknown'
   const baseUrl = `http://${worktreeName}.${config.domain}`
   const services = buildServiceItems(worktree, hostServices, config, worktreeName)
+  const latestJob = actions.latestJobByWorktree.get(worktreeName)
+  const runningAction = actions.isWorktreeBusy(worktreeName)
 
   useKeyboard(event => {
-    if (event.ctrl || event.meta || busy) return
+    if (event.ctrl || event.meta) return
 
     const maxIndex = Math.max(services.length - 1, 0)
 
@@ -186,25 +189,19 @@ export function WorktreeView({
       }
       case 'd':
         if (worktree) {
-          setBusy(true)
-          actions
-            .downWorktree(worktree.path, worktree.name)
-            .then(result => {
-              showStatus(result.message, result.success ? 'success' : 'error')
-            })
-            .finally(() => setBusy(false))
+          const result = actions.downWorktree(worktree.path, worktree.name)
+          if (!result.accepted) {
+            showStatus(result.message, 'error')
+          }
         }
         break
       case 'x': {
         const selected = services[selectedIndex]
         if (selected?.type === 'host' && selected.hostService) {
-          setBusy(true)
-          actions
-            .killHostService(selected.hostService)
-            .then(result => {
-              showStatus(result.message, result.success ? 'success' : 'error')
-            })
-            .finally(() => setBusy(false))
+          const result = actions.killHostService(selected.hostService)
+          if (!result.accepted) {
+            showStatus(result.message, 'error')
+          }
         }
         break
       }
@@ -219,7 +216,10 @@ export function WorktreeView({
           <b>{worktreeName}</b>
         </text>
         {loading && <text fg="#888888"> refreshing...</text>}
-        {busy && <text fg="#FFFF00"> working...</text>}
+        {runningAction && latestJob && <text fg="#FFFF00"> {latestJob.kind}...</text>}
+        {!runningAction && latestJob?.status === 'error' && (
+          <text fg="#FF4444"> {latestJob.kind} failed</text>
+        )}
       </box>
 
       {/* URL */}

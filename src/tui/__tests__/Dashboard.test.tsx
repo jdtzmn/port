@@ -4,7 +4,7 @@ import type { TestRenderer } from '@opentui/core/testing'
 import { useEffect, useState } from 'react'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { HostService, PortConfig } from '../../types.ts'
-import type { ActionResult } from '../hooks/useActions.ts'
+import type { EnqueueResult } from '../hooks/useActions.ts'
 import { Dashboard, findSubstringMatchRanges, buildServicesText } from '../views/Dashboard.tsx'
 
 const mockConfig: PortConfig = { domain: 'port' }
@@ -64,11 +64,13 @@ const filterWorktrees: WorktreeStatus[] = [
 ]
 
 const noop = () => {}
-const noopAsync = async (): Promise<ActionResult> => ({ success: true, message: '' })
+const noopAction = (): EnqueueResult => ({ accepted: true, jobId: 'job-1' })
 const mockActions = {
-  upWorktree: noopAsync,
-  downWorktree: noopAsync,
-  archiveWorktree: noopAsync,
+  upWorktree: noopAction,
+  downWorktree: noopAction,
+  archiveWorktree: noopAction,
+  isWorktreeBusy: () => false,
+  latestJobByWorktree: new Map(),
 }
 
 /** Common Dashboard props with defaults for testing */
