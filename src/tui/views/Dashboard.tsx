@@ -713,7 +713,6 @@ export function Dashboard({
                       { key: 'Enter', action: 'inspect' },
                       { key: 'o', action: 'open' },
                       { key: '/', action: 'filter' },
-                      { key: 'l', action: 'toggle output' },
                       { key: 'u', action: 'up' },
                       { key: 'd', action: 'down' },
                       { key: 'a', action: 'archive' },

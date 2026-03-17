@@ -448,7 +448,6 @@ export function WorktreeView({
       <KeyHints
         hints={[
           { key: 'Enter', action: 'open in browser' },
-          { key: 'l', action: 'toggle output' },
           { key: 'd', action: 'down' },
           { key: 'x', action: 'kill host svc' },
           ...(runningAction ? [{ key: 'c', action: 'cancel running' }] : []),
