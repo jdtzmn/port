@@ -330,41 +330,6 @@ export function WorktreeView({
 
       <box height={1} flexShrink={0} />
 
-      {showOutput && (
-        <box flexDirection="column" flexShrink={0}>
-          <text fg="#888888">
-            <b>{formatOutputTitle(worktreeName, latestJob, runningAction)}</b>{' '}
-            <span fg="#CCCCCC">[l]</span> hide
-          </text>
-          <scrollbox
-            ref={outputScrollRef}
-            height={3}
-            scrollY
-            scrollX={false}
-            contentOptions={{ flexDirection: 'column', width: '100%' }}
-          >
-            {outputLines.map((entry, index) => (
-              <text
-                key={`${worktreeName}-tail-${index}`}
-                fg={entry.stream === 'stderr' ? '#FF8888' : '#888888'}
-              >
-                {entry.line}
-              </text>
-            ))}
-            {outputLines.length === 0 && <text fg="#666666">No output yet...</text>}
-          </scrollbox>
-        </box>
-      )}
-
-      {showOutputPlaceholder && (
-        <text fg="#888888" flexShrink={0}>
-          <b>{formatOutputTitle(worktreeName, latestJob, runningAction)}</b>{' '}
-          <span fg="#CCCCCC">[l]</span> show
-        </text>
-      )}
-
-      <box height={1} flexShrink={0} />
-
       {/* Docker services header (always visible) */}
       {services.some(s => s.type === 'docker') && (
         <text fg="#888888" flexShrink={0}>
@@ -434,6 +399,41 @@ export function WorktreeView({
 
         {services.length === 0 && !loading && <text fg="#888888">No services configured</text>}
       </scrollbox>
+
+      {(showOutput || showOutputPlaceholder) && <box height={1} flexShrink={0} />}
+
+      {showOutput && (
+        <box flexDirection="column" flexShrink={0}>
+          <text fg="#888888">
+            <b>{formatOutputTitle(worktreeName, latestJob, runningAction)}</b>{' '}
+            <span fg="#CCCCCC">[l]</span> hide
+          </text>
+          <scrollbox
+            ref={outputScrollRef}
+            height={3}
+            scrollY
+            scrollX={false}
+            contentOptions={{ flexDirection: 'column', width: '100%' }}
+          >
+            {outputLines.map((entry, index) => (
+              <text
+                key={`${worktreeName}-tail-${index}`}
+                fg={entry.stream === 'stderr' ? '#FF8888' : '#888888'}
+              >
+                {entry.line}
+              </text>
+            ))}
+            {outputLines.length === 0 && <text fg="#666666">No output yet...</text>}
+          </scrollbox>
+        </box>
+      )}
+
+      {showOutputPlaceholder && (
+        <text fg="#888888" flexShrink={0}>
+          <b>{formatOutputTitle(worktreeName, latestJob, runningAction)}</b>{' '}
+          <span fg="#CCCCCC">[l]</span> show
+        </text>
+      )}
 
       <box height={1} flexShrink={0} />
 

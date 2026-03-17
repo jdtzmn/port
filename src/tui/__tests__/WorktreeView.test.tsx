@@ -485,6 +485,34 @@ describe('WorktreeView', () => {
     expect(frame).toContain('warning: network busy')
   })
 
+  test('renders output section below services', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={mockHostServices}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          getOutputTail: () => [{ stream: 'stdout', line: 'post-services-output' }],
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 100, height: 24 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+
+    expect(frame.indexOf('Docker Services')).toBeGreaterThanOrEqual(0)
+    expect(frame.indexOf('Output (feature-auth)')).toBeGreaterThan(frame.indexOf('Docker Services'))
+  })
+
   test('l toggles output visibility for current worktree', async () => {
     const toggled: string[] = []
 
