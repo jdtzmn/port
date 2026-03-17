@@ -7,6 +7,7 @@ import type { ActionJob, EnqueueResult } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
 import { KeyHints } from '../components/KeyHints.tsx'
 import { Confirm } from '../components/Confirm.tsx'
+import { ActionLog } from '../components/ActionLog.tsx'
 
 interface Actions {
   upWorktree: (worktreePath: string, worktreeName: string) => EnqueueResult
@@ -14,6 +15,12 @@ interface Actions {
   archiveWorktree: (worktreePath: string, worktreeName: string) => EnqueueResult
   isWorktreeBusy: (worktreeName: string) => boolean
   latestJobByWorktree: Map<string, ActionJob>
+  jobs: ActionJob[]
+  logOpen: boolean
+  activeLogJob: ActionJob | null
+  toggleLog: () => void
+  selectNextLogJob: () => void
+  selectPrevLogJob: () => void
 }
 
 interface DashboardProps {
@@ -300,6 +307,24 @@ export function Dashboard({
       }
     }
 
+    const isPrevLogKey = event.name === '[' || event.name === 'openbracket' || keySequence === '['
+    const isNextLogKey = event.name === ']' || event.name === 'closebracket' || keySequence === ']'
+
+    if (event.name === 'l') {
+      actions.toggleLog()
+      return
+    }
+
+    if (actions.logOpen && isPrevLogKey) {
+      actions.selectPrevLogJob()
+      return
+    }
+
+    if (actions.logOpen && isNextLogKey) {
+      actions.selectNextLogJob()
+      return
+    }
+
     switch (event.name) {
       case 'j':
       case 'down':
@@ -473,6 +498,13 @@ export function Dashboard({
         </text>
       )}
 
+      {actions.logOpen && (
+        <>
+          <box height={1} flexShrink={0} />
+          <ActionLog jobs={actions.jobs} activeJob={actions.activeLogJob} />
+        </>
+      )}
+
       {/* Jump prompt */}
       {jumpMode !== 'normal' && (
         <text
@@ -528,6 +560,8 @@ export function Dashboard({
                     { key: 'u', action: 'up' },
                     { key: 'd', action: 'down' },
                     { key: 'a', action: 'archive' },
+                    { key: 'l', action: 'log' },
+                    { key: '[ ]', action: 'cycle jobs' },
                     { key: 'r', action: 'refresh' },
                     { key: 'q', action: 'quit' },
                   ]

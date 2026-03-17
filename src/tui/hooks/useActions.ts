@@ -64,6 +64,8 @@ interface ActionState {
   order: string[]
   jobs: Record<string, ActionJob>
   runningByWorktree: Record<string, string>
+  activeLogJobId: string | null
+  logOpen: boolean
 }
 
 type ActionEvent =
@@ -77,11 +79,16 @@ type ActionEvent =
       endedAt: number
       error?: string
     }
+  | { type: 'toggle-log' }
+  | { type: 'next-log-job' }
+  | { type: 'prev-log-job' }
 
 const INITIAL_STATE: ActionState = {
   order: [],
   jobs: {},
   runningByWorktree: {},
+  activeLogJobId: null,
+  logOpen: false,
 }
 
 function reduceActionState(state: ActionState, event: ActionEvent): ActionState {
@@ -90,6 +97,7 @@ function reduceActionState(state: ActionState, event: ActionEvent): ActionState 
       return {
         ...state,
         order: [event.job.id, ...state.order],
+        activeLogJobId: state.activeLogJobId ?? event.job.id,
         jobs: {
           ...state.jobs,
           [event.job.id]: event.job,
@@ -150,6 +158,38 @@ function reduceActionState(state: ActionState, event: ActionEvent): ActionState 
             error: event.error,
           },
         },
+      }
+    }
+
+    case 'toggle-log': {
+      const nextLogOpen = !state.logOpen
+      return {
+        ...state,
+        logOpen: nextLogOpen,
+        activeLogJobId: state.activeLogJobId ?? state.order[0] ?? null,
+      }
+    }
+
+    case 'next-log-job': {
+      if (state.order.length === 0) return state
+      const currentIndex = state.activeLogJobId ? state.order.indexOf(state.activeLogJobId) : -1
+      const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % state.order.length
+      return {
+        ...state,
+        activeLogJobId: state.order[nextIndex] ?? null,
+      }
+    }
+
+    case 'prev-log-job': {
+      if (state.order.length === 0) return state
+      const currentIndex = state.activeLogJobId ? state.order.indexOf(state.activeLogJobId) : -1
+      const prevIndex =
+        currentIndex < 0
+          ? state.order.length - 1
+          : (currentIndex - 1 + state.order.length) % state.order.length
+      return {
+        ...state,
+        activeLogJobId: state.order[prevIndex] ?? null,
       }
     }
   }
@@ -466,6 +506,23 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
     [state.runningByWorktree]
   )
 
+  const activeLogJob = useMemo(
+    () => (state.activeLogJobId ? (state.jobs[state.activeLogJobId] ?? null) : null),
+    [state.activeLogJobId, state.jobs]
+  )
+
+  const toggleLog = useCallback(() => {
+    dispatch({ type: 'toggle-log' })
+  }, [])
+
+  const selectNextLogJob = useCallback(() => {
+    dispatch({ type: 'next-log-job' })
+  }, [])
+
+  const selectPrevLogJob = useCallback(() => {
+    dispatch({ type: 'prev-log-job' })
+  }, [])
+
   return {
     upWorktree,
     downWorktree,
@@ -474,5 +531,10 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
     jobs,
     latestJobByWorktree,
     isWorktreeBusy,
+    logOpen: state.logOpen,
+    activeLogJob,
+    toggleLog,
+    selectNextLogJob,
+    selectPrevLogJob,
   }
 }

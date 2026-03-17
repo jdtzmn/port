@@ -71,6 +71,12 @@ const mockActions = {
   archiveWorktree: noopAction,
   isWorktreeBusy: () => false,
   latestJobByWorktree: new Map(),
+  jobs: [],
+  logOpen: false,
+  activeLogJob: null,
+  toggleLog: noop,
+  selectNextLogJob: noop,
+  selectPrevLogJob: noop,
 }
 
 /** Common Dashboard props with defaults for testing */
