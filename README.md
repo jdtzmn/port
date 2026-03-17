@@ -386,6 +386,11 @@ bun run lint
 
 # Test
 bun run test
+
+# Run a single integration shard (matches CI sharding)
+bunx vitest --shard=1/3
+bunx vitest --shard=2/3
+bunx vitest --shard=3/3
 ```
 
 ### Testing in Ubuntu Container

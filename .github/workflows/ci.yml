@@ -48,3 +48,5 @@ jobs:
     uses: ./.github/workflows/linux-integration-tests.yml
     with:
       run-traefik-diagnostics: true
+      shards: '[1,2,3]'
+      total-shards: 3
