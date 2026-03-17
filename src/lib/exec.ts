@@ -200,14 +200,20 @@ export async function execStreaming(
       stdoutReader?.close()
       stderrReader?.close()
       if (killTimer) clearTimeout(killTimer)
+      if (options.signal) {
+        options.signal.removeEventListener('abort', abortHandler)
+      }
       reject(error)
     })
 
-    child.on('close', code => {
+    child.on('close', (code, signal) => {
       stdoutReader?.close()
       stderrReader?.close()
       if (killTimer) clearTimeout(killTimer)
-      resolve({ exitCode: code ?? 0 })
+      if (options.signal) {
+        options.signal.removeEventListener('abort', abortHandler)
+      }
+      resolve({ exitCode: code ?? (signal ? 130 : 0) })
     })
   })
 }
