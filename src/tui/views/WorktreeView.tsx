@@ -97,6 +97,14 @@ function formatElapsedSeconds(job: ActionJob): string | null {
   return `${seconds}s`
 }
 
+function formatRunningSeconds(job: ActionJob): string | null {
+  if (typeof job.startedAt !== 'number') {
+    return null
+  }
+  const seconds = Math.max(1, Math.round((Date.now() - job.startedAt) / 1000))
+  return `${seconds}s`
+}
+
 function formatOutputTitle(
   worktreeName: string,
   latestJob: ActionJob | undefined,
@@ -108,7 +116,8 @@ function formatOutputTitle(
   }
 
   if (running || latestJob.status === 'running') {
-    return `${base} - running`
+    const elapsed = formatRunningSeconds(latestJob)
+    return elapsed ? `${base} - running for ${elapsed}` : `${base} - running`
   }
 
   const elapsed = formatElapsedSeconds(latestJob)

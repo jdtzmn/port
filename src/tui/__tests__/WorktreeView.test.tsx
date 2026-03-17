@@ -525,7 +525,7 @@ describe('WorktreeView', () => {
     )
     currentRenderer = runningRenderer
     await renderRunning()
-    expect(captureRunning()).toContain('Output (feature-auth) - running')
+    expect(captureRunning()).toContain('Output (feature-auth) - running for ')
 
     const {
       renderer: finishedRenderer,
