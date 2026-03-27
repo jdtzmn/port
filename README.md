@@ -352,12 +352,14 @@ No running worktrees
 ```
 
 The handler works by:
+
 1. Running as a lightweight Alpine Linux container alongside Traefik
 2. Querying Docker for containers with `traefik.enable=true` labels
 3. Extracting worktree names from the `Host()` routing rules
 4. Returning the list as plain text on every 404 request
 
 This makes it easy to:
+
 - Debug routing issues
 - See what's currently available
 - Quickly identify the correct worktree URL to access

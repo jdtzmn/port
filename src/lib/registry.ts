@@ -285,13 +285,13 @@ export async function getAllHostServices(): Promise<HostService[]> {
  * Get unique worktree names from registered projects for 404 rendering.
  * Returns a sorted, deduplicated list of branch names from all registered
  * projects in the global registry.
- * 
+ *
  * Note: This returns worktrees that are REGISTERED (have had `port up` run),
  * not necessarily currently running. For actively running services, use
  * `getRunningWorktreeNames()` from worktreeStatus.ts instead.
  *
  * @returns Array of unique worktree/branch names, sorted alphabetically
- * 
+ *
  * @example
  * ```ts
  * const registered = await getRunningWorktreesFromRegistry()

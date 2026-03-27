@@ -45,7 +45,7 @@ function generate404HandlerCommand(): string {
   // 3. For each request, queries Docker for containers with traefik.enable=true
   // 4. Extracts worktree names from Host() rules in Traefik labels
   // 5. Returns a plain-text response listing running worktrees or "No running worktrees"
-  
+
   const innerScript = [
     'echo "HTTP/1.1 404 Not Found\\r\\nContent-Type: text/plain\\r\\n\\r\\n404 - Worktree Not Found\\r\\n\\r\\n";',
     'WORKTREES=$(docker ps --filter "label=traefik.enable=true" --format "{{.Labels}}" 2>/dev/null | grep -o "Host(\\\\`[^\\\\`]*\\\\`)" | sed "s/Host(\\\\`//g; s/\\\\`)//g; s/\\\\.[^.]*$//g" | sort -u);',
@@ -345,12 +345,12 @@ export async function hasFileProvider(): Promise<boolean> {
 
 /**
  * Generate dynamic config for 404 error page handler
- * 
+ *
  * Includes:
  * - A catch-all router with low priority to handle unmatched hosts/paths
  * - A service pointing to the port-404-handler container
  * - Middleware for error page handling (optional, router provides main fallback)
- * 
+ *
  * @returns Dynamic config YAML string for error pages
  */
 export function generate404ErrorPageConfig(): string {
@@ -398,7 +398,7 @@ export const ERROR_PAGE_CONFIG_FILE = join(TRAEFIK_DYNAMIC_DIR, '404-handler.yml
 /**
  * Ensure 404 error page handler is configured
  * Creates the dynamic config file if it doesn't exist
- * 
+ *
  * @returns true if config was created
  */
 export async function ensure404Handler(): Promise<boolean> {

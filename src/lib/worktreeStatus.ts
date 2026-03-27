@@ -170,7 +170,7 @@ export async function collectWorktreeStatuses(
 /**
  * Get names of running worktrees for 404 rendering.
  * Returns a minimal list of worktree names that have running services.
- * 
+ *
  * This function reuses existing worktree discovery logic and filters for
  * worktrees with at least one running service. It's designed to be used
  * by the 404 page to display available alternatives.
@@ -179,7 +179,7 @@ export async function collectWorktreeStatuses(
  * @param composeFile - Path to docker-compose file (e.g., 'docker-compose.yml')
  * @param domain - Domain suffix for routing (e.g., 'port')
  * @returns Array of worktree names with running services, or empty array if none or on error
- * 
+ *
  * @example
  * ```ts
  * const running = await getRunningWorktreeNames('/path/to/repo', 'docker-compose.yml', 'port')
