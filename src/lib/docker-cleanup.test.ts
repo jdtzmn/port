@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { TRAEFIK_NETWORK } from './traefik.ts'
-import type { DockerCleanupOptions } from '../types.ts'
 import * as exec from './exec.ts'
 
 // Import the module we're testing
