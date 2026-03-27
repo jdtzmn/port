@@ -35,6 +35,32 @@ async function saveTraefikConfigUnlocked(config: TraefikConfig): Promise<void> {
   await writeFileAtomic(TRAEFIK_CONFIG_FILE, yaml)
 }
 
+/**
+ * Generate the 404 handler command that dynamically lists running worktrees
+ */
+function generate404HandlerCommand(): string {
+  // This shell script:
+  // 1. Installs socat and docker-cli
+  // 2. Runs an HTTP server on port 3000
+  // 3. For each request, queries Docker for containers with traefik.enable=true
+  // 4. Extracts worktree names from Host() rules in Traefik labels
+  // 5. Returns a plain-text response listing running worktrees or "No running worktrees"
+  
+  const innerScript = [
+    'echo "HTTP/1.1 404 Not Found\\r\\nContent-Type: text/plain\\r\\n\\r\\n404 - Worktree Not Found\\r\\n\\r\\n";',
+    'WORKTREES=$(docker ps --filter "label=traefik.enable=true" --format "{{.Labels}}" 2>/dev/null | grep -o "Host(\\\\`[^\\\\`]*\\\\`)" | sed "s/Host(\\\\`//g; s/\\\\`)//g; s/\\\\.[^.]*$//g" | sort -u);',
+    'if [ -z "$WORKTREES" ]; then',
+    '  echo "No running worktrees";',
+    'else',
+    '  echo "Running worktrees:";',
+    '  echo "$WORKTREES";',
+    'fi',
+  ].join(' ')
+
+  // eslint-disable-next-line no-useless-escape
+  return `sh -c "apk add --no-cache socat docker-cli && while true; do socat -v TCP-LISTEN:3000,reuseaddr,fork SYSTEM:'sh -c \"${innerScript}\"'; done"`
+}
+
 async function updateTraefikComposeUnlocked(ports: number[]): Promise<void> {
   await ensureTraefikDir()
   await ensureTraefikDynamicDir()
@@ -57,6 +83,14 @@ async function updateTraefikComposeUnlocked(ports: number[]): Promise<void> {
           './traefik.yml:/etc/traefik/traefik.yml:ro',
           './dynamic:/etc/traefik/dynamic:ro',
         ],
+        networks: [TRAEFIK_NETWORK],
+      },
+      'port-404-handler': {
+        image: 'alpine:latest',
+        container_name: 'port-404-handler',
+        restart: 'unless-stopped',
+        command: generate404HandlerCommand(),
+        volumes: ['/var/run/docker.sock:/var/run/docker.sock:ro'],
         networks: [TRAEFIK_NETWORK],
       },
     },
@@ -236,7 +270,16 @@ export function generateTraefikCompose(): string {
         volumes: [
           '/var/run/docker.sock:/var/run/docker.sock:ro',
           './traefik.yml:/etc/traefik/traefik.yml:ro',
+          './dynamic:/etc/traefik/dynamic:ro',
         ],
+        networks: [TRAEFIK_NETWORK],
+      },
+      'port-404-handler': {
+        image: 'alpine:latest',
+        container_name: 'port-404-handler',
+        restart: 'unless-stopped',
+        command: generate404HandlerCommand(),
+        volumes: ['/var/run/docker.sock:/var/run/docker.sock:ro'],
         networks: [TRAEFIK_NETWORK],
       },
     },
@@ -298,6 +341,76 @@ export async function initTraefikFiles(ports: number[]): Promise<void> {
 export async function hasFileProvider(): Promise<boolean> {
   const config = await loadTraefikConfig()
   return config?.providers?.file !== undefined
+}
+
+/**
+ * Generate dynamic config for 404 error page handler
+ * 
+ * Includes:
+ * - A catch-all router with low priority to handle unmatched hosts/paths
+ * - A service pointing to the port-404-handler container
+ * - Middleware for error page handling (optional, router provides main fallback)
+ * 
+ * @returns Dynamic config YAML string for error pages
+ */
+export function generate404ErrorPageConfig(): string {
+  const config = {
+    http: {
+      routers: {
+        'port-404-fallback': {
+          rule: 'PathPrefix(`/`)',
+          priority: 1,
+          service: 'port-404-handler',
+          entryPoints: ['web'],
+        },
+      },
+      middlewares: {
+        'error-pages': {
+          errors: {
+            status: ['404'],
+            service: 'port-404-handler',
+            query: '/{status}',
+          },
+        },
+      },
+      services: {
+        'port-404-handler': {
+          loadBalancer: {
+            servers: [
+              {
+                url: 'http://port-404-handler:3000',
+              },
+            ],
+          },
+        },
+      },
+    },
+  }
+
+  return yamlStringify(config)
+}
+
+/**
+ * Path to the 404 error page dynamic config file
+ */
+export const ERROR_PAGE_CONFIG_FILE = join(TRAEFIK_DYNAMIC_DIR, '404-handler.yml')
+
+/**
+ * Ensure 404 error page handler is configured
+ * Creates the dynamic config file if it doesn't exist
+ * 
+ * @returns true if config was created
+ */
+export async function ensure404Handler(): Promise<boolean> {
+  await ensureTraefikDynamicDir()
+
+  if (existsSync(ERROR_PAGE_CONFIG_FILE)) {
+    return false
+  }
+
+  const config = generate404ErrorPageConfig()
+  await writeFileAtomic(ERROR_PAGE_CONFIG_FILE, config)
+  return true
 }
 
 /**

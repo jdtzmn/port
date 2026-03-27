@@ -1,6 +1,16 @@
 # Traefik reverse proxy for port CLI
 # This file is a reference template. The actual file is generated
 # dynamically at ~/.port/traefik/docker-compose.yml
+#
+# The 404 handler is wired via dynamic config (404-handler.yml):
+# - A low-priority catch-all router (priority: 1) routes unmatched requests
+# - Router uses PathPrefix(`/`) to match all paths on all hosts
+# - Routes to port-404-handler service on port 3000
+#
+# The port-404-handler dynamically lists running worktrees by:
+# - Querying Docker for containers with traefik.enable=true label
+# - Extracting worktree names from Host() rules in Traefik labels
+# - Returning plain-text list or "No running worktrees" when empty
 
 services:
   traefik:
@@ -13,6 +23,32 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./dynamic:/etc/traefik/dynamic:ro
+    networks:
+      - traefik-network
+
+  port-404-handler:
+    image: alpine:latest
+    container_name: port-404-handler
+    restart: unless-stopped
+    command: >
+      sh -c "
+        apk add --no-cache socat docker-cli &&
+        while true; do
+          socat -v TCP-LISTEN:3000,reuseaddr,fork SYSTEM:'sh -c \"
+            echo \\\"HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\n404 - Worktree Not Found\r\n\r\n\\\";
+            WORKTREES=\\\$(docker ps --filter \\\"label=traefik.enable=true\\\" --format \\\"{{.Labels}}\\\" 2>/dev/null | grep -o \\\"Host(\\\\\\\\\`[^\\\\\\\\\`]*\\\\\\\\\`)\\\" | sed \\\"s/Host(\\\\\\\\\`//g; s/\\\\\\\\\`)//g; s/\\\\.[^.]*$//g\\\" | sort -u);
+            if [ -z \\\"\\\$WORKTREES\\\" ]; then
+              echo \\\"No running worktrees\\\";
+            else
+              echo \\\"Running worktrees:\\\";
+              echo \\\"\\\$WORKTREES\\\";
+            fi
+          \"'
+        done
+      "
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - traefik-network
 
