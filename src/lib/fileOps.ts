@@ -198,14 +198,18 @@ export class MapFileOps implements FileOps {
 // ---------------------------------------------------------------------------
 
 class ShellBatchedFileOps implements BatchedFileOps {
-  async write(path: string, content: string, opts?: { privileged?: boolean }): Promise<void> {
-    const exec = opts?.privileged ? queuePrivileged : execAsync
-    await exec(`echo "${content}" > ${path}`)
+  write(path: string, content: string, opts?: { privileged?: boolean }): Promise<void> {
+    if (opts?.privileged) {
+      return queuePrivileged(`echo "${content}" > ${path}`).then(() => undefined)
+    }
+    return execAsync(`echo "${content}" > ${path}`).then(() => undefined)
   }
 
-  async append(path: string, content: string, opts?: { privileged?: boolean }): Promise<void> {
-    const exec = opts?.privileged ? queuePrivileged : execAsync
-    await exec(`echo "${content}" >> ${path}`)
+  append(path: string, content: string, opts?: { privileged?: boolean }): Promise<void> {
+    if (opts?.privileged) {
+      return queuePrivileged(`echo "${content}" >> ${path}`).then(() => undefined)
+    }
+    return execAsync(`echo "${content}" >> ${path}`).then(() => undefined)
   }
 
   async read(path: string): Promise<string> {
@@ -222,28 +226,31 @@ class ShellBatchedFileOps implements BatchedFileOps {
     }
   }
 
-  async delete(path: string, opts?: { privileged?: boolean }): Promise<void> {
-    const exec = opts?.privileged ? queuePrivileged : execAsync
-    await exec(`rm ${path}`)
-  }
-
-  async removeLines(
-    path: string,
-    containing: string,
-    opts?: { privileged?: boolean }
-  ): Promise<void> {
-    const exec = opts?.privileged ? queuePrivileged : execAsync
-    const escaped = containing.replace(/\//g, '\\/')
-    if (process.platform === 'darwin') {
-      await exec(`sed -i '' '/${escaped}/d' ${path}`)
-    } else {
-      await exec(`sed -i '/${escaped}/d' ${path}`)
+  delete(path: string, opts?: { privileged?: boolean }): Promise<void> {
+    if (opts?.privileged) {
+      return queuePrivileged(`rm ${path}`).then(() => undefined)
     }
+    return execAsync(`rm ${path}`).then(() => undefined)
   }
 
-  async mkdir(path: string, opts?: { privileged?: boolean }): Promise<void> {
-    const exec = opts?.privileged ? queuePrivileged : execAsync
-    await exec(`mkdir -p ${path}`)
+  removeLines(path: string, containing: string, opts?: { privileged?: boolean }): Promise<void> {
+    const escaped = containing.replace(/\//g, '\\/')
+    const command =
+      process.platform === 'darwin'
+        ? `sed -i '' '/${escaped}/d' ${path}`
+        : `sed -i '/${escaped}/d' ${path}`
+
+    if (opts?.privileged) {
+      return queuePrivileged(command).then(() => undefined)
+    }
+    return execAsync(command).then(() => undefined)
+  }
+
+  mkdir(path: string, opts?: { privileged?: boolean }): Promise<void> {
+    if (opts?.privileged) {
+      return queuePrivileged(`mkdir -p ${path}`).then(() => undefined)
+    }
+    return execAsync(`mkdir -p ${path}`).then(() => undefined)
   }
 
   async list(directory: string): Promise<string[]> {
