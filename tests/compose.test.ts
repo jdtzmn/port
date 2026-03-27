@@ -28,21 +28,23 @@ describe('port compose command', () => {
     await sample.cleanup()
   })
 
-  test('uses default runtime config when port is not initialized', async () => {
+  test('auto-syncs override when port is not initialized (regression)', async () => {
     const sample = await prepareSample('db-and-server', { gitInit: true })
     // Initialize git but not port config
-    const result = await execPortAsync(['compose', 'ps'], sample.dir).catch(e => e)
-    expect(result.stderr).toContain('Override file not found')
-    expect(result.stderr).toContain('port up')
+    // NEW BEHAVIOR: compose auto-syncs override before execution
+    const result = await execPortAsync(['compose', '--help'], sample.dir)
+    // Should show help without override errors
+    expect(result.stdout).toContain('Arguments')
     await sample.cleanup()
   })
 
-  test('errors when override file does not exist', async () => {
+  test('auto-syncs override even without prior port up (regression)', async () => {
     const sample = await prepareSample('db-and-server', { initWithConfig: true })
-    // Initialize port but don't run `port up` (no override file)
-    const result = await execPortAsync(['compose', 'ps'], sample.dir).catch(e => e)
-    expect(result.stderr).toContain('Override file not found')
-    expect(result.stderr).toContain('port up')
+    // Initialize port but don't run `port up`
+    // NEW BEHAVIOR: compose auto-creates override file before execution
+    const result = await execPortAsync(['compose', '--help'], sample.dir)
+    // Should show help without override errors
+    expect(result.stdout).toContain('Arguments')
     await sample.cleanup()
   })
 })
