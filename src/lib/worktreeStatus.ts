@@ -192,7 +192,10 @@ export async function getRunningWorktreeNames(
   domain: string
 ): Promise<RunningWorktreeNames> {
   try {
-    const statuses = await collectWorktreeStatuses(repoRoot, composeFile, domain)
+    // Use module export lookup so vi.spyOn(module, 'collectWorktreeStatuses')
+    // in tests can intercept this call reliably in ESM.
+    const { collectWorktreeStatuses: collectStatuses } = await import('./worktreeStatus.ts')
+    const statuses = await collectStatuses(repoRoot, composeFile, domain)
     return statuses.filter(wt => wt.running).map(wt => wt.name)
   } catch {
     // If anything fails (Docker not running, etc.), return empty array

@@ -247,7 +247,7 @@ describe('Host Service Registry Functions', () => {
 
       const result = await registry.getRunningWorktreesFromRegistry()
 
-      expect(result).toEqual(['main', 'feature-1', 'feature-2'])
+      expect(result).toEqual(['feature-1', 'feature-2', 'main'])
     })
 
     test('deduplicates branch names from different repos', async () => {
@@ -257,7 +257,7 @@ describe('Host Service Registry Functions', () => {
 
       const result = await registry.getRunningWorktreesFromRegistry()
 
-      expect(result).toEqual(['main', 'feature-1'])
+      expect(result).toEqual(['feature-1', 'main'])
     })
 
     test('sorts branch names alphabetically', async () => {
