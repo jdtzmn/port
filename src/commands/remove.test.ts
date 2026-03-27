@@ -29,6 +29,9 @@ const mocks = vi.hoisted(() => ({
   dim: vi.fn(),
   newline: vi.fn(),
   branch: vi.fn(),
+  cleanupDockerResources: vi.fn(),
+  scanDockerResourcesForProject: vi.fn(),
+  getImagesSizeInBytes: vi.fn(),
 }))
 
 vi.mock('inquirer', () => ({
@@ -87,6 +90,12 @@ vi.mock('../lib/output.ts', () => ({
   branch: mocks.branch,
 }))
 
+vi.mock('../lib/docker-cleanup.ts', () => ({
+  cleanupDockerResources: mocks.cleanupDockerResources,
+  scanDockerResourcesForProject: mocks.scanDockerResourcesForProject,
+  getImagesSizeInBytes: mocks.getImagesSizeInBytes,
+}))
+
 import { remove } from './remove.ts'
 
 describe('remove command', () => {
@@ -126,6 +135,25 @@ describe('remove command', () => {
 
     mocks.existsSync.mockReturnValue(true)
     mocks.branch.mockImplementation((name: string) => name)
+
+    // Default docker cleanup mocks
+    mocks.cleanupDockerResources.mockResolvedValue({
+      volumesRemoved: 0,
+      networksRemoved: 0,
+      containersRemoved: 0,
+      imagesRemoved: 0,
+      totalRemoved: 0,
+      warnings: [],
+      dockerAvailable: true,
+    })
+    mocks.scanDockerResourcesForProject.mockResolvedValue({
+      projectName: 'repo-demo-2',
+      volumes: [],
+      networks: [],
+      containers: [],
+      images: [],
+      imageSize: undefined,
+    })
   })
 
   afterEach(() => {
@@ -367,6 +395,225 @@ describe('remove command', () => {
 
       expect(mocks.prompt).not.toHaveBeenCalled()
       expect(mocks.removeWorktree).toHaveBeenCalledWith('/repo', 'demo-2', true)
+    })
+  })
+
+  describe('docker cleanup integration', () => {
+    beforeEach(() => {
+      // Default: successful low-risk cleanup
+      mocks.cleanupDockerResources.mockResolvedValue({
+        volumesRemoved: 2,
+        networksRemoved: 1,
+        containersRemoved: 1,
+        imagesRemoved: 0,
+        totalRemoved: 4,
+        warnings: [],
+        dockerAvailable: true,
+      })
+      mocks.scanDockerResourcesForProject.mockResolvedValue({
+        projectName: 'repo-demo-2',
+        volumes: [],
+        networks: [],
+        containers: [],
+        images: [{ id: 'img1', name: 'app:latest' }],
+        imageSize: 1024 * 1024 * 50, // 50 MB
+      })
+    })
+
+    test('runs low-risk cleanup (containers/networks/volumes) by default', async () => {
+      await remove('demo-2')
+
+      expect(mocks.cleanupDockerResources).toHaveBeenCalledWith('repo-demo-2', {
+        skipImages: true,
+        quiet: false,
+      })
+      expect(mocks.info).toHaveBeenCalledWith('Cleaning up Docker resources...')
+      expect(mocks.success).toHaveBeenCalledWith(
+        'Cleaned up 4 resource(s): 1 container(s), 2 volume(s), 1 network(s)'
+      )
+    })
+
+    test('prompts for image cleanup when images exist (interactive mode)', async () => {
+      mocks.prompt.mockResolvedValue({ cleanupImages: true })
+
+      await remove('demo-2')
+
+      // First cleanup without images
+      expect(mocks.cleanupDockerResources).toHaveBeenCalledWith('repo-demo-2', {
+        skipImages: true,
+        quiet: false,
+      })
+
+      // Then scan for images
+      expect(mocks.scanDockerResourcesForProject).toHaveBeenCalledWith('repo-demo-2')
+
+      // Then prompt
+      const promptCall = mocks.prompt.mock.calls.find((call: any[]) =>
+        call[0]?.some((q: any) => q.name === 'cleanupImages')
+      )
+      expect(promptCall).toBeDefined()
+      const imagePrompt = promptCall![0].find((q: any) => q.name === 'cleanupImages')
+      expect(imagePrompt.message).toContain('1 image(s)')
+      expect(imagePrompt.message).toContain('50.0 MB')
+      expect(imagePrompt.default).toBe(false)
+    })
+
+    test('image cleanup prompt defaults to No', async () => {
+      mocks.prompt.mockResolvedValue({ cleanupImages: false })
+
+      await remove('demo-2')
+
+      expect(mocks.prompt).toHaveBeenCalledWith([
+        expect.objectContaining({
+          default: false,
+        }),
+      ])
+      expect(mocks.info).toHaveBeenCalledWith('Image cleanup declined')
+    })
+
+    test('executes image cleanup when user confirms', async () => {
+      mocks.prompt.mockResolvedValue({ cleanupImages: true })
+      mocks.cleanupDockerResources
+        .mockResolvedValueOnce({
+          // First call: low-risk
+          volumesRemoved: 2,
+          networksRemoved: 1,
+          containersRemoved: 1,
+          imagesRemoved: 0,
+          totalRemoved: 4,
+          warnings: [],
+          dockerAvailable: true,
+        })
+        .mockResolvedValueOnce({
+          // Second call: images
+          volumesRemoved: 0,
+          networksRemoved: 0,
+          containersRemoved: 0,
+          imagesRemoved: 1,
+          totalRemoved: 1,
+          warnings: [],
+          dockerAvailable: true,
+        })
+
+      await remove('demo-2')
+
+      expect(mocks.cleanupDockerResources).toHaveBeenCalledTimes(2)
+      expect(mocks.cleanupDockerResources).toHaveBeenNthCalledWith(2, 'repo-demo-2', {
+        skipImages: false,
+        quiet: false,
+      })
+      expect(mocks.success).toHaveBeenCalledWith('Cleaned up 1 image(s)')
+    })
+
+    test('shows "unknown" when image size cannot be determined', async () => {
+      mocks.scanDockerResourcesForProject.mockResolvedValue({
+        projectName: 'repo-demo-2',
+        volumes: [],
+        networks: [],
+        containers: [],
+        images: [{ id: 'img1', name: 'app:latest' }],
+        imageSize: undefined, // Size unavailable
+      })
+      mocks.prompt.mockResolvedValue({ cleanupImages: false })
+
+      await remove('demo-2')
+
+      expect(mocks.prompt).toHaveBeenCalledWith([
+        expect.objectContaining({
+          message: expect.stringContaining('unknown size'),
+        }),
+      ])
+    })
+
+    test('skips image prompt when no images exist', async () => {
+      mocks.scanDockerResourcesForProject.mockResolvedValue({
+        projectName: 'repo-demo-2',
+        volumes: [],
+        networks: [],
+        containers: [],
+        images: [], // No images
+        imageSize: undefined,
+      })
+
+      await remove('demo-2')
+
+      // Should only have one prompt call (if any auto-detect prompts)
+      const cleanupImagesCalls = mocks.prompt.mock.calls.filter((call: any[]) =>
+        call[0]?.some((q: any) => q.name === 'cleanupImages')
+      )
+      expect(cleanupImagesCalls.length).toBe(0)
+    })
+
+    test('treats docker cleanup failures as non-fatal', async () => {
+      mocks.cleanupDockerResources.mockResolvedValue({
+        volumesRemoved: 0,
+        networksRemoved: 0,
+        containersRemoved: 0,
+        imagesRemoved: 0,
+        totalRemoved: 0,
+        warnings: ['Docker daemon not available - skipping cleanup'],
+        dockerAvailable: false,
+      })
+
+      await remove('demo-2')
+
+      expect(mocks.warn).toHaveBeenCalledWith('Docker daemon not available - skipping cleanup')
+      expect(mocks.success).toHaveBeenCalledWith(expect.stringContaining('removed')) // Worktree removal still succeeds
+    })
+
+    test('displays cleanup warnings but continues', async () => {
+      mocks.cleanupDockerResources.mockResolvedValue({
+        volumesRemoved: 1,
+        networksRemoved: 0,
+        containersRemoved: 0,
+        imagesRemoved: 0,
+        totalRemoved: 1,
+        warnings: ['Failed to remove volume vol1: permission denied'],
+        dockerAvailable: true,
+      })
+
+      await remove('demo-2')
+
+      expect(mocks.warn).toHaveBeenCalledWith('Failed to remove volume vol1: permission denied')
+      expect(mocks.success).toHaveBeenCalledWith(expect.stringContaining('1 resource(s)'))
+    })
+
+    test('supports --cleanup-images flag to skip prompt', async () => {
+      mocks.cleanupDockerResources
+        .mockResolvedValueOnce({
+          // First call: low-risk
+          volumesRemoved: 2,
+          networksRemoved: 1,
+          containersRemoved: 1,
+          imagesRemoved: 0,
+          totalRemoved: 4,
+          warnings: [],
+          dockerAvailable: true,
+        })
+        .mockResolvedValueOnce({
+          // Second call: images
+          volumesRemoved: 0,
+          networksRemoved: 0,
+          containersRemoved: 0,
+          imagesRemoved: 1,
+          totalRemoved: 1,
+          warnings: [],
+          dockerAvailable: true,
+        })
+
+      await remove('demo-2', { cleanupImages: true })
+
+      // Should NOT prompt
+      const cleanupImagesCalls = mocks.prompt.mock.calls.filter((call: any[]) =>
+        call[0]?.some((q: any) => q.name === 'cleanupImages')
+      )
+      expect(cleanupImagesCalls.length).toBe(0)
+
+      // Should cleanup images directly
+      expect(mocks.cleanupDockerResources).toHaveBeenNthCalledWith(2, 'repo-demo-2', {
+        skipImages: false,
+        quiet: false,
+      })
     })
   })
 })

@@ -127,3 +127,77 @@ export interface TraefikConfig {
   }
   entryPoints: Record<string, TraefikEntrypoint>
 }
+
+/**
+ * Options for Docker resource cleanup
+ */
+export interface DockerCleanupOptions {
+  /** Suppress per-resource output */
+  quiet?: boolean
+
+  /** Skip image cleanup (default: false for cleanup command, true for remove/prune) */
+  skipImages?: boolean
+
+  /** Only clean up images (skip containers, volumes, networks) */
+  imagesOnly?: boolean
+
+  /** Dry run - list resources without removing */
+  dryRun?: boolean
+}
+
+/**
+ * Result of Docker resource cleanup operation
+ */
+export interface DockerCleanupResult {
+  /** Number of volumes removed */
+  volumesRemoved: number
+
+  /** Number of networks removed */
+  networksRemoved: number
+
+  /** Number of containers removed */
+  containersRemoved: number
+
+  /** Number of images removed */
+  imagesRemoved: number
+
+  /** Total resources removed */
+  totalRemoved: number
+
+  /** Warnings encountered (non-fatal) */
+  warnings: string[]
+
+  /** Whether Docker daemon was available */
+  dockerAvailable: boolean
+}
+
+/**
+ * Docker resources for a single project
+ */
+export interface DockerProjectResources {
+  projectName: string
+  volumes: string[]
+  networks: string[]
+  containers: string[]
+  images: Array<{ id: string; name: string }>
+
+  /** Total size of volumes in bytes (if available) */
+  volumeSize?: number
+
+  /** Total size of images in bytes (if available) */
+  imageSize?: number
+}
+
+/**
+ * Scan result for multiple projects
+ */
+export interface DockerResourceScanResult {
+  /** Resources grouped by branch name */
+  byBranch: Map<string, DockerProjectResources>
+
+  /** Total count across all branches */
+  totalResources: number
+
+  /** Whether Docker daemon was available */
+  dockerAvailable: boolean
+}
