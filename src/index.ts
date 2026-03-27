@@ -205,6 +205,10 @@ program
   .option('-f, --force', 'Skip confirmation prompt')
   .option('--no-fetch', 'Skip git fetch --prune (for offline use)')
   .option('--base <branch>', 'Override default branch detection (e.g., --base develop)')
+  .option(
+    '--cleanup-images',
+    'Clean up Docker images (requires explicit opt-in in non-interactive mode)'
+  )
   .action(prune)
 
 // port hook [hook-name]
