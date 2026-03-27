@@ -13,7 +13,14 @@
  *    filesystem.
  */
 
-import { execAsync, execPrivileged } from './exec.ts'
+import {
+  execAsync,
+  execPrivileged,
+  queuePrivileged,
+  flushPrivilegedBatch,
+  clearPrivilegedBatch,
+  getPrivilegedBatchSize,
+} from './exec.ts'
 
 export interface FileOps {
   /** Overwrite (or create) a file with `content`. */
@@ -39,6 +46,38 @@ export interface FileOps {
 
   /** Return filenames in a directory (non-recursive). */
   list(directory: string): Promise<string[]>
+}
+
+/**
+ * Batched file operations interface.
+ *
+ * Allows queuing multiple privileged file operations that will be executed
+ * together with a single authentication prompt (on macOS GUI sessions).
+ *
+ * @example
+ * ```ts
+ * const batch = batchedFileOps()
+ * batch.mkdir('/etc/port', { privileged: true })
+ * batch.write('/etc/port/config', 'data', { privileged: true })
+ * await batch.flush()
+ * ```
+ */
+export interface BatchedFileOps extends FileOps {
+  /**
+   * Execute all queued privileged operations in a single batch.
+   * Non-privileged operations are executed immediately and don't need flushing.
+   */
+  flush(): Promise<void>
+
+  /**
+   * Cancel all queued operations without executing them.
+   */
+  cancel(): void
+
+  /**
+   * Get the number of operations currently queued.
+   */
+  size(): number
 }
 
 // ---------------------------------------------------------------------------
@@ -152,4 +191,101 @@ export class MapFileOps implements FileOps {
       .filter(key => key.startsWith(prefix) && !key.slice(prefix.length).includes('/'))
       .map(key => key.slice(prefix.length))
   }
+}
+
+// ---------------------------------------------------------------------------
+// Batched file operations (production)
+// ---------------------------------------------------------------------------
+
+class ShellBatchedFileOps implements BatchedFileOps {
+  async write(path: string, content: string, opts?: { privileged?: boolean }): Promise<void> {
+    const exec = opts?.privileged ? queuePrivileged : execAsync
+    await exec(`echo "${content}" > ${path}`)
+  }
+
+  async append(path: string, content: string, opts?: { privileged?: boolean }): Promise<void> {
+    const exec = opts?.privileged ? queuePrivileged : execAsync
+    await exec(`echo "${content}" >> ${path}`)
+  }
+
+  async read(path: string): Promise<string> {
+    const { stdout } = await execAsync(`cat ${path}`)
+    return stdout
+  }
+
+  async exists(path: string): Promise<boolean> {
+    try {
+      await execAsync(`test -f ${path}`)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  async delete(path: string, opts?: { privileged?: boolean }): Promise<void> {
+    const exec = opts?.privileged ? queuePrivileged : execAsync
+    await exec(`rm ${path}`)
+  }
+
+  async removeLines(
+    path: string,
+    containing: string,
+    opts?: { privileged?: boolean }
+  ): Promise<void> {
+    const exec = opts?.privileged ? queuePrivileged : execAsync
+    const escaped = containing.replace(/\//g, '\\/')
+    if (process.platform === 'darwin') {
+      await exec(`sed -i '' '/${escaped}/d' ${path}`)
+    } else {
+      await exec(`sed -i '/${escaped}/d' ${path}`)
+    }
+  }
+
+  async mkdir(path: string, opts?: { privileged?: boolean }): Promise<void> {
+    const exec = opts?.privileged ? queuePrivileged : execAsync
+    await exec(`mkdir -p ${path}`)
+  }
+
+  async list(directory: string): Promise<string[]> {
+    try {
+      const { stdout } = await execAsync(`ls -1 ${directory}`)
+      return stdout
+        .split('\n')
+        .map(f => f.trim())
+        .filter(Boolean)
+    } catch {
+      return []
+    }
+  }
+
+  async flush(): Promise<void> {
+    await flushPrivilegedBatch()
+  }
+
+  cancel(): void {
+    clearPrivilegedBatch()
+  }
+
+  size(): number {
+    return getPrivilegedBatchSize()
+  }
+}
+
+/**
+ * Create a batched file operations interface.
+ *
+ * Operations marked with `{ privileged: true }` are queued and executed
+ * together when `flush()` is called, requiring only a single authentication
+ * prompt on macOS GUI sessions.
+ *
+ * @example
+ * ```ts
+ * const batch = batchedFileOps()
+ * batch.mkdir('/etc/port', { privileged: true })
+ * batch.write('/etc/port/config', 'data', { privileged: true })
+ * await batch.flush()
+ * ```
+ */
+export function batchedFileOps(): BatchedFileOps {
+  return new ShellBatchedFileOps()
 }

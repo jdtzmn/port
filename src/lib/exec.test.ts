@@ -68,6 +68,10 @@ async function loadExecModule(overrides?: { execImpl?: ExecImpl; spawnImpl?: Spa
   return {
     execPrivileged: module.execPrivileged,
     execWithStdio: module.execWithStdio,
+    queuePrivileged: module.queuePrivileged,
+    flushPrivilegedBatch: module.flushPrivilegedBatch,
+    clearPrivilegedBatch: module.clearPrivilegedBatch,
+    getPrivilegedBatchSize: module.getPrivilegedBatchSize,
     execMock,
     spawnMock,
   }
@@ -298,5 +302,168 @@ describe('execWithStdio', () => {
 
     expect(unrefSpy).toHaveBeenCalled()
     unrefSpy.mockRestore()
+  })
+})
+
+describe('batched privileged execution', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+
+    setPlatform('darwin')
+    setTTY(true, true)
+
+    delete process.env.CI
+    delete process.env.SSH_CONNECTION
+    delete process.env.SSH_CLIENT
+    delete process.env.SSH_TTY
+  })
+
+  afterEach(() => {
+    vi.doUnmock('child_process')
+    setPlatform(originalPlatform)
+    Object.defineProperty(process.stdin, 'isTTY', { value: originalStdinIsTTY, configurable: true })
+    Object.defineProperty(process.stdout, 'isTTY', {
+      value: originalStdoutIsTTY,
+      configurable: true,
+    })
+
+    restoreEnvValue('CI', originalCI)
+    restoreEnvValue('SSH_CONNECTION', originalSshConnection)
+    restoreEnvValue('SSH_CLIENT', originalSshClient)
+    restoreEnvValue('SSH_TTY', originalSshTty)
+  })
+
+  test('queues commands and combines them into a single osascript call', async () => {
+    const { queuePrivileged, flushPrivilegedBatch, execMock } = await loadExecModule()
+
+    const p1 = queuePrivileged('mkdir -p /etc/port')
+    const p2 = queuePrivileged('echo "config" > /etc/port/config')
+    const p3 = queuePrivileged('chmod 644 /etc/port/config')
+
+    expect(execMock).not.toHaveBeenCalled()
+
+    await flushPrivilegedBatch()
+
+    // Should execute once with all commands combined
+    expect(execMock).toHaveBeenCalledTimes(1)
+    const [command] = execMock.mock.calls[0] ?? []
+
+    expect(command).toContain('/usr/bin/osascript')
+    expect(command).toContain('mkdir -p /etc/port')
+    expect(command).toContain('echo "config" > /etc/port/config')
+    expect(command).toContain('chmod 644 /etc/port/config')
+
+    // All promises should resolve
+    await expect(p1).resolves.toBeDefined()
+    await expect(p2).resolves.toBeDefined()
+    await expect(p3).resolves.toBeDefined()
+  })
+
+  test('single queued command uses direct execution path', async () => {
+    const { queuePrivileged, flushPrivilegedBatch, execMock } = await loadExecModule()
+
+    const p1 = queuePrivileged('mkdir -p /etc/port')
+
+    await flushPrivilegedBatch()
+
+    expect(execMock).toHaveBeenCalledTimes(1)
+    const [command] = execMock.mock.calls[0] ?? []
+
+    expect(command).toContain('/usr/bin/osascript')
+    expect(command).toContain('mkdir -p /etc/port')
+
+    await expect(p1).resolves.toBeDefined()
+  })
+
+  test('getPrivilegedBatchSize returns queue size', async () => {
+    const { queuePrivileged, getPrivilegedBatchSize, flushPrivilegedBatch } = await loadExecModule()
+
+    expect(getPrivilegedBatchSize()).toBe(0)
+
+    queuePrivileged('cmd1')
+    expect(getPrivilegedBatchSize()).toBe(1)
+
+    queuePrivileged('cmd2')
+    queuePrivileged('cmd3')
+    expect(getPrivilegedBatchSize()).toBe(3)
+
+    await flushPrivilegedBatch()
+    expect(getPrivilegedBatchSize()).toBe(0)
+  })
+
+  test('clearPrivilegedBatch rejects all queued commands', async () => {
+    const { queuePrivileged, clearPrivilegedBatch, execMock } = await loadExecModule()
+
+    const p1 = queuePrivileged('cmd1')
+    const p2 = queuePrivileged('cmd2')
+
+    clearPrivilegedBatch()
+
+    await expect(p1).rejects.toThrow('batch was cleared')
+    await expect(p2).rejects.toThrow('batch was cleared')
+    expect(execMock).not.toHaveBeenCalled()
+  })
+
+  test('batch execution rejects all promises on failure', async () => {
+    const { queuePrivileged, flushPrivilegedBatch, execMock } = await loadExecModule({
+      execImpl: (_command, _options, callback) => {
+        callback(new Error('permission denied'), '', '')
+      },
+    })
+
+    const p1 = queuePrivileged('cmd1')
+    const p2 = queuePrivileged('cmd2')
+
+    await expect(flushPrivilegedBatch()).rejects.toThrow('permission denied')
+
+    await expect(p1).rejects.toThrow('permission denied')
+    await expect(p2).rejects.toThrow('permission denied')
+  })
+
+  test('flush with empty batch does nothing', async () => {
+    const { flushPrivilegedBatch, execMock } = await loadExecModule()
+
+    await flushPrivilegedBatch()
+
+    expect(execMock).not.toHaveBeenCalled()
+  })
+
+  test('batch uses sudo on non-macOS platforms', async () => {
+    setPlatform('linux')
+    const { queuePrivileged, flushPrivilegedBatch, execMock } = await loadExecModule()
+
+    queuePrivileged('cmd1')
+    queuePrivileged('cmd2')
+
+    await flushPrivilegedBatch()
+
+    expect(execMock).toHaveBeenCalledTimes(1)
+    const [command] = execMock.mock.calls[0] ?? []
+
+    expect(command).toContain('sudo sh -c')
+    expect(command).toContain('cmd1')
+    expect(command).toContain('cmd2')
+  })
+
+  test('batch falls back to sudo when GUI elevation is unavailable', async () => {
+    const { queuePrivileged, flushPrivilegedBatch, execMock } = await loadExecModule({
+      execImpl: (command, _options, callback) => {
+        if (command.startsWith('/usr/bin/osascript')) {
+          callback(new Error('No user interaction allowed'), '', '')
+          return
+        }
+
+        callback(null, 'ok', '')
+      },
+    })
+
+    queuePrivileged('cmd1')
+    queuePrivileged('cmd2')
+
+    await flushPrivilegedBatch()
+
+    expect(execMock).toHaveBeenCalledTimes(2)
+    expect(String(execMock.mock.calls[0]?.[0])).toContain('/usr/bin/osascript')
+    expect(execMock.mock.calls[1]?.[0]).toContain('sudo sh -c')
   })
 })
