@@ -17,9 +17,9 @@ import * as output from '../lib/output.ts'
 
 // Mock fs module for ESM compatibility
 // Cannot use vi.spyOn on ESM exports - must use vi.mock with factory
-let mockExistsSync = vi.fn()
+const mockExistsSync = vi.fn()
 vi.mock('fs', () => ({
-  existsSync: (...args: any[]) => mockExistsSync(...args),
+  existsSync: (...args: unknown[]) => mockExistsSync(...args),
 }))
 
 describe('port compose pre-sync behavior', () => {
@@ -50,18 +50,24 @@ describe('port compose pre-sync behavior', () => {
   beforeEach(() => {
     mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
       throw new Error('process.exit called')
-    }) as any)
+    }) as unknown as (code?: string | number | null) => never)
     mockError = vi.spyOn(output, 'error').mockImplementation(() => {})
 
     // Default mocks - tests will override as needed
     vi.spyOn(worktreeModule, 'detectWorktree').mockReturnValue(mockWorktreeInfo)
     vi.spyOn(configModule, 'ensurePortRuntimeDir').mockResolvedValue()
-    vi.spyOn(configModule, 'loadConfigOrDefault').mockResolvedValue(mockConfig as any)
+    vi.spyOn(configModule, 'loadConfigOrDefault').mockResolvedValue(
+      mockConfig as unknown as Awaited<ReturnType<typeof configModule.loadConfigOrDefault>>
+    )
     vi.spyOn(configModule, 'getComposeFile').mockReturnValue('docker-compose.yml')
-    vi.spyOn(composeModule, 'parseComposeFile').mockResolvedValue(mockParsedCompose as any)
+    vi.spyOn(composeModule, 'parseComposeFile').mockResolvedValue(
+      mockParsedCompose as unknown as Awaited<ReturnType<typeof composeModule.parseComposeFile>>
+    )
     vi.spyOn(composeModule, 'writeOverrideFile').mockResolvedValue()
     vi.spyOn(composeModule, 'getProjectName').mockReturnValue('repo-feature-1')
-    vi.spyOn(composeModule, 'runCompose').mockResolvedValue({ exitCode: 0 } as any)
+    vi.spyOn(composeModule, 'runCompose').mockResolvedValue({ exitCode: 0 } as unknown as Awaited<
+      ReturnType<typeof composeModule.runCompose>
+    >)
 
     // Default: compose file exists
     mockExistsSync.mockReturnValue(true)
@@ -191,7 +197,9 @@ describe('port compose pre-sync behavior', () => {
     })
 
     test('exits with docker compose exit code on success', async () => {
-      vi.spyOn(composeModule, 'runCompose').mockResolvedValue({ exitCode: 0 } as any)
+      vi.spyOn(composeModule, 'runCompose').mockResolvedValue({ exitCode: 0 } as unknown as Awaited<
+        ReturnType<typeof composeModule.runCompose>
+      >)
 
       try {
         await compose(['ps'])
@@ -203,7 +211,9 @@ describe('port compose pre-sync behavior', () => {
     })
 
     test('exits with docker compose exit code on docker failure', async () => {
-      vi.spyOn(composeModule, 'runCompose').mockResolvedValue({ exitCode: 1 } as any)
+      vi.spyOn(composeModule, 'runCompose').mockResolvedValue({ exitCode: 1 } as unknown as Awaited<
+        ReturnType<typeof composeModule.runCompose>
+      >)
 
       try {
         await compose(['ps'])
