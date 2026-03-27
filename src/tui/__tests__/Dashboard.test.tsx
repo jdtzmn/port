@@ -4,9 +4,8 @@ import type { TestRenderer } from '@opentui/core/testing'
 import { useEffect, useState } from 'react'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { HostService, PortConfig } from '../../types.ts'
-import type { ActionResult } from '../hooks/useActions.ts'
-import { findSubstringMatchRanges } from '../lib/filtering.ts'
-import { Dashboard, buildServicesText } from '../views/Dashboard.tsx'
+import type { EnqueueResult } from '../hooks/useActions.ts'
+import { Dashboard, findSubstringMatchRanges, buildServicesText } from '../views/Dashboard.tsx'
 
 const mockConfig: PortConfig = { domain: 'port' }
 
@@ -65,11 +64,17 @@ const filterWorktrees: WorktreeStatus[] = [
 ]
 
 const noop = () => {}
-const noopAsync = async (): Promise<ActionResult> => ({ success: true, message: '' })
+const noopAction = (): EnqueueResult => ({ accepted: true, jobId: 'job-1' })
 const mockActions = {
-  upWorktree: noopAsync,
-  downWorktree: noopAsync,
-  archiveWorktree: noopAsync,
+  upWorktree: noopAction,
+  downWorktree: noopAction,
+  archiveWorktree: noopAction,
+  isWorktreeBusy: () => false,
+  latestJobByWorktree: new Map(),
+  getOutputTail: () => [],
+  isOutputVisible: () => true,
+  toggleOutputVisible: noop,
+  cancelWorktreeAction: () => false,
 }
 
 /** Common Dashboard props with defaults for testing */
@@ -194,8 +199,40 @@ describe('Dashboard', () => {
     expect(frame).toContain('[u]')
     expect(frame).toContain('[d]')
     expect(frame).toContain('[a]')
-    expect(frame).toContain('[r]')
-    expect(frame).toContain('[q]')
+    expect(frame).not.toContain('[c]')
+  })
+
+  test('shows cancel hint only when selected worktree has running action', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            isWorktreeBusy: (name: string) => name === 'myapp',
+            latestJobByWorktree: new Map([
+              [
+                'myapp',
+                {
+                  id: 'job-running',
+                  kind: 'up',
+                  worktreeName: 'myapp',
+                  worktreePath: '/repo',
+                  status: 'running',
+                  summary: 'up',
+                  logs: [],
+                },
+              ],
+            ]),
+          },
+        })}
+      />,
+      { width: 110, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+    expect(frame).toContain('[c]')
   })
 
   test('j/k navigates worktree list', async () => {
@@ -215,6 +252,415 @@ describe('Dashboard', () => {
 
     expect(frame2).toContain('myapp')
     expect(frame2).toContain('feature-auth')
+  })
+
+  test('navigation remains active when selected worktree is busy', async () => {
+    let selectedName = ''
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            isWorktreeBusy: () => true,
+          },
+          onSelectWorktree: (name: string) => {
+            selectedName = name
+          },
+        })}
+      />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    await pressAndRender(mockInput, renderOnce, 'j')
+    mockInput.pressEnter()
+    await renderOnce()
+
+    expect(selectedName).toBe('feature-auth')
+  })
+
+  test('u shows error status when action is rejected for busy worktree', async () => {
+    const statusCalls: Array<{ text: string; type: 'success' | 'error' }> = []
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            upWorktree: () => ({
+              accepted: false,
+              reason: 'worktree_busy',
+              message: 'Action already running for myapp',
+            }),
+          },
+          showStatus: (text: string, type: 'success' | 'error') => {
+            statusCalls.push({ text, type })
+          },
+        })}
+      />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    await pressAndRender(mockInput, renderOnce, 'u')
+
+    expect(statusCalls).toEqual([{ text: 'Action already running for myapp', type: 'error' }])
+  })
+
+  test('shows running and failed row markers from latest job state', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            isWorktreeBusy: (name: string) => name === 'myapp',
+            latestJobByWorktree: new Map([
+              [
+                'myapp',
+                {
+                  id: 'job-running',
+                  kind: 'up',
+                  worktreeName: 'myapp',
+                  worktreePath: '/repo',
+                  status: 'running',
+                  summary: 'up',
+                  logs: [],
+                },
+              ],
+              [
+                'feature-auth',
+                {
+                  id: 'job-error',
+                  kind: 'down',
+                  worktreeName: 'feature-auth',
+                  worktreePath: '/repo/.port/trees/feature-auth',
+                  status: 'error',
+                  summary: 'down',
+                  logs: [],
+                },
+              ],
+            ]),
+          },
+        })}
+      />,
+      { width: 90, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+
+    expect(frame).toContain('up...')
+    expect(frame).toContain('down failed')
+  })
+
+  test('c triggers cancellation for selected worktree', async () => {
+    const cancelled: string[] = []
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            cancelWorktreeAction: (name: string) => {
+              cancelled.push(name)
+              return true
+            },
+          },
+        })}
+      />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    await pressAndRender(mockInput, renderOnce, 'c')
+
+    expect(cancelled).toEqual(['myapp'])
+  })
+
+  test('shows cancel status error when no running job is selected', async () => {
+    const statusCalls: Array<{ text: string; type: 'success' | 'error' }> = []
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            cancelWorktreeAction: () => false,
+          },
+          showStatus: (text: string, type: 'success' | 'error') => {
+            statusCalls.push({ text, type })
+          },
+        })}
+      />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    await pressAndRender(mockInput, renderOnce, 'c')
+
+    expect(statusCalls).toEqual([{ text: 'No running action selected to cancel', type: 'error' }])
+  })
+
+  test('renders two-line output tail for selected worktree', async () => {
+    const tail = [
+      { stream: 'stdout' as const, line: 'Building app...' },
+      { stream: 'stderr' as const, line: 'warning: cache miss' },
+    ]
+
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            getOutputTail: () => tail,
+          },
+        })}
+      />,
+      { width: 90, height: 24 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+
+    expect(frame).toContain('Output (myapp)')
+    expect(frame).toContain('[l] hide')
+    expect(frame).toContain('Building app...')
+    expect(frame).toContain('warning: cache miss')
+  })
+
+  test('l toggles output visibility for selected worktree', async () => {
+    const toggled: string[] = []
+    const tail = [{ stream: 'stdout' as const, line: 'line-1' }]
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            getOutputTail: () => tail,
+            toggleOutputVisible: (name: string) => toggled.push(name),
+          },
+        })}
+      />,
+      { width: 100, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    await pressAndRender(mockInput, renderOnce, 'l')
+
+    expect(toggled).toEqual(['myapp'])
+  })
+
+  test('shows output placeholder when selected worktree output is toggled off', async () => {
+    const tail = [{ stream: 'stdout' as const, line: 'line-1' }]
+
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            getOutputTail: () => tail,
+            isOutputVisible: () => false,
+          },
+        })}
+      />,
+      { width: 100, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+    expect(frame).toContain('Output (myapp)')
+    expect(frame).toContain('[l] show')
+    expect(frame).not.toContain('line-1')
+  })
+
+  test('respects per-worktree output visibility while switching selection', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            getOutputTail: (name: string) => [{ stream: 'stdout', line: `${name}-output` }],
+            isOutputVisible: (name: string) => name !== 'myapp',
+          },
+        })}
+      />,
+      { width: 100, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    expect(captureCharFrame()).toContain('Output (myapp)')
+    expect(captureCharFrame()).toContain('[l] show')
+
+    await pressAndRender(mockInput, renderOnce, 'j')
+    const frame = captureCharFrame()
+    expect(frame).toContain('Output (feature-auth)')
+    expect(frame).toContain('feature-auth-output')
+  })
+
+  test('shows filter prompt without hiding output lines while filtering', async () => {
+    const tail = [
+      { stream: 'stdout' as const, line: 'first output line' },
+      { stream: 'stderr' as const, line: 'second output line' },
+    ]
+
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            getOutputTail: () => tail,
+          },
+        })}
+      />,
+      { width: 100, height: 24 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    await pressAndRender(mockInput, renderOnce, '/')
+
+    const frame = captureCharFrame()
+    expect(frame).toContain('(type to filter)')
+    expect(frame).toContain('first output line')
+    expect(frame).toContain('second output line')
+  })
+
+  test('shows running and finished output titles with elapsed seconds', async () => {
+    const runningJob = {
+      id: 'job-running',
+      kind: 'up' as const,
+      worktreeName: 'myapp',
+      worktreePath: '/repo',
+      status: 'running' as const,
+      summary: 'up',
+      startedAt: 1_000,
+      logs: [],
+    }
+    const finishedJob = {
+      ...runningJob,
+      id: 'job-finished',
+      status: 'success' as const,
+      endedAt: 4_200,
+    }
+
+    const {
+      renderer: runningRenderer,
+      renderOnce: renderRunning,
+      captureCharFrame: captureRunning,
+    } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            isWorktreeBusy: (name: string) => name === 'myapp',
+            latestJobByWorktree: new Map([['myapp', runningJob]]),
+          },
+        })}
+      />,
+      { width: 110, height: 24 }
+    )
+    currentRenderer = runningRenderer
+    await renderRunning()
+    expect(captureRunning()).toContain('Output (myapp) - running for ')
+
+    const {
+      renderer: finishedRenderer,
+      renderOnce: renderFinished,
+      captureCharFrame: captureFinished,
+    } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            latestJobByWorktree: new Map([['myapp', finishedJob]]),
+            getOutputTail: () => [{ stream: 'stdout', line: 'done' }],
+          },
+        })}
+      />,
+      { width: 110, height: 24 }
+    )
+    currentRenderer = finishedRenderer
+    await renderFinished()
+    expect(captureFinished()).toContain('Output (myapp) - finished in 3s')
+  })
+
+  test('shows failure-specific output title wording', async () => {
+    const failedJob = {
+      id: 'job-failed',
+      kind: 'down' as const,
+      worktreeName: 'myapp',
+      worktreePath: '/repo',
+      status: 'error' as const,
+      summary: 'down',
+      startedAt: 2_000,
+      endedAt: 6_100,
+      logs: [],
+    }
+
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            latestJobByWorktree: new Map([['myapp', failedJob]]),
+            getOutputTail: () => [{ stream: 'stderr', line: 'failed' }],
+          },
+        })}
+      />,
+      { width: 110, height: 24 }
+    )
+    currentRenderer = renderer
+    await renderOnce()
+
+    expect(captureCharFrame()).toContain('Output (myapp) - failed in 4s')
+  })
+
+  test('keeps key hints visible while running output is shown', async () => {
+    const runningJob = {
+      id: 'job-running',
+      kind: 'up' as const,
+      worktreeName: 'myapp',
+      worktreePath: '/repo',
+      status: 'running' as const,
+      summary: 'up',
+      startedAt: 1_000,
+      logs: Array.from({ length: 20 }, (_, index) => ({
+        ts: index + 1,
+        stream: 'stdout' as const,
+        line: `log-${index + 1}`,
+      })),
+    }
+
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard
+        {...props({
+          actions: {
+            ...mockActions,
+            isWorktreeBusy: (name: string) => name === 'myapp',
+            latestJobByWorktree: new Map([['myapp', runningJob]]),
+          },
+        })}
+      />,
+      { width: 90, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+
+    expect(frame).toContain('Output (myapp) - running for ')
+    expect(frame).toContain('[q]')
   })
 
   test('Enter calls onSelectWorktree', async () => {
@@ -340,19 +786,12 @@ describe('Dashboard', () => {
     expect(frameLine(frame, 'bug-auth-ui')).toContain('>')
     expect(frameLine(frame, 'chore-clean')).not.toContain('>')
 
-    mockInput.pressKey('j')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    frame = captureCharFrame()
-    expect(frameLine(frame, 'feature-auth')).toContain('>')
-
     mockInput.pressKey('k')
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frameLine(frame, 'bug-auth-ui')).toContain('>')
+    expect(frameLine(frame, 'feature-auth')).toContain('>')
   })
 
   test('[/] edit filter clears the current query before typing', async () => {
