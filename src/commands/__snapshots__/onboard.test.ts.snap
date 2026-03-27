@@ -64,6 +64,13 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 - **How**: Use after a branch is done.
 - **Why**: Stops services, removes worktree, and archives the local branch.
 
+## Additional Commands
+
+- **\`port compose [args...]\`**: Automatically applies -f flags for the worktree's compose files.
+  - Alias: port dc. Run inside a worktree to run docker compose commands.
+- **\`port completion <shell>\`**: Enables tab completion for port commands and options.
+  - Run once to generate shell completion script (bash, zsh, or fish).
+
 ## Useful Checks
 
 - \`port list\`: list worktree names
@@ -135,6 +142,13 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 
 - **How**: Use after a branch is done.
 - **Why**: Stops services, removes worktree, and archives the local branch.
+
+## Additional Commands
+
+- **\`port compose [args...]\`**: Automatically applies -f flags for the worktree's compose files.
+  - Alias: port dc. Run inside a worktree to run docker compose commands.
+- **\`port completion <shell>\`**: Enables tab completion for port commands and options.
+  - Run once to generate shell completion script (bash, zsh, or fish).
 
 ## Useful Checks
 

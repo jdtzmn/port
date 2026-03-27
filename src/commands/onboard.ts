@@ -67,6 +67,19 @@ const STEPS: OnboardStep[] = [
   },
 ]
 
+const ADDITIONAL_COMMANDS: OnboardStep[] = [
+  {
+    command: 'port compose [args...]',
+    how: 'Alias: port dc. Run inside a worktree to run docker compose commands.',
+    why: "Automatically applies -f flags for the worktree's compose files.",
+  },
+  {
+    command: 'port completion <shell>',
+    how: 'Run once to generate shell completion script (bash, zsh, or fish).',
+    why: 'Enables tab completion for port commands and options.',
+  },
+]
+
 /**
  * Generate markdown content from the STEPS data structure.
  */
@@ -92,6 +105,14 @@ export function generateMarkdown(): string {
     lines.push(`- **Why**: ${step.why}`)
     lines.push('')
   }
+
+  lines.push('## Additional Commands')
+  lines.push('')
+  for (const step of ADDITIONAL_COMMANDS) {
+    lines.push(`- **\`${step.command}\`**: ${step.why}`)
+    lines.push(`  - ${step.how}`)
+  }
+  lines.push('')
 
   lines.push('## Useful Checks')
   lines.push('')
@@ -130,6 +151,14 @@ export async function onboard(options?: { md?: boolean }): Promise<void> {
     output.dim(`   Why: ${step.why}`)
     output.newline()
   }
+
+  output.info('Additional commands:')
+  for (const step of ADDITIONAL_COMMANDS) {
+    output.header(`- ${output.command(step.command)}`)
+    output.dim(`  ${step.why}`)
+    output.dim(`  ${step.how}`)
+  }
+  output.newline()
 
   output.info('Useful checks:')
   output.dim(`- ${output.command('port list')}: list worktree names`)
