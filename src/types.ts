@@ -138,6 +138,9 @@ export interface DockerCleanupOptions {
   /** Skip image cleanup (default: false for cleanup command, true for remove/prune) */
   skipImages?: boolean
 
+  /** Only clean up images (skip containers, volumes, networks) */
+  imagesOnly?: boolean
+
   /** Dry run - list resources without removing */
   dryRun?: boolean
 }

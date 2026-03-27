@@ -151,8 +151,15 @@ program
   .description('Remove a worktree and stop its services')
   .option('-f, --force', 'Skip confirmation prompts')
   .option('--keep-branch', 'Keep the local branch instead of archiving it')
-  .action((branch: string | undefined, options: { force?: boolean; keepBranch?: boolean }) =>
-    remove(branch, options)
+  .option(
+    '--cleanup-images',
+    'Clean up Docker images without prompting (defaults to interactive prompt with No)'
+  )
+  .action(
+    (
+      branch: string | undefined,
+      options: { force?: boolean; keepBranch?: boolean; cleanupImages?: boolean }
+    ) => remove(branch, options)
   )
 
 // port uninstall
@@ -195,6 +202,10 @@ program
 program
   .command('cleanup')
   .description('Delete archived branches created by port remove (with confirmation)')
+  .option(
+    '--cleanup-images',
+    'Clean up Docker images (requires explicit opt-in in non-interactive mode)'
+  )
   .action(cleanup)
 
 // port prune
