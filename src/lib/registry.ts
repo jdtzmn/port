@@ -2,7 +2,7 @@ import { readFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import type { Registry, Project, HostService } from '../types.ts'
+import type { Registry, Project, HostService, RunningWorktreeNames } from '../types.ts'
 import { withFileLock, writeFileAtomic } from './state.ts'
 
 /** Optional env var to override global state directory (used by tests) */
@@ -279,4 +279,32 @@ export async function getHostServicesForWorktree(
 export async function getAllHostServices(): Promise<HostService[]> {
   const registry = await loadRegistry()
   return registry.hostServices ?? []
+}
+
+/**
+ * Get unique worktree names from registered projects for 404 rendering.
+ * Returns a sorted, deduplicated list of branch names from all registered
+ * projects in the global registry.
+ * 
+ * Note: This returns worktrees that are REGISTERED (have had `port up` run),
+ * not necessarily currently running. For actively running services, use
+ * `getRunningWorktreeNames()` from worktreeStatus.ts instead.
+ *
+ * @returns Array of unique worktree/branch names, sorted alphabetically
+ * 
+ * @example
+ * ```ts
+ * const registered = await getRunningWorktreesFromRegistry()
+ * // Returns: ['feature-1', 'main']
+ * ```
+ */
+export async function getRunningWorktreesFromRegistry(): Promise<RunningWorktreeNames> {
+  const registry = await loadRegistry()
+  const branches = new Set<string>()
+
+  for (const project of registry.projects) {
+    branches.add(project.branch)
+  }
+
+  return Array.from(branches).sort()
 }
