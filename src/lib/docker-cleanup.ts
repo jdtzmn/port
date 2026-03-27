@@ -1,0 +1,238 @@
+import { execAsync } from './exec.ts'
+import { TRAEFIK_NETWORK } from './traefik.ts'
+import type { DockerCleanupOptions, DockerCleanupResult, DockerProjectResources } from '../types.ts'
+
+/**
+ * Check if Docker daemon is available
+ */
+export async function isDockerAvailable(): Promise<boolean> {
+  try {
+    await execAsync('docker info', { timeout: 5000 })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * List volumes for a project using compose project label
+ */
+export async function listProjectVolumes(projectName: string): Promise<string[]> {
+  try {
+    const { stdout } = await execAsync(
+      `docker volume ls --filter "label=com.docker.compose.project=${projectName}" --quiet`
+    )
+    return stdout
+      .trim()
+      .split('\n')
+      .filter(line => line.length > 0)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * List networks for a project, excluding Traefik network
+ */
+export async function listProjectNetworks(projectName: string): Promise<string[]> {
+  try {
+    const { stdout } = await execAsync(
+      `docker network ls --filter "label=com.docker.compose.project=${projectName}" --quiet --format "{{.Name}}"`
+    )
+    const networks = stdout
+      .trim()
+      .split('\n')
+      .filter(line => line.length > 0)
+
+    // Exclude Traefik network (CRITICAL SAFETY CHECK)
+    return networks.filter(name => name !== TRAEFIK_NETWORK)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * List stopped containers for a project
+ */
+export async function listProjectContainers(projectName: string): Promise<string[]> {
+  try {
+    const { stdout } = await execAsync(
+      `docker ps -a --filter "label=com.docker.compose.project=${projectName}" --quiet`
+    )
+    return stdout
+      .trim()
+      .split('\n')
+      .filter(line => line.length > 0)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * List images for a project
+ * Returns array of { id, name } objects
+ */
+export async function listProjectImages(
+  projectName: string
+): Promise<Array<{ id: string; name: string }>> {
+  try {
+    const { stdout } = await execAsync(
+      `docker images --filter "label=com.docker.compose.project=${projectName}" --format "{{.ID}}|{{.Repository}}:{{.Tag}}"`
+    )
+
+    const lines = stdout
+      .trim()
+      .split('\n')
+      .filter(line => line.length > 0)
+
+    return lines.map(line => {
+      const [id, name] = line.split('|')
+      return { id: id || '', name: name || '<none>' }
+    })
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Remove a Docker volume
+ */
+export async function removeVolume(volumeName: string): Promise<void> {
+  await execAsync(`docker volume rm ${volumeName}`)
+}
+
+/**
+ * Remove a Docker network
+ */
+export async function removeNetwork(networkName: string): Promise<void> {
+  await execAsync(`docker network rm ${networkName}`)
+}
+
+/**
+ * Remove a Docker container
+ */
+export async function removeContainer(containerId: string): Promise<void> {
+  await execAsync(`docker rm ${containerId}`)
+}
+
+/**
+ * Remove a Docker image
+ */
+export async function removeImage(imageId: string): Promise<void> {
+  await execAsync(`docker rmi ${imageId}`)
+}
+
+/**
+ * Clean up all Docker resources for a project
+ *
+ * @param projectName - Docker Compose project name
+ * @param options - Cleanup options
+ * @returns Cleanup result with counts and warnings
+ */
+export async function cleanupDockerResources(
+  projectName: string,
+  options: DockerCleanupOptions = {}
+): Promise<DockerCleanupResult> {
+  const result: DockerCleanupResult = {
+    volumesRemoved: 0,
+    networksRemoved: 0,
+    containersRemoved: 0,
+    imagesRemoved: 0,
+    totalRemoved: 0,
+    warnings: [],
+    dockerAvailable: false,
+  }
+
+  // Check Docker availability
+  if (!(await isDockerAvailable())) {
+    result.warnings.push('Docker daemon not available - skipping cleanup')
+    return result
+  }
+
+  result.dockerAvailable = true
+
+  // 1. Remove containers
+  const containers = await listProjectContainers(projectName)
+  for (const containerId of containers) {
+    try {
+      if (!options.dryRun) {
+        await removeContainer(containerId)
+      }
+      result.containersRemoved++
+    } catch (error) {
+      result.warnings.push(`Failed to remove container ${containerId}: ${error}`)
+    }
+  }
+
+  // 2. Remove volumes
+  const volumes = await listProjectVolumes(projectName)
+  for (const volume of volumes) {
+    try {
+      if (!options.dryRun) {
+        await removeVolume(volume)
+      }
+      result.volumesRemoved++
+    } catch (error) {
+      result.warnings.push(`Failed to remove volume ${volume}: ${error}`)
+    }
+  }
+
+  // 3. Remove networks
+  const networks = await listProjectNetworks(projectName)
+  for (const network of networks) {
+    try {
+      if (!options.dryRun) {
+        await removeNetwork(network)
+      }
+      result.networksRemoved++
+    } catch (error) {
+      result.warnings.push(`Failed to remove network ${network}: ${error}`)
+    }
+  }
+
+  // 4. Remove images (if not skipped)
+  if (!options.skipImages) {
+    const images = await listProjectImages(projectName)
+    for (const image of images) {
+      try {
+        if (!options.dryRun) {
+          await removeImage(image.id)
+        }
+        result.imagesRemoved++
+      } catch (error) {
+        result.warnings.push(`Failed to remove image ${image.name}: ${error}`)
+      }
+    }
+  }
+
+  result.totalRemoved =
+    result.volumesRemoved + result.networksRemoved + result.containersRemoved + result.imagesRemoved
+
+  return result
+}
+
+/**
+ * Scan Docker resources for a single project
+ * Used by cleanup command to preview resources before deletion
+ */
+export async function scanDockerResourcesForProject(
+  projectName: string
+): Promise<DockerProjectResources> {
+  const [volumes, networks, containers, images] = await Promise.all([
+    listProjectVolumes(projectName),
+    listProjectNetworks(projectName),
+    listProjectContainers(projectName),
+    listProjectImages(projectName),
+  ])
+
+  return {
+    projectName,
+    volumes,
+    networks,
+    containers,
+    images,
+    // Size information could be added in the future
+    volumeSize: undefined,
+    imageSize: undefined,
+  }
+}
