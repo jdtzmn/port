@@ -3,6 +3,15 @@ import { TRAEFIK_NETWORK } from './traefik.ts'
 import type { DockerCleanupOptions, DockerCleanupResult, DockerProjectResources } from '../types.ts'
 
 /**
+ * Escape a shell argument to prevent command injection.
+ * Wraps the argument in single quotes and escapes any single quotes within.
+ */
+function shellEscape(arg: string): string {
+  // Replace single quotes with '\'' (end quote, escaped quote, start quote)
+  return `'${arg.replace(/'/g, "'\\''")}'`
+}
+
+/**
  * Check if Docker daemon is available
  */
 export async function isDockerAvailable(): Promise<boolean> {
@@ -20,7 +29,7 @@ export async function isDockerAvailable(): Promise<boolean> {
 export async function listProjectVolumes(projectName: string): Promise<string[]> {
   try {
     const { stdout } = await execAsync(
-      `docker volume ls --filter "label=com.docker.compose.project=${projectName}" --quiet`
+      `docker volume ls --filter label=com.docker.compose.project=${shellEscape(projectName)} --quiet`
     )
     return stdout
       .trim()
@@ -37,7 +46,7 @@ export async function listProjectVolumes(projectName: string): Promise<string[]>
 export async function listProjectNetworks(projectName: string): Promise<string[]> {
   try {
     const { stdout } = await execAsync(
-      `docker network ls --filter "label=com.docker.compose.project=${projectName}" --quiet --format "{{.Name}}"`
+      `docker network ls --filter label=com.docker.compose.project=${shellEscape(projectName)} --quiet --format "{{.Name}}"`
     )
     const networks = stdout
       .trim()
@@ -57,7 +66,7 @@ export async function listProjectNetworks(projectName: string): Promise<string[]
 export async function listProjectContainers(projectName: string): Promise<string[]> {
   try {
     const { stdout } = await execAsync(
-      `docker ps -a --filter "label=com.docker.compose.project=${projectName}" --quiet`
+      `docker ps -a --filter label=com.docker.compose.project=${shellEscape(projectName)} --quiet`
     )
     return stdout
       .trim()
@@ -77,7 +86,7 @@ export async function listProjectImages(
 ): Promise<Array<{ id: string; name: string }>> {
   try {
     const { stdout } = await execAsync(
-      `docker images --filter "label=com.docker.compose.project=${projectName}" --format "{{.ID}}|{{.Repository}}:{{.Tag}}"`
+      `docker images --filter label=com.docker.compose.project=${shellEscape(projectName)} --format "{{.ID}}|{{.Repository}}:{{.Tag}}"`
     )
 
     const lines = stdout
@@ -98,28 +107,58 @@ export async function listProjectImages(
  * Remove a Docker volume
  */
 export async function removeVolume(volumeName: string): Promise<void> {
-  await execAsync(`docker volume rm ${volumeName}`)
+  await execAsync(`docker volume rm ${shellEscape(volumeName)}`)
 }
 
 /**
  * Remove a Docker network
  */
 export async function removeNetwork(networkName: string): Promise<void> {
-  await execAsync(`docker network rm ${networkName}`)
+  await execAsync(`docker network rm ${shellEscape(networkName)}`)
 }
 
 /**
  * Remove a Docker container
  */
 export async function removeContainer(containerId: string): Promise<void> {
-  await execAsync(`docker rm ${containerId}`)
+  await execAsync(`docker rm ${shellEscape(containerId)}`)
 }
 
 /**
  * Remove a Docker image
  */
 export async function removeImage(imageId: string): Promise<void> {
-  await execAsync(`docker rmi ${imageId}`)
+  await execAsync(`docker rmi ${shellEscape(imageId)}`)
+}
+
+/**
+ * Get total size of images in bytes
+ * Returns undefined if unable to determine size
+ */
+export async function getImagesSizeInBytes(imageIds: string[]): Promise<number | undefined> {
+  if (imageIds.length === 0) {
+    return undefined
+  }
+
+  try {
+    // Use docker image inspect to get size for each image
+    const escapedIds = imageIds.map(id => shellEscape(id)).join(' ')
+    const { stdout } = await execAsync(`docker image inspect --format '{{.Size}}' ${escapedIds}`)
+
+    const sizes = stdout
+      .trim()
+      .split('\n')
+      .map(line => parseInt(line.trim(), 10))
+      .filter(size => !isNaN(size) && size > 0)
+
+    if (sizes.length === 0) {
+      return undefined
+    }
+
+    return sizes.reduce((total, size) => total + size, 0)
+  } catch {
+    return undefined
+  }
 }
 
 /**
@@ -225,6 +264,10 @@ export async function scanDockerResourcesForProject(
     listProjectImages(projectName),
   ])
 
+  // Get image size estimate if images exist
+  const imageSize =
+    images.length > 0 ? await getImagesSizeInBytes(images.map(img => img.id)) : undefined
+
   return {
     projectName,
     volumes,
@@ -233,6 +276,6 @@ export async function scanDockerResourcesForProject(
     images,
     // Size information could be added in the future
     volumeSize: undefined,
-    imageSize: undefined,
+    imageSize,
   }
 }

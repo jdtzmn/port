@@ -65,7 +65,7 @@ describe('docker-cleanup', () => {
 
       expect(result).toEqual([])
       expect(execAsyncSpy).toHaveBeenCalledWith(
-        'docker volume ls --filter "label=com.docker.compose.project=test-project" --quiet'
+        "docker volume ls --filter label=com.docker.compose.project='test-project' --quiet"
       )
     })
 
@@ -86,7 +86,7 @@ describe('docker-cleanup', () => {
       await listProjectVolumes('my-project')
 
       expect(execAsyncSpy).toHaveBeenCalledWith(
-        'docker volume ls --filter "label=com.docker.compose.project=my-project" --quiet'
+        "docker volume ls --filter label=com.docker.compose.project='my-project' --quiet"
       )
     })
 
@@ -137,7 +137,7 @@ describe('docker-cleanup', () => {
       await listProjectNetworks('my-project')
 
       expect(execAsyncSpy).toHaveBeenCalledWith(
-        'docker network ls --filter "label=com.docker.compose.project=my-project" --quiet --format "{{.Name}}"'
+        'docker network ls --filter label=com.docker.compose.project=\'my-project\' --quiet --format "{{.Name}}"'
       )
     })
 
@@ -176,7 +176,7 @@ describe('docker-cleanup', () => {
       await listProjectContainers('test-project')
 
       expect(execAsyncSpy).toHaveBeenCalledWith(
-        'docker ps -a --filter "label=com.docker.compose.project=test-project" --quiet'
+        "docker ps -a --filter label=com.docker.compose.project='test-project' --quiet"
       )
     })
 
@@ -186,7 +186,7 @@ describe('docker-cleanup', () => {
       await listProjectContainers('my-project')
 
       expect(execAsyncSpy).toHaveBeenCalledWith(
-        'docker ps -a --filter "label=com.docker.compose.project=my-project" --quiet'
+        "docker ps -a --filter label=com.docker.compose.project='my-project' --quiet"
       )
     })
 
@@ -239,7 +239,7 @@ describe('docker-cleanup', () => {
       await listProjectImages('my-project')
 
       expect(execAsyncSpy).toHaveBeenCalledWith(
-        'docker images --filter "label=com.docker.compose.project=my-project" --format "{{.ID}}|{{.Repository}}:{{.Tag}}"'
+        'docker images --filter label=com.docker.compose.project=\'my-project\' --format "{{.ID}}|{{.Repository}}:{{.Tag}}"'
       )
     })
 
@@ -258,7 +258,7 @@ describe('docker-cleanup', () => {
 
       await removeVolume('test-volume')
 
-      expect(execAsyncSpy).toHaveBeenCalledWith('docker volume rm test-volume')
+      expect(execAsyncSpy).toHaveBeenCalledWith("docker volume rm 'test-volume'")
     })
 
     test('throws on error', async () => {
@@ -274,7 +274,7 @@ describe('docker-cleanup', () => {
 
       await removeNetwork('test-network')
 
-      expect(execAsyncSpy).toHaveBeenCalledWith('docker network rm test-network')
+      expect(execAsyncSpy).toHaveBeenCalledWith("docker network rm 'test-network'")
     })
 
     test('throws on error', async () => {
@@ -290,7 +290,7 @@ describe('docker-cleanup', () => {
 
       await removeContainer('abc123')
 
-      expect(execAsyncSpy).toHaveBeenCalledWith('docker rm abc123')
+      expect(execAsyncSpy).toHaveBeenCalledWith("docker rm 'abc123'")
     })
 
     test('throws on error', async () => {
@@ -306,7 +306,7 @@ describe('docker-cleanup', () => {
 
       await removeImage('abc123')
 
-      expect(execAsyncSpy).toHaveBeenCalledWith('docker rmi abc123')
+      expect(execAsyncSpy).toHaveBeenCalledWith("docker rmi 'abc123'")
     })
 
     test('throws on error', async () => {
@@ -403,7 +403,7 @@ describe('docker-cleanup', () => {
         if (cmd.includes('docker volume ls')) {
           return { stdout: 'vol1\nvol2\n', stderr: '' }
         }
-        if (cmd.includes('docker volume rm vol1')) {
+        if (cmd.includes("docker volume rm 'vol1'")) {
           throw new Error('Failed')
         }
         if (cmd.includes('docker network ls')) {
@@ -472,6 +472,16 @@ describe('docker-cleanup', () => {
         if (cmd.includes('docker images')) {
           return { stdout: 'img1|postgres:14\nimg2|redis:7\n', stderr: '' }
         }
+        if (cmd.includes('docker system df')) {
+          return {
+            stdout:
+              'Images          2         1         1.5GB     500MB (33%)\n' +
+              'Containers      3         2         10MB      5MB (50%)\n' +
+              'Local Volumes   2         1         2GB       1GB (50%)\n' +
+              'Build Cache     0         0         0B        0B\n',
+            stderr: '',
+          }
+        }
         return { stdout: '', stderr: '' }
       })
     })
@@ -503,6 +513,119 @@ describe('docker-cleanup', () => {
         containers: [],
         images: [],
       })
+    })
+
+    test('returns imageSize when images exist', async () => {
+      execAsyncSpy.mockImplementation(async (cmd: string) => {
+        if (cmd.includes('docker volume ls')) {
+          return { stdout: '', stderr: '' }
+        }
+        if (cmd.includes('docker network ls')) {
+          return { stdout: '', stderr: '' }
+        }
+        if (cmd.includes('docker ps -a')) {
+          return { stdout: '', stderr: '' }
+        }
+        if (cmd.includes('docker images --filter')) {
+          return { stdout: 'img1|postgres:14\nimg2|redis:7\n', stderr: '' }
+        }
+        if (cmd.includes('docker image inspect')) {
+          // Mock docker image inspect returning size for each image (one per line)
+          return {
+            stdout: '800000000\n200000000\n', // 800MB and 200MB
+            stderr: '',
+          }
+        }
+        return { stdout: '', stderr: '' }
+      })
+
+      const result = await scanDockerResourcesForProject('test-project')
+
+      expect(result.imageSize).toBe(1000000000) // 1GB total
+    })
+
+    test('returns undefined imageSize when no images exist', async () => {
+      execAsyncSpy.mockImplementation(async (cmd: string) => {
+        if (cmd.includes('docker images')) {
+          return { stdout: '', stderr: '' }
+        }
+        return { stdout: '', stderr: '' }
+      })
+
+      const result = await scanDockerResourcesForProject('empty-project')
+
+      expect(result.imageSize).toBeUndefined()
+    })
+
+    test('returns undefined imageSize when docker inspect fails', async () => {
+      execAsyncSpy.mockImplementation(async (cmd: string) => {
+        if (cmd.includes('docker images --filter')) {
+          return { stdout: 'img1|postgres:14\n', stderr: '' }
+        }
+        if (cmd.includes('docker image inspect')) {
+          throw new Error('Docker daemon error')
+        }
+        return { stdout: '', stderr: '' }
+      })
+
+      const result = await scanDockerResourcesForProject('test-project')
+
+      expect(result.imageSize).toBeUndefined()
+    })
+  })
+
+  describe('command injection safety', () => {
+    test('escapes shell special characters in project names', async () => {
+      execAsyncSpy.mockResolvedValue({ stdout: '', stderr: '' })
+
+      // Project name with shell special characters that should be escaped
+      await listProjectVolumes('test-project; rm -rf /')
+
+      // Should wrap in single quotes to prevent injection
+      const calls = execAsyncSpy.mock.calls.map((call: unknown[]) => call[0] as string)
+      expect(calls[0]).toContain("'test-project; rm -rf /'")
+      expect(calls[0]).toContain('docker volume ls')
+    })
+
+    test('escapes special characters in volume names', async () => {
+      execAsyncSpy.mockResolvedValue({ stdout: '', stderr: '' })
+
+      await removeVolume('test-volume; echo hacked')
+
+      const calls = execAsyncSpy.mock.calls.map((call: unknown[]) => call[0] as string)
+      expect(calls[0]).toContain("'test-volume; echo hacked'")
+      expect(calls[0]).toContain('docker volume rm')
+    })
+
+    test('escapes special characters in network names', async () => {
+      execAsyncSpy.mockResolvedValue({ stdout: '', stderr: '' })
+
+      await removeNetwork('test-net$(whoami)')
+
+      const calls = execAsyncSpy.mock.calls.map((call: unknown[]) => call[0] as string)
+      expect(calls[0]).toContain("'test-net$(whoami)'")
+      expect(calls[0]).toContain('docker network rm')
+    })
+
+    test('escapes special characters in container IDs', async () => {
+      execAsyncSpy.mockResolvedValue({ stdout: '', stderr: '' })
+
+      await removeContainer('abc123`cat /etc/passwd`')
+
+      const calls = execAsyncSpy.mock.calls.map((call: unknown[]) => call[0] as string)
+      expect(calls[0]).toContain("'abc123`cat /etc/passwd`'")
+      expect(calls[0]).toContain('docker rm')
+    })
+
+    test('escapes special characters in image IDs', async () => {
+      execAsyncSpy.mockResolvedValue({ stdout: '', stderr: '' })
+
+      await removeImage("abc123' || true #")
+
+      const calls = execAsyncSpy.mock.calls.map((call: unknown[]) => call[0] as string)
+      // Single quote is escaped as '\'' (end quote, escaped quote, start quote)
+      expect(calls[0]).toContain("'abc123'\\'' || true #'")
+      expect(calls[0]).toContain('docker rmi')
     })
   })
 })
