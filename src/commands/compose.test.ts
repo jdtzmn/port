@@ -15,6 +15,13 @@ import * as output from '../lib/output.ts'
  * 4. Successful sync path proceeds to docker execution
  */
 
+// Mock fs module for ESM compatibility
+// Cannot use vi.spyOn on ESM exports - must use vi.mock with factory
+let mockExistsSync = vi.fn()
+vi.mock('fs', () => ({
+  existsSync: (...args: any[]) => mockExistsSync(...args),
+}))
+
 describe('port compose pre-sync behavior', () => {
   const mockWorktreeInfo = {
     repoRoot: '/repo',
@@ -55,6 +62,9 @@ describe('port compose pre-sync behavior', () => {
     vi.spyOn(composeModule, 'writeOverrideFile').mockResolvedValue()
     vi.spyOn(composeModule, 'getProjectName').mockReturnValue('repo-feature-1')
     vi.spyOn(composeModule, 'runCompose').mockResolvedValue({ exitCode: 0 } as any)
+
+    // Default: compose file exists
+    mockExistsSync.mockReturnValue(true)
   })
 
   afterEach(() => {
@@ -65,10 +75,6 @@ describe('port compose pre-sync behavior', () => {
     test('calls parseComposeFile before runCompose', async () => {
       const parseComposeFileSpy = vi.spyOn(composeModule, 'parseComposeFile')
       const runComposeSpy = vi.spyOn(composeModule, 'runCompose')
-
-      // Mock existsSync to return true for compose file
-      const fs = await import('fs')
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true)
 
       try {
         await compose(['ps'])
@@ -90,10 +96,6 @@ describe('port compose pre-sync behavior', () => {
       vi.spyOn(composeModule, 'parseComposeFile').mockRejectedValue(parseError)
       const runComposeSpy = vi.spyOn(composeModule, 'runCompose')
 
-      // Mock existsSync to return true for compose file
-      const fs = await import('fs')
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true)
-
       try {
         await compose(['ps'])
       } catch (error) {
@@ -112,10 +114,6 @@ describe('port compose pre-sync behavior', () => {
     test('calls writeOverrideFile before runCompose', async () => {
       const writeOverrideFileSpy = vi.spyOn(composeModule, 'writeOverrideFile')
       const runComposeSpy = vi.spyOn(composeModule, 'runCompose')
-
-      // Mock existsSync to return true for compose file
-      const fs = await import('fs')
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true)
 
       try {
         await compose(['ps'])
@@ -137,12 +135,8 @@ describe('port compose pre-sync behavior', () => {
       vi.spyOn(composeModule, 'writeOverrideFile').mockRejectedValue(writeError)
       const runComposeSpy = vi.spyOn(composeModule, 'runCompose')
 
-      // Mock existsSync to return true for compose file
-      const fs = await import('fs')
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true)
-
       try {
-        await compose(['ps'])
+        await compose(['up', '-d'])
       } catch (error) {
         // Expected - process.exit throws
       }
@@ -156,10 +150,6 @@ describe('port compose pre-sync behavior', () => {
 
     test('writes override with correct parameters', async () => {
       const writeOverrideFileSpy = vi.spyOn(composeModule, 'writeOverrideFile')
-
-      // Mock existsSync to return true for compose file
-      const fs = await import('fs')
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true)
 
       try {
         await compose(['ps'])
@@ -180,10 +170,6 @@ describe('port compose pre-sync behavior', () => {
   describe('successful sync path', () => {
     test('executes docker compose after successful sync', async () => {
       const runComposeSpy = vi.spyOn(composeModule, 'runCompose')
-
-      // Mock existsSync to return true for compose file
-      const fs = await import('fs')
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true)
 
       try {
         await compose(['ps'])
@@ -207,10 +193,6 @@ describe('port compose pre-sync behavior', () => {
     test('exits with docker compose exit code on success', async () => {
       vi.spyOn(composeModule, 'runCompose').mockResolvedValue({ exitCode: 0 } as any)
 
-      // Mock existsSync to return true for compose file
-      const fs = await import('fs')
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true)
-
       try {
         await compose(['ps'])
       } catch (error) {
@@ -222,10 +204,6 @@ describe('port compose pre-sync behavior', () => {
 
     test('exits with docker compose exit code on docker failure', async () => {
       vi.spyOn(composeModule, 'runCompose').mockResolvedValue({ exitCode: 1 } as any)
-
-      // Mock existsSync to return true for compose file
-      const fs = await import('fs')
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true)
 
       try {
         await compose(['ps'])
@@ -242,10 +220,6 @@ describe('port compose pre-sync behavior', () => {
       vi.spyOn(composeModule, 'parseComposeFile').mockRejectedValue(new Error('Parse error'))
       const runComposeSpy = vi.spyOn(composeModule, 'runCompose')
 
-      // Mock existsSync to return true for compose file
-      const fs = await import('fs')
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true)
-
       try {
         await compose(['up', '-d'])
       } catch (error) {
@@ -258,10 +232,6 @@ describe('port compose pre-sync behavior', () => {
     test('does not execute docker when write fails', async () => {
       vi.spyOn(composeModule, 'writeOverrideFile').mockRejectedValue(new Error('Write error'))
       const runComposeSpy = vi.spyOn(composeModule, 'runCompose')
-
-      // Mock existsSync to return true for compose file
-      const fs = await import('fs')
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true)
 
       try {
         await compose(['up', '-d'])
@@ -277,8 +247,7 @@ describe('port compose pre-sync behavior', () => {
       const writeOverrideFileSpy = vi.spyOn(composeModule, 'writeOverrideFile')
 
       // Mock existsSync to return false for compose file
-      const fs = await import('fs')
-      vi.spyOn(fs, 'existsSync').mockReturnValue(false)
+      mockExistsSync.mockReturnValue(false)
 
       try {
         await compose(['ps'])
@@ -300,10 +269,6 @@ describe('port compose pre-sync behavior', () => {
       // pre-sync behavior applies identically
       const parseComposeFileSpy = vi.spyOn(composeModule, 'parseComposeFile')
       const writeOverrideFileSpy = vi.spyOn(composeModule, 'writeOverrideFile')
-
-      // Mock existsSync to return true for compose file
-      const fs = await import('fs')
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true)
 
       try {
         await compose(['ps'])
