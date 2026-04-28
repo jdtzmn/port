@@ -138,6 +138,18 @@ export default function DirectoryPage() {
     inputRef.current?.focus()
   }, [])
 
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        inputRef.current?.focus()
+        inputRef.current?.select()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
   const filtered = filterWorktrees(worktrees, query)
 
   return (
@@ -145,17 +157,20 @@ export default function DirectoryPage() {
       <style>{cssString}</style>
 
       <div style={styles.searchWrapper}>
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder="Filter worktrees and services…"
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          style={styles.searchInput}
-          className="search-input"
-          spellCheck={false}
-          autoComplete="off"
-        />
+        <div style={styles.searchContainer}>
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Filter worktrees and services…"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            style={styles.searchInput}
+            className="search-input"
+            spellCheck={false}
+            autoComplete="off"
+          />
+          <kbd style={styles.kbdHint} className="kbd-hint">⌘K</kbd>
+        </div>
       </div>
 
       <div style={styles.list}>
@@ -191,6 +206,9 @@ const styles: Record<string, React.CSSProperties> = {
     paddingTop: 8,
     zIndex: 10,
   },
+  searchContainer: {
+    position: 'relative',
+  },
   searchInput: {
     width: '100%',
     background: '#1a1a1a',
@@ -198,8 +216,23 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     color: '#fff',
     fontSize: 15,
-    padding: '10px 14px',
+    padding: '10px 52px 10px 14px',
     outline: 'none',
+  },
+  kbdHint: {
+    position: 'absolute',
+    right: 10,
+    top: '50%',
+    transform: 'translateY(-50%)',
+    background: '#2a2a2a',
+    border: '1px solid #444',
+    borderRadius: 4,
+    color: '#666',
+    fontSize: 11,
+    fontFamily: 'inherit',
+    padding: '2px 5px',
+    pointerEvents: 'none',
+    userSelect: 'none',
   },
   list: {
     display: 'flex',
@@ -243,11 +276,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
 }
 
-// Focus ring via CSS class (can't do :focus-visible in inline styles)
+// Focus ring and kbd hint visibility via CSS classes
 const cssString = `
   .search-input:focus {
     border-color: #3b82f6 !important;
     box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+  }
+  .search-input:focus ~ .kbd-hint {
+    opacity: 0;
   }
   a[href]:hover {
     color: #60a5fa !important;
