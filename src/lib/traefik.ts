@@ -327,10 +327,9 @@ export async function initTraefikFiles(ports: number[]): Promise<void> {
       await saveTraefikConfigUnlocked(config)
     }
 
-    if (!existsSync(TRAEFIK_COMPOSE_FILE)) {
-      await updateTraefikComposeUnlocked(ports)
-    }
+    await updateTraefikComposeUnlocked(ports)
   })
+  await ensure404Handler()
 }
 
 /**
@@ -453,13 +452,10 @@ export async function ensureFileProvider(): Promise<boolean> {
  * @returns true if configuration was updated
  */
 export async function ensureTraefikPorts(requiredPorts: number[]): Promise<boolean> {
-  return withTraefikLock(async () => {
+  const needsRestart = await withTraefikLock(async () => {
     const missingPorts = await getMissingPorts(requiredPorts)
     const needsFileProvider = !(await hasFileProvider())
-
-    if (missingPorts.length === 0 && traefikFilesExist() && !needsFileProvider) {
-      return false
-    }
+    const needsRestart = missingPorts.length > 0 || !traefikFilesExist() || needsFileProvider
 
     const configuredPorts = await getConfiguredPorts()
     const allPorts = [...new Set([...configuredPorts, ...requiredPorts])].sort((a, b) => a - b)
@@ -468,6 +464,8 @@ export async function ensureTraefikPorts(requiredPorts: number[]): Promise<boole
     await saveTraefikConfigUnlocked(config)
     await updateTraefikComposeUnlocked(allPorts)
 
-    return true
+    return needsRestart
   })
+  await ensure404Handler()
+  return needsRestart
 }
