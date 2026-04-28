@@ -119,46 +119,15 @@ describe('Traefik 404 handler', () => {
     expect(secondCreate).toBe(false)
   })
 
-  test('generated compose includes 404 handler service', async () => {
+  test('generated compose includes 404 handler service with ghcr.io image', async () => {
     await traefik.initTraefikFiles([3000])
 
     const composeContent = await readFile(traefik.TRAEFIK_COMPOSE_FILE, 'utf-8')
 
     expect(composeContent).toContain('port-404-handler')
-    expect(composeContent).toContain('alpine:latest')
-    expect(composeContent).toContain('socat')
-    expect(composeContent).toContain('Worktree Not')
-  })
-
-  test('404 handler command includes worktree discovery logic', async () => {
-    await traefik.initTraefikFiles([3000])
-
-    const composeContent = await readFile(traefik.TRAEFIK_COMPOSE_FILE, 'utf-8')
-
-    // Verify command queries Docker for traefik.enable labels
-    expect(composeContent).toContain('docker ps')
-    expect(composeContent).toContain('traefik.enable=true')
-
-    // Verify it extracts Host rules to find worktree names
-    expect(composeContent).toContain('Host(')
-
-    // Verify it provides empty state text when no worktrees are running
-    // The text appears in the command string (may be escaped in YAML)
-    expect(composeContent).toMatch(/No\s+running worktrees/)
-
-    // Verify it lists worktrees when they exist
-    expect(composeContent).toMatch(/Running worktrees:/)
-  })
-
-  test('404 handler returns plain-text response', async () => {
-    await traefik.initTraefikFiles([3000])
-
-    const composeContent = await readFile(traefik.TRAEFIK_COMPOSE_FILE, 'utf-8')
-
-    // Verify HTTP response headers for plain text
-    expect(composeContent).toContain('Content-Type: text/plain')
-    // The 404 message appears in the command (may have escaped newlines)
-    expect(composeContent).toMatch(/404.*Worktree Not\s+Found/)
+    expect(composeContent).toContain('ghcr.io/jdtzmn/port-404-handler:')
+    expect(composeContent).not.toContain('alpine:latest')
+    expect(composeContent).not.toContain('socat')
   })
 
   test('404 handler mounts Docker socket for container inspection', async () => {
@@ -166,34 +135,16 @@ describe('Traefik 404 handler', () => {
 
     const composeContent = await readFile(traefik.TRAEFIK_COMPOSE_FILE, 'utf-8')
 
-    // Verify handler has access to Docker socket to query running containers
     expect(composeContent).toContain('/var/run/docker.sock:/var/run/docker.sock')
   })
 
-  test('V1 custom 404 output contract covers both running and empty states', async () => {
+  test('404 handler compose service has no inline command', async () => {
     await traefik.initTraefikFiles([3000])
 
     const composeContent = await readFile(traefik.TRAEFIK_COMPOSE_FILE, 'utf-8')
 
-    // V1 contract: HTTP 404 status line (matches across line breaks in YAML)
-    expect(composeContent).toMatch(/HTTP\/1\.1 404 Not[\s\S]*?Found/)
-
-    // V1 contract: Plain text content type header
-    expect(composeContent).toMatch(/Content-Type:\s*text\/plain/)
-
-    // V1 contract: First line body is always "404 - Worktree Not Found"
-    expect(composeContent).toMatch(/404\s*-\s*Worktree Not[\s\S]*?Found/)
-
-    // V1 contract: Empty state branch - "No running worktrees" when no containers found
-    // (matches across YAML line wrapping)
-    expect(composeContent).toMatch(/No[\s\n]*running worktrees/)
-
-    // V1 contract: Non-empty state branch - "Running worktrees:" header followed by list
-    expect(composeContent).toMatch(/Running worktrees:/)
-
-    // Verify the conditional logic exists (if-else structure for both branches)
-    // Variables may be escaped in YAML string context (e.g., \\\"$WORKTREES\\\")
-    expect(composeContent).toMatch(/if \[ -z [\\]*["']?\$WORKTREES[\\]*["']? \]/)
-    expect(composeContent).toContain('else')
+    // The logic now lives in the Docker image, not in an inline shell command
+    expect(composeContent).not.toContain('docker ps')
+    expect(composeContent).not.toContain('socat')
   })
 })
