@@ -1,6 +1,7 @@
 import { readFile, mkdir } from 'fs/promises'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
+import { fileURLToPath } from 'url'
 import { stringify as yamlStringify, parse as yamlParse } from 'yaml'
 import { GLOBAL_PORT_DIR, ensureGlobalDir } from './registry.ts'
 import type { TraefikConfig } from '../types.ts'
@@ -36,29 +37,18 @@ async function saveTraefikConfigUnlocked(config: TraefikConfig): Promise<void> {
 }
 
 /**
- * Generate the 404 handler command that dynamically lists running worktrees
+ * Get the versioned Docker image name for the 404 handler.
+ * Reads version from package.json to stay in sync with the published npm package.
  */
-function generate404HandlerCommand(): string {
-  // This shell script:
-  // 1. Installs socat and docker-cli
-  // 2. Runs an HTTP server on port 3000
-  // 3. For each request, queries Docker for containers with traefik.enable=true
-  // 4. Extracts worktree names from Host() rules in Traefik labels
-  // 5. Returns a plain-text response listing running worktrees or "No running worktrees"
-
-  const innerScript = [
-    'echo "HTTP/1.1 404 Not Found\\r\\nContent-Type: text/plain\\r\\n\\r\\n404 - Worktree Not Found\\r\\n\\r\\n";',
-    'WORKTREES=$(docker ps --filter "label=traefik.enable=true" --format "{{.Labels}}" 2>/dev/null | grep -o "Host(\\\\`[^\\\\`]*\\\\`)" | sed "s/Host(\\\\`//g; s/\\\\`)//g; s/\\\\.[^.]*$//g" | sort -u);',
-    'if [ -z "$WORKTREES" ]; then',
-    '  echo "No running worktrees";',
-    'else',
-    '  echo "Running worktrees:";',
-    '  echo "$WORKTREES";',
-    'fi',
-  ].join(' ')
-
-  // eslint-disable-next-line no-useless-escape
-  return `sh -c "apk add --no-cache socat docker-cli && while true; do socat -v TCP-LISTEN:3000,reuseaddr,fork SYSTEM:'sh -c \"${innerScript}\"'; done"`
+function get404HandlerImage(): string {
+  try {
+    const packageJsonPath = fileURLToPath(new URL('../package.json', import.meta.url))
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { version?: unknown }
+    const version = typeof packageJson.version === 'string' ? packageJson.version : 'latest'
+    return `ghcr.io/jdtzmn/port-404-handler:${version}`
+  } catch {
+    return 'ghcr.io/jdtzmn/port-404-handler:latest'
+  }
 }
 
 async function updateTraefikComposeUnlocked(ports: number[]): Promise<void> {
@@ -86,10 +76,9 @@ async function updateTraefikComposeUnlocked(ports: number[]): Promise<void> {
         networks: [TRAEFIK_NETWORK],
       },
       'port-404-handler': {
-        image: 'alpine:latest',
+        image: get404HandlerImage(),
         container_name: 'port-404-handler',
         restart: 'unless-stopped',
-        command: generate404HandlerCommand(),
         volumes: ['/var/run/docker.sock:/var/run/docker.sock:ro'],
         networks: [TRAEFIK_NETWORK],
       },
@@ -275,10 +264,9 @@ export function generateTraefikCompose(): string {
         networks: [TRAEFIK_NETWORK],
       },
       'port-404-handler': {
-        image: 'alpine:latest',
+        image: get404HandlerImage(),
         container_name: 'port-404-handler',
         restart: 'unless-stopped',
-        command: generate404HandlerCommand(),
         volumes: ['/var/run/docker.sock:/var/run/docker.sock:ro'],
         networks: [TRAEFIK_NETWORK],
       },
