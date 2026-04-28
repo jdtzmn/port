@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import type { WorktreeEntry, ServiceEntry } from '@/lib/docker'
 
 // ---------------------------------------------------------------------------
@@ -76,14 +76,38 @@ function filterWorktrees(worktrees: WorktreeEntry[], query: string): WorktreeEnt
     .filter(wt => wt.services.length > 0)
 }
 
+// Flatten filtered worktrees into an ordered list of services for arrow nav
+function flattenServices(worktrees: WorktreeEntry[]): ServiceEntry[] {
+  return worktrees.flatMap(wt => wt.services)
+}
+
 // ---------------------------------------------------------------------------
 // Service row
 // ---------------------------------------------------------------------------
 
-function ServiceRow({ service, query }: { service: ServiceEntry; query: string }) {
+function ServiceRow({
+  service,
+  query,
+  isActive,
+  anchorRef,
+}: {
+  service: ServiceEntry
+  query: string
+  isActive: boolean
+  anchorRef: React.RefCallback<HTMLAnchorElement>
+}) {
   return (
     <div style={styles.serviceRow}>
-      <a href={service.url} style={styles.serviceLink}>
+      <a
+        href={service.url}
+        ref={anchorRef}
+        style={{
+          ...styles.serviceLink,
+          ...(isActive ? styles.serviceLinkActive : {}),
+        }}
+        className={isActive ? 'service-link active' : 'service-link'}
+        tabIndex={-1}
+      >
         <Highlighted text={service.name} query={query} />
       </a>
       <span style={styles.servicePort}>:{service.port}</span>
@@ -98,18 +122,35 @@ function ServiceRow({ service, query }: { service: ServiceEntry; query: string }
 function WorktreeSection({
   worktree,
   query,
+  activeIndex,
+  globalOffset,
+  anchorRefs,
 }: {
   worktree: WorktreeEntry
   query: string
+  activeIndex: number
+  globalOffset: number
+  anchorRefs: React.MutableRefObject<(HTMLAnchorElement | null)[]>
 }) {
   return (
     <div style={styles.worktreeSection}>
       <div style={styles.worktreeName}>
         <Highlighted text={worktree.name} query={query} />
       </div>
-      {worktree.services.map(service => (
-        <ServiceRow key={`${service.name}-${service.port}`} service={service} query={query} />
-      ))}
+      {worktree.services.map((service, i) => {
+        const flatIdx = globalOffset + i
+        return (
+          <ServiceRow
+            key={`${service.name}-${service.port}`}
+            service={service}
+            query={query}
+            isActive={flatIdx === activeIndex}
+            anchorRef={el => {
+              anchorRefs.current[flatIdx] = el
+            }}
+          />
+        )
+      })}
     </div>
   )
 }
@@ -122,7 +163,11 @@ export default function DirectoryPage() {
   const [worktrees, setWorktrees] = useState<WorktreeEntry[]>([])
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [activeIndex, setActiveIndex] = useState(-1)
+
   const inputRef = useRef<HTMLInputElement>(null)
+  // Flat array of anchor refs matching the flat service order
+  const anchorRefs = useRef<(HTMLAnchorElement | null)[]>([])
 
   useEffect(() => {
     fetch('/api/worktrees')
@@ -138,19 +183,86 @@ export default function DirectoryPage() {
     inputRef.current?.focus()
   }, [])
 
+  // Reset active index whenever filter changes
   useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        inputRef.current?.focus()
-        inputRef.current?.select()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+    setActiveIndex(-1)
+  }, [query])
 
   const filtered = filterWorktrees(worktrees, query)
+  const flat = flattenServices(filtered)
+  const total = flat.length
+
+  const focusInput = useCallback(() => {
+    setActiveIndex(-1)
+    inputRef.current?.focus()
+  }, [])
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      // Cmd/Ctrl+K — always focus input
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        focusInput()
+        inputRef.current?.select()
+        return
+      }
+
+      const onInput = document.activeElement === inputRef.current
+
+      if (onInput) {
+        if (e.key === 'ArrowDown' && total > 0) {
+          e.preventDefault()
+          const next = 0
+          setActiveIndex(next)
+          anchorRefs.current[next]?.scrollIntoView({ block: 'nearest' })
+        } else if (e.key === 'Escape') {
+          if (query) {
+            e.preventDefault()
+            setQuery('')
+          }
+        }
+        return
+      }
+
+      // Arrow nav within the list
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        const next = activeIndex < total - 1 ? activeIndex + 1 : activeIndex
+        setActiveIndex(next)
+        anchorRefs.current[next]?.scrollIntoView({ block: 'nearest' })
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        if (activeIndex <= 0) {
+          focusInput()
+        } else {
+          const next = activeIndex - 1
+          setActiveIndex(next)
+          anchorRefs.current[next]?.scrollIntoView({ block: 'nearest' })
+        }
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        const anchor = anchorRefs.current[activeIndex]
+        if (anchor) window.location.href = anchor.href
+      } else if (e.key === 'Escape') {
+        focusInput()
+        if (query) setQuery('')
+      } else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // Printable character — jump back to input
+        focusInput()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [activeIndex, total, query, focusInput])
+
+  // Compute per-worktree offsets into the flat array
+  let offset = 0
+  const offsets: number[] = []
+  for (const wt of filtered) {
+    offsets.push(offset)
+    offset += wt.services.length
+  }
 
   return (
     <div style={styles.page}>
@@ -181,7 +293,16 @@ export default function DirectoryPage() {
         ) : filtered.length === 0 ? (
           <p style={styles.empty}>No worktrees are currently running.</p>
         ) : (
-          filtered.map(wt => <WorktreeSection key={wt.name} worktree={wt} query={query} />)
+          filtered.map((wt, i) => (
+            <WorktreeSection
+              key={wt.name}
+              worktree={wt}
+              query={query}
+              activeIndex={activeIndex}
+              globalOffset={offsets[i]!}
+              anchorRefs={anchorRefs}
+            />
+          ))
         )}
       </div>
     </div>
@@ -263,6 +384,13 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#fff',
     textDecoration: 'none',
     fontSize: 15,
+    borderRadius: 3,
+    padding: '1px 4px',
+    marginLeft: -4,
+  },
+  serviceLinkActive: {
+    background: '#1e3a5f',
+    color: '#93c5fd',
   },
   servicePort: {
     color: '#555',
@@ -285,7 +413,11 @@ const cssString = `
   .search-input:focus ~ .kbd-hint {
     opacity: 0;
   }
-  a[href]:hover {
+  .service-link:hover {
     color: #60a5fa !important;
+  }
+  .service-link.active {
+    background: #1e3a5f !important;
+    color: #93c5fd !important;
   }
 `
