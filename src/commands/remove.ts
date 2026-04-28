@@ -4,16 +4,18 @@ import type { WorktreeInfo } from '../types.ts'
 import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import { findWorktreeByBranch } from '../lib/git.ts'
 import { hasRegisteredProjects } from '../lib/registry.ts'
-import { stopTraefik, isTraefikRunning } from '../lib/compose.ts'
+import { stopTraefik, isTraefikRunning, getProjectName } from '../lib/compose.ts'
 import { removeWorktreeAndCleanup } from '../lib/removal.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
 import { failWithError } from '../lib/cli.ts'
 import { exit } from './exit.ts'
+import { cleanupDockerResources, scanDockerResourcesForProject } from '../lib/docker-cleanup.ts'
 
 interface RemoveOptions {
   force?: boolean
   keepBranch?: boolean
+  cleanupImages?: boolean
 }
 
 /**
@@ -129,6 +131,82 @@ export async function remove(
 
   if (result.archivedBranch) {
     output.info(`Archived local branch as ${output.branch(result.archivedBranch)}`)
+  }
+
+  // Docker cleanup integration
+  const projectName = getProjectName(repoRoot, sanitized)
+
+  // 1. Always run low-risk cleanup (containers/networks/volumes)
+  output.info('Cleaning up Docker resources...')
+  const lowRiskCleanup = await cleanupDockerResources(projectName, {
+    skipImages: true,
+    quiet: false,
+  })
+
+  // Display warnings non-fatally
+  for (const warning of lowRiskCleanup.warnings) {
+    output.warn(warning)
+  }
+
+  // Display cleanup results
+  if (lowRiskCleanup.dockerAvailable && lowRiskCleanup.totalRemoved > 0) {
+    const parts: string[] = []
+    if (lowRiskCleanup.containersRemoved > 0) {
+      parts.push(`${lowRiskCleanup.containersRemoved} container(s)`)
+    }
+    if (lowRiskCleanup.volumesRemoved > 0) {
+      parts.push(`${lowRiskCleanup.volumesRemoved} volume(s)`)
+    }
+    if (lowRiskCleanup.networksRemoved > 0) {
+      parts.push(`${lowRiskCleanup.networksRemoved} network(s)`)
+    }
+    output.success(`Cleaned up ${lowRiskCleanup.totalRemoved} resource(s): ${parts.join(', ')}`)
+  }
+
+  // 2. Conditional image cleanup (confirm-gated in interactive mode)
+  // Scan for images
+  const imageResources = await scanDockerResourcesForProject(projectName)
+
+  if (imageResources.images.length > 0) {
+    let shouldCleanupImages = false
+
+    // In non-interactive mode or when flag is set, use the flag value
+    if (options.cleanupImages !== undefined) {
+      shouldCleanupImages = options.cleanupImages
+    } else {
+      // Interactive mode: prompt with default No
+      const sizeStr = imageResources.imageSize
+        ? `${(imageResources.imageSize / (1024 * 1024)).toFixed(1)} MB`
+        : 'unknown size'
+
+      const { cleanupImages } = await inquirer.prompt<{ cleanupImages: boolean }>([
+        {
+          type: 'confirm',
+          name: 'cleanupImages',
+          message: `Clean up ${imageResources.images.length} image(s) (${sizeStr})?`,
+          default: false,
+        },
+      ])
+      shouldCleanupImages = cleanupImages
+    }
+
+    if (shouldCleanupImages) {
+      const imageCleanup = await cleanupDockerResources(projectName, {
+        skipImages: false,
+        quiet: false,
+      })
+
+      for (const warning of imageCleanup.warnings) {
+        output.warn(warning)
+      }
+
+      if (imageCleanup.imagesRemoved > 0) {
+        output.success(`Cleaned up ${imageCleanup.imagesRemoved} image(s)`)
+      }
+    } else if (options.cleanupImages === undefined) {
+      // Only show decline message in interactive mode
+      output.info('Image cleanup declined')
+    }
   }
 
   // Check if Traefik should be stopped
