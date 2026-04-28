@@ -1,7 +1,7 @@
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import { registerProject } from '../lib/registry.ts'
-import { ensureTraefikPorts, traefikFilesExist, initTraefikFiles } from '../lib/traefik.ts'
+import { ensureTraefikPorts, traefikFilesExist, initTraefikFiles, ensure404HandlerImage } from '../lib/traefik.ts'
 import {
   runCompose,
   writeOverrideFile,
@@ -83,6 +83,12 @@ export async function up(): Promise<void> {
   if (configUpdated) {
     output.info('Updated Traefik configuration with new ports')
   }
+
+  // Ensure the 404 handler image is available (builds locally when running from source)
+  await ensure404HandlerImage(
+    () => output.info('Building 404 handler image from source...'),
+    () => output.success('404 handler image built')
+  )
 
   // Check if Traefik is running
   const traefikRunning = await isTraefikRunning()

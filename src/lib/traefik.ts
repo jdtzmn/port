@@ -6,6 +6,7 @@ import { stringify as yamlStringify, parse as yamlParse } from 'yaml'
 import { GLOBAL_PORT_DIR, ensureGlobalDir } from './registry.ts'
 import type { TraefikConfig } from '../types.ts'
 import { withFileLock, writeFileAtomic } from './state.ts'
+import { execAsync } from './exec.ts'
 
 /** Traefik directory within global port dir */
 export const TRAEFIK_DIR = join(GLOBAL_PORT_DIR, 'traefik')
@@ -49,6 +50,42 @@ function get404HandlerImage(): string {
   } catch {
     return 'ghcr.io/jdtzmn/port-404-handler:latest'
   }
+}
+
+/**
+ * Ensure the 404 handler Docker image is available locally.
+ *
+ * When running from source (packages/404-app/Dockerfile exists next to dist/),
+ * builds the image locally if it isn't already present. When installed via npm,
+ * the Dockerfile won't exist and Docker will pull from ghcr.io as normal.
+ *
+ * @param onBuilding - Optional callback invoked just before the build starts
+ * @param onBuilt - Optional callback invoked after a successful build
+ */
+export async function ensure404HandlerImage(
+  onBuilding?: () => void,
+  onBuilt?: () => void
+): Promise<void> {
+  const image = get404HandlerImage()
+  const dockerfilePath = fileURLToPath(new URL('../packages/404-app/Dockerfile', import.meta.url))
+
+  if (!existsSync(dockerfilePath)) {
+    // Not running from source — image should be available on ghcr.io for this release
+    return
+  }
+
+  // Check if the image already exists locally
+  try {
+    await execAsync(`docker image inspect ${image}`)
+    return // already built, nothing to do
+  } catch {
+    // Not found locally — build it
+  }
+
+  onBuilding?.()
+  const contextPath = fileURLToPath(new URL('../packages/404-app', import.meta.url))
+  await execAsync(`docker build -t ${image} "${contextPath}"`)
+  onBuilt?.()
 }
 
 async function updateTraefikComposeUnlocked(ports: number[]): Promise<void> {
