@@ -1,10 +1,12 @@
 import { readFile, mkdir } from 'fs/promises'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
+import { fileURLToPath } from 'url'
 import { stringify as yamlStringify, parse as yamlParse } from 'yaml'
 import { GLOBAL_PORT_DIR, ensureGlobalDir } from './registry.ts'
 import type { TraefikConfig } from '../types.ts'
 import { withFileLock, writeFileAtomic } from './state.ts'
+import { execAsync } from './exec.ts'
 
 /** Traefik directory within global port dir */
 export const TRAEFIK_DIR = join(GLOBAL_PORT_DIR, 'traefik')
@@ -35,6 +37,69 @@ async function saveTraefikConfigUnlocked(config: TraefikConfig): Promise<void> {
   await writeFileAtomic(TRAEFIK_CONFIG_FILE, yaml)
 }
 
+/**
+ * Get the versioned Docker image name for the 404 handler.
+ * Reads version from package.json to stay in sync with the published npm package.
+ *
+ * Tries candidate paths relative to import.meta.url to handle both running
+ * from compiled dist/ output (one level up) and from source src/lib/ (two levels up).
+ */
+function get404HandlerImage(): string {
+  const candidates = ['../package.json', '../../package.json']
+  for (const candidate of candidates) {
+    try {
+      const packageJsonPath = fileURLToPath(new URL(candidate, import.meta.url))
+      const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+        version?: unknown
+        name?: unknown
+      }
+      // Ensure we found the root package.json (not some other package.json)
+      if (typeof packageJson.version === 'string' && packageJson.name === '@jdtzmn/port') {
+        return `ghcr.io/jdtzmn/port-404-handler:${packageJson.version}`
+      }
+    } catch {
+      // Try next candidate
+    }
+  }
+  return 'ghcr.io/jdtzmn/port-404-handler:latest'
+}
+
+/**
+ * Ensure the 404 handler Docker image is available locally.
+ *
+ * When running from source (packages/404-app/Dockerfile exists next to dist/),
+ * builds the image locally if it isn't already present. When installed via npm,
+ * the Dockerfile won't exist and Docker will pull from ghcr.io as normal.
+ *
+ * @param onBuilding - Optional callback invoked just before the build starts
+ * @param onBuilt - Optional callback invoked after a successful build
+ */
+export async function ensure404HandlerImage(
+  onBuilding?: () => void,
+  onBuilt?: () => void
+): Promise<void> {
+  const image = get404HandlerImage()
+  const dockerfilePath = fileURLToPath(new URL('../packages/404-app/Dockerfile', import.meta.url))
+
+  if (!existsSync(dockerfilePath)) {
+    // Not running from source — image should be available on ghcr.io for this release
+    return
+  }
+
+  // Check if the image already exists locally
+  try {
+    await execAsync(`docker image inspect ${image}`)
+    return // already built, nothing to do
+  } catch {
+    // Not found locally — build it
+  }
+
+  onBuilding?.()
+  const contextPath = fileURLToPath(new URL('../packages/404-app', import.meta.url))
+  await execAsync(`docker build -t ${image} "${contextPath}"`)
+  onBuilt?.()
+}
+
 async function updateTraefikComposeUnlocked(ports: number[]): Promise<void> {
   await ensureTraefikDir()
   await ensureTraefikDynamicDir()
@@ -57,6 +122,13 @@ async function updateTraefikComposeUnlocked(ports: number[]): Promise<void> {
           './traefik.yml:/etc/traefik/traefik.yml:ro',
           './dynamic:/etc/traefik/dynamic:ro',
         ],
+        networks: [TRAEFIK_NETWORK],
+      },
+      'port-404-handler': {
+        image: get404HandlerImage(),
+        container_name: 'port-404-handler',
+        restart: 'unless-stopped',
+        volumes: ['/var/run/docker.sock:/var/run/docker.sock:ro'],
         networks: [TRAEFIK_NETWORK],
       },
     },
@@ -236,7 +308,15 @@ export function generateTraefikCompose(): string {
         volumes: [
           '/var/run/docker.sock:/var/run/docker.sock:ro',
           './traefik.yml:/etc/traefik/traefik.yml:ro',
+          './dynamic:/etc/traefik/dynamic:ro',
         ],
+        networks: [TRAEFIK_NETWORK],
+      },
+      'port-404-handler': {
+        image: get404HandlerImage(),
+        container_name: 'port-404-handler',
+        restart: 'unless-stopped',
+        volumes: ['/var/run/docker.sock:/var/run/docker.sock:ro'],
         networks: [TRAEFIK_NETWORK],
       },
     },
@@ -284,10 +364,9 @@ export async function initTraefikFiles(ports: number[]): Promise<void> {
       await saveTraefikConfigUnlocked(config)
     }
 
-    if (!existsSync(TRAEFIK_COMPOSE_FILE)) {
-      await updateTraefikComposeUnlocked(ports)
-    }
+    await updateTraefikComposeUnlocked(ports)
   })
+  await ensure404Handler()
 }
 
 /**
@@ -298,6 +377,76 @@ export async function initTraefikFiles(ports: number[]): Promise<void> {
 export async function hasFileProvider(): Promise<boolean> {
   const config = await loadTraefikConfig()
   return config?.providers?.file !== undefined
+}
+
+/**
+ * Generate dynamic config for 404 error page handler
+ *
+ * Includes:
+ * - A catch-all router with low priority to handle unmatched hosts/paths
+ * - A service pointing to the port-404-handler container
+ * - Middleware for error page handling (optional, router provides main fallback)
+ *
+ * @returns Dynamic config YAML string for error pages
+ */
+export function generate404ErrorPageConfig(): string {
+  const config = {
+    http: {
+      routers: {
+        'port-404-fallback': {
+          rule: 'PathPrefix(`/`)',
+          priority: 1,
+          service: 'port-404-handler',
+          entryPoints: ['web'],
+        },
+      },
+      middlewares: {
+        'error-pages': {
+          errors: {
+            status: ['404'],
+            service: 'port-404-handler',
+            query: '/{status}',
+          },
+        },
+      },
+      services: {
+        'port-404-handler': {
+          loadBalancer: {
+            servers: [
+              {
+                url: 'http://port-404-handler:3000',
+              },
+            ],
+          },
+        },
+      },
+    },
+  }
+
+  return yamlStringify(config)
+}
+
+/**
+ * Path to the 404 error page dynamic config file
+ */
+export const ERROR_PAGE_CONFIG_FILE = join(TRAEFIK_DYNAMIC_DIR, '404-handler.yml')
+
+/**
+ * Ensure 404 error page handler is configured
+ * Creates the dynamic config file if it doesn't exist
+ *
+ * @returns true if config was created
+ */
+export async function ensure404Handler(): Promise<boolean> {
+  await ensureTraefikDynamicDir()
+
+  if (existsSync(ERROR_PAGE_CONFIG_FILE)) {
+    return false
+  }
+
+  const config = generate404ErrorPageConfig()
+  await writeFileAtomic(ERROR_PAGE_CONFIG_FILE, config)
+  return true
 }
 
 /**
@@ -340,10 +489,13 @@ export async function ensureFileProvider(): Promise<boolean> {
  * @returns true if configuration was updated
  */
 export async function ensureTraefikPorts(requiredPorts: number[]): Promise<boolean> {
-  return withTraefikLock(async () => {
+  const needsRestart = await withTraefikLock(async () => {
     const missingPorts = await getMissingPorts(requiredPorts)
     const needsFileProvider = !(await hasFileProvider())
 
+    // Fast path: nothing to change. Skip rewriting config + compose so that
+    // concurrent `port up` invocations (e.g. parallel test workers) don't
+    // serialize on the traefik lock for no-op work.
     if (missingPorts.length === 0 && traefikFilesExist() && !needsFileProvider) {
       return false
     }
@@ -357,4 +509,8 @@ export async function ensureTraefikPorts(requiredPorts: number[]): Promise<boole
 
     return true
   })
+  // ensure404Handler is idempotent (early-returns if the dynamic config file
+  // already exists), so calling it on every `port up` is cheap.
+  await ensure404Handler()
+  return needsRestart
 }

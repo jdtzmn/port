@@ -1,0 +1,36 @@
+name: Publish 404 Handler Docker Image
+
+on:
+  workflow_call:
+
+jobs:
+  publish-docker:
+    name: Build and push 404 handler image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version from package.json
+        id: version
+        run: echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: packages/404-app
+          push: true
+          tags: |
+            ghcr.io/jdtzmn/port-404-handler:${{ steps.version.outputs.version }}
+            ghcr.io/jdtzmn/port-404-handler:latest

@@ -101,6 +101,11 @@ export interface WorktreeInfo {
 }
 
 /**
+ * Minimal list of running worktree names for 404 rendering
+ */
+export type RunningWorktreeNames = string[]
+
+/**
  * Traefik entrypoint configuration
  */
 export interface TraefikEntrypoint {
