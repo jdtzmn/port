@@ -3,15 +3,19 @@ import { useKeyboard } from '@opentui/react'
 import type { ScrollBoxRenderable } from '@opentui/core'
 import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
-import type { ActionResult } from '../hooks/useActions.ts'
+import type { ActionJob, EnqueueResult, OutputTailLine } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
 import { KeyHints } from '../components/KeyHints.tsx'
-import { useFilterNavigation } from '../hooks/useFilterNavigation.ts'
-import { findSubstringMatchRanges, type MatchRange } from '../lib/filtering.ts'
 
 interface Actions {
-  downWorktree: (worktreePath: string, worktreeName: string) => Promise<ActionResult>
-  killHostService: (service: HostService) => Promise<ActionResult>
+  downWorktree: (worktreePath: string, worktreeName: string) => EnqueueResult
+  killHostService: (service: HostService) => EnqueueResult
+  isWorktreeBusy: (worktreeName: string) => boolean
+  latestJobByWorktree: Map<string, ActionJob>
+  getOutputTail: (worktreeName: string) => OutputTailLine[]
+  isOutputVisible: (worktreeName: string) => boolean
+  toggleOutputVisible: (worktreeName: string) => void
+  cancelWorktreeAction: (worktreeName: string) => boolean
 }
 
 interface WorktreeViewProps {
@@ -37,42 +41,6 @@ interface ServiceItem {
   actualPort?: number
   /** Reference to original host service for kill action */
   hostService?: HostService
-}
-
-function serviceSearchText(service: ServiceItem): string {
-  if (service.type === 'docker') {
-    return `${service.name} docker ${service.port > 0 ? service.port : ''}`.trim()
-  }
-
-  return `${service.name} host ${service.port} ${service.actualPort ?? ''} ${service.pid ?? ''}`.trim()
-}
-
-function serviceLabelText(service: ServiceItem): string {
-  if (service.type === 'docker') {
-    return `${service.name}${service.port > 0 ? `:${service.port}` : ''}`
-  }
-
-  return `${service.name} :${service.port} -> :${service.actualPort} PID ${service.pid}`
-}
-
-function buildHighlightedSegments(text: string, ranges: MatchRange[]): React.ReactNode[] {
-  const segments: React.ReactNode[] = []
-  let cursor = 0
-  for (const range of ranges) {
-    if (range.start > cursor) {
-      segments.push(text.slice(cursor, range.start))
-    }
-    segments.push(
-      <span key={range.start} fg="#00AAFF">
-        {text.slice(range.start, range.end)}
-      </span>
-    )
-    cursor = range.end
-  }
-  if (cursor < text.length) {
-    segments.push(text.slice(cursor))
-  }
-  return segments
 }
 
 function buildServiceItems(
@@ -123,6 +91,62 @@ function buildServiceItems(
   return items
 }
 
+function formatElapsedSeconds(job: ActionJob): string | null {
+  if (typeof job.startedAt !== 'number' || typeof job.endedAt !== 'number') {
+    return null
+  }
+  const seconds = Math.max(1, Math.round((job.endedAt - job.startedAt) / 1000))
+  return `${seconds}s`
+}
+
+function formatRunningSeconds(job: ActionJob): string | null {
+  if (typeof job.startedAt !== 'number') {
+    return null
+  }
+  const seconds = Math.max(1, Math.round((Date.now() - job.startedAt) / 1000))
+  return `${seconds}s`
+}
+
+function formatOutputTitle(
+  worktreeName: string,
+  latestJob: ActionJob | undefined,
+  running: boolean
+): string {
+  const base = `Output (${worktreeName})`
+  if (!latestJob) {
+    return running ? `${base} - running` : base
+  }
+
+  if (running || latestJob.status === 'running') {
+    const elapsed = formatRunningSeconds(latestJob)
+    return elapsed ? `${base} - running for ${elapsed}` : `${base} - running`
+  }
+
+  const elapsed = formatElapsedSeconds(latestJob)
+  if (!elapsed) {
+    return base
+  }
+
+  if (latestJob.status === 'success') {
+    return `${base} - finished in ${elapsed}`
+  }
+  if (latestJob.status === 'error') {
+    return `${base} - failed in ${elapsed}`
+  }
+  if (latestJob.status === 'cancelled') {
+    return `${base} - cancelled in ${elapsed}`
+  }
+
+  return base
+}
+
+function isOutputEntry(entry: {
+  stream: 'stdout' | 'stderr' | 'system'
+  line: string
+}): entry is { stream: 'stdout' | 'stderr'; line: string } {
+  return entry.stream === 'stdout' || entry.stream === 'stderr'
+}
+
 export function WorktreeView({
   worktree,
   hostServices,
@@ -134,8 +158,8 @@ export function WorktreeView({
   showStatus,
 }: WorktreeViewProps) {
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [busy, setBusy] = useState(false)
   const scrollRef = useRef<ScrollBoxRenderable>(null)
+  const outputScrollRef = useRef<ScrollBoxRenderable>(null)
 
   // Keep selected service visible inside the scrollbox.
   // Estimate the content line for the selected item accounting for section
@@ -189,22 +213,32 @@ export function WorktreeView({
   const worktreeName = worktree?.name ?? 'unknown'
   const baseUrl = `http://${worktreeName}.${config.domain}`
   const services = buildServiceItems(worktree, hostServices, config, worktreeName)
-  const {
-    mode,
-    highlightQuery,
-    highlightMatches,
-    handleKey: handleFilterKey,
-  } = useFilterNavigation({
-    items: services,
-    setSelectedIndex,
-    getSearchText: serviceSearchText,
-  })
+  const latestJob = actions.latestJobByWorktree.get(worktreeName)
+  const runningAction = actions.isWorktreeBusy(worktreeName)
+  const outputTail = actions.getOutputTail(worktreeName)
+  const outputLines =
+    latestJob?.logs
+      .filter(isOutputEntry)
+      .map(entry => ({ stream: entry.stream, line: entry.line })) ?? outputTail
+  const outputVisible = actions.isOutputVisible(worktreeName)
+  const hasOutputContext =
+    runningAction || outputTail.length > 0 || outputLines.length > 0 || Boolean(latestJob)
+  const showOutput = outputVisible && hasOutputContext
+  const showOutputPlaceholder = !outputVisible && hasOutputContext
+  const prevOutputVisibleRef = useRef(false)
 
   useKeyboard(event => {
-    if (event.ctrl || event.meta || busy) return
-    const keySequence = (event as { sequence?: string }).sequence
+    if (event.ctrl || event.meta) return
 
-    if (handleFilterKey({ eventName: event.name, keySequence })) {
+    if (event.name === 'l') {
+      actions.toggleOutputVisible(worktreeName)
+      return
+    }
+
+    if (event.name === 'c') {
+      if (!actions.cancelWorktreeAction(worktreeName)) {
+        showStatus('No running action selected to cancel', 'error')
+      }
       return
     }
 
@@ -239,30 +273,41 @@ export function WorktreeView({
       }
       case 'd':
         if (worktree) {
-          setBusy(true)
-          actions
-            .downWorktree(worktree.path, worktree.name)
-            .then(result => {
-              showStatus(result.message, result.success ? 'success' : 'error')
-            })
-            .finally(() => setBusy(false))
+          const result = actions.downWorktree(worktree.path, worktree.name)
+          if (!result.accepted) {
+            showStatus(result.message, 'error')
+          }
         }
         break
       case 'x': {
         const selected = services[selectedIndex]
         if (selected?.type === 'host' && selected.hostService) {
-          setBusy(true)
-          actions
-            .killHostService(selected.hostService)
-            .then(result => {
-              showStatus(result.message, result.success ? 'success' : 'error')
-            })
-            .finally(() => setBusy(false))
+          const result = actions.killHostService(selected.hostService)
+          if (!result.accepted) {
+            showStatus(result.message, 'error')
+          }
         }
         break
       }
     }
   })
+
+  useEffect(() => {
+    if (!showOutput) {
+      prevOutputVisibleRef.current = false
+      return
+    }
+
+    const shouldJump = !prevOutputVisibleRef.current || runningAction
+    if (shouldJump) {
+      const sb = outputScrollRef.current
+      if (sb) {
+        sb.scrollTop = Number.MAX_SAFE_INTEGER
+      }
+    }
+
+    prevOutputVisibleRef.current = true
+  }, [showOutput, runningAction, outputLines.length])
 
   return (
     <box flexDirection="column" width="100%" height="100%">
@@ -272,7 +317,10 @@ export function WorktreeView({
           <b>{worktreeName}</b>
         </text>
         {loading && <text fg="#888888"> refreshing...</text>}
-        {busy && <text fg="#FFFF00"> working...</text>}
+        {runningAction && latestJob && <text fg="#FFFF00"> {latestJob.kind}...</text>}
+        {!runningAction && latestJob?.status === 'error' && (
+          <text fg="#FF4444"> {latestJob.kind} failed</text>
+        )}
       </box>
 
       {/* URL */}
@@ -306,27 +354,12 @@ export function WorktreeView({
               .map((service, i) => {
                 const globalIndex = services.findIndex(s => s === service)
                 const isSelected = globalIndex === selectedIndex
-                const labelText = serviceLabelText(service)
-                const matchRanges = highlightQuery
-                  ? findSubstringMatchRanges(labelText, highlightQuery)
-                  : []
 
                 return (
                   <box key={`${service.name}-${service.port}-${i}`} flexDirection="row" gap={1}>
                     <text>{isSelected ? '>' : ' '}</text>
-                    <text>
-                      {isSelected ? (
-                        <b>
-                          {matchRanges.length > 0
-                            ? buildHighlightedSegments(labelText, matchRanges)
-                            : labelText}
-                        </b>
-                      ) : matchRanges.length > 0 ? (
-                        buildHighlightedSegments(labelText, matchRanges)
-                      ) : (
-                        labelText
-                      )}
-                    </text>
+                    <text>{isSelected ? <b>{service.name}</b> : service.name}</text>
+                    {service.port > 0 && <text fg="#888888">:{service.port}</text>}
                     <StatusIndicator running={service.running} />
                     <text fg="#888888">{service.running ? 'running' : 'stopped'}</text>
                   </box>
@@ -348,27 +381,15 @@ export function WorktreeView({
               .map(service => {
                 const globalIndex = services.findIndex(s => s === service)
                 const isSelected = globalIndex === selectedIndex
-                const labelText = serviceLabelText(service)
-                const matchRanges = highlightQuery
-                  ? findSubstringMatchRanges(labelText, highlightQuery)
-                  : []
 
                 return (
                   <box key={`host-${service.port}`} flexDirection="row" gap={1}>
                     <text>{isSelected ? '>' : ' '}</text>
-                    <text>
-                      {isSelected ? (
-                        <b>
-                          {matchRanges.length > 0
-                            ? buildHighlightedSegments(labelText, matchRanges)
-                            : labelText}
-                        </b>
-                      ) : matchRanges.length > 0 ? (
-                        buildHighlightedSegments(labelText, matchRanges)
-                      ) : (
-                        labelText
-                      )}
+                    <text>{isSelected ? <b>{service.name}</b> : service.name}</text>
+                    <text fg="#888888">
+                      :{service.port} → :{service.actualPort}
                     </text>
+                    <text fg="#888888">PID {service.pid}</text>
                     <StatusIndicator running={service.running} />
                   </box>
                 )
@@ -379,6 +400,41 @@ export function WorktreeView({
         {services.length === 0 && !loading && <text fg="#888888">No services configured</text>}
       </scrollbox>
 
+      {(showOutput || showOutputPlaceholder) && <box height={1} flexShrink={0} />}
+
+      {showOutput && (
+        <box flexDirection="column" flexShrink={0}>
+          <text fg="#888888">
+            <b>{formatOutputTitle(worktreeName, latestJob, runningAction)}</b>{' '}
+            <span fg="#CCCCCC">[l]</span> hide
+          </text>
+          <scrollbox
+            ref={outputScrollRef}
+            height={3}
+            scrollY
+            scrollX={false}
+            contentOptions={{ flexDirection: 'column', width: '100%' }}
+          >
+            {outputLines.map((entry, index) => (
+              <text
+                key={`${worktreeName}-tail-${index}`}
+                fg={entry.stream === 'stderr' ? '#FF8888' : '#888888'}
+              >
+                {entry.line}
+              </text>
+            ))}
+            {outputLines.length === 0 && <text fg="#666666">No output yet...</text>}
+          </scrollbox>
+        </box>
+      )}
+
+      {showOutputPlaceholder && (
+        <text fg="#888888" flexShrink={0}>
+          <b>{formatOutputTitle(worktreeName, latestJob, runningAction)}</b>{' '}
+          <span fg="#CCCCCC">[l]</span> show
+        </text>
+      )}
+
       <box height={1} flexShrink={0} />
 
       {/* Status message */}
@@ -388,52 +444,17 @@ export function WorktreeView({
         </text>
       )}
 
-      {mode !== 'normal' && (
-        <text
-          fg={
-            mode === 'query'
-              ? highlightQuery.length === 0
-                ? '#888888'
-                : highlightMatches.length > 0
-                  ? '#00AAFF'
-                  : '#FFAA00'
-              : '#00AAFF'
-          }
-        >
-          /{highlightQuery}{' '}
-          {highlightQuery.length === 0
-            ? '(type to filter)'
-            : `(${highlightMatches.length} match${highlightMatches.length === 1 ? '' : 'es'})`}
-        </text>
-      )}
-
       {/* Key hints */}
       <KeyHints
-        hints={
-          mode === 'query'
-            ? [
-                { key: 'Type', action: 'filter' },
-                { key: 'Backspace', action: 'delete' },
-                { key: 'Enter', action: 'apply' },
-                { key: 'Esc', action: 'cancel' },
-              ]
-            : mode === 'filtered-nav'
-              ? [
-                  { key: 'j/k', action: 'next/prev match' },
-                  { key: '/', action: 'edit filter' },
-                  { key: 'Esc', action: 'clear filter' },
-                  { key: 'Enter', action: 'open in browser' },
-                ]
-              : [
-                  { key: 'Enter', action: 'open in browser' },
-                  { key: '/', action: 'filter' },
-                  { key: 'd', action: 'down' },
-                  { key: 'x', action: 'kill host svc' },
-                  { key: 'Esc', action: 'back' },
-                  { key: 'r', action: 'refresh' },
-                  { key: 'q', action: 'quit' },
-                ]
-        }
+        hints={[
+          { key: 'Enter', action: 'open in browser' },
+          { key: 'd', action: 'down' },
+          { key: 'x', action: 'kill host svc' },
+          ...(runningAction ? [{ key: 'c', action: 'cancel running' }] : []),
+          { key: 'Esc', action: 'back' },
+          { key: 'r', action: 'refresh' },
+          { key: 'q', action: 'quit' },
+        ]}
       />
     </box>
   )

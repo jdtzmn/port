@@ -3,7 +3,7 @@ import { testRender } from '@opentui/react/test-utils'
 import type { TestRenderer } from '@opentui/core/testing'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { HostService, PortConfig } from '../../types.ts'
-import type { ActionResult } from '../hooks/useActions.ts'
+import type { EnqueueResult } from '../hooks/useActions.ts'
 import { WorktreeView } from '../views/WorktreeView.tsx'
 
 const mockConfig: PortConfig = { domain: 'port' }
@@ -31,14 +31,16 @@ const mockHostServices: HostService[] = [
 ]
 
 const noop = () => {}
-const noopAsync = async (): Promise<ActionResult> => ({ success: true, message: '' })
+const noopAction = (): EnqueueResult => ({ accepted: true, jobId: 'job-1' })
 const mockActions = {
-  downWorktree: noopAsync,
-  killHostService: noopAsync,
-}
-
-function frameLine(frame: string, contains: string): string {
-  return frame.split('\n').find(line => line.includes(contains)) ?? ''
+  downWorktree: noopAction,
+  killHostService: noopAction,
+  isWorktreeBusy: () => false,
+  latestJobByWorktree: new Map(),
+  getOutputTail: () => [],
+  isOutputVisible: () => true,
+  toggleOutputVisible: noop,
+  cancelWorktreeAction: () => false,
 }
 
 let currentRenderer: TestRenderer | null = null
@@ -189,9 +191,47 @@ describe('WorktreeView', () => {
 
     expect(frame).toContain('[Enter]')
     expect(frame).toContain('[d]')
-    expect(frame).toContain('[Esc]')
-    expect(frame).toContain('[r]')
-    expect(frame).toContain('[q]')
+    expect(frame).toContain('[x]')
+    expect(frame).not.toContain('[c]')
+  })
+
+  test('shows cancel hint only while current worktree action is running', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          isWorktreeBusy: () => true,
+          latestJobByWorktree: new Map([
+            [
+              'feature-auth',
+              {
+                id: 'job-running',
+                kind: 'down',
+                worktreeName: 'feature-auth',
+                worktreePath: '/repo/.port/trees/feature-auth',
+                status: 'running',
+                summary: 'down',
+                logs: [],
+              },
+            ],
+          ]),
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 100, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    expect(captureCharFrame()).toContain('[c]')
   })
 
   test('shows no services message when empty', async () => {
@@ -269,104 +309,165 @@ describe('WorktreeView', () => {
     expect(serviceLines.length).toBeGreaterThan(0)
   })
 
-  test('/ enters query mode and shows filter prompt', async () => {
-    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+  test('d shows error status when action is rejected for busy worktree', async () => {
+    const statusCalls: Array<{ text: string; type: 'success' | 'error' }> = []
+
+    const { renderer, mockInput, renderOnce } = await testRender(
       <WorktreeView
         worktree={mockWorktree}
-        hostServices={mockHostServices}
-        config={mockConfig}
-        repoRoot="/repo"
-        onBack={noop}
-        actions={mockActions}
-        refresh={noop}
-        loading={false}
-        statusMessage={null}
-        showStatus={noop}
-      />,
-      { width: 90, height: 22 }
-    )
-    currentRenderer = renderer
-
-    await renderOnce()
-    mockInput.pressKey('/')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    const frame = captureCharFrame()
-    expect(frame).toContain('/ (type to filter)')
-    expect(frame).toContain('[Type]')
-    expect(frame).toContain('[Backspace]')
-  })
-
-  test('query mode accepts text and applies filter on Enter', async () => {
-    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
-      <WorktreeView
-        worktree={mockWorktree}
-        hostServices={mockHostServices}
-        config={mockConfig}
-        repoRoot="/repo"
-        onBack={noop}
-        actions={mockActions}
-        refresh={noop}
-        loading={false}
-        statusMessage={null}
-        showStatus={noop}
-      />,
-      { width: 90, height: 22 }
-    )
-    currentRenderer = renderer
-
-    await renderOnce()
-    mockInput.pressKey('/')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    mockInput.pressKey('a')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    mockInput.pressKey('p')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    mockInput.pressKey('i')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    let frame = captureCharFrame()
-    expect(frame).toContain('/api')
-    expect(frame).toContain('(1 match)')
-
-    mockInput.pressEnter()
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    frame = captureCharFrame()
-    expect(frame).toContain('/api (1 match)')
-    expect(frame).toContain('[j/k]')
-    expect(frameLine(frame, 'api:8080')).toContain('>')
-  })
-
-  test('filtered navigation j/k skips non-matching services', async () => {
-    const filterWorktree: WorktreeStatus = {
-      name: 'filter-test',
-      path: '/repo/.port/trees/filter-test',
-      services: [
-        { name: 'alpha', ports: [3000], running: true },
-        { name: 'db', ports: [5432], running: false },
-        { name: 'api', ports: [8080], running: true },
-      ],
-      running: true,
-    }
-
-    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
-      <WorktreeView
-        worktree={filterWorktree}
         hostServices={[]}
         config={mockConfig}
         repoRoot="/repo"
         onBack={noop}
-        actions={mockActions}
+        actions={{
+          ...mockActions,
+          downWorktree: () => ({
+            accepted: false,
+            reason: 'worktree_busy',
+            message: 'Action already running for feature-auth',
+          }),
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={(text: string, type: 'success' | 'error') => statusCalls.push({ text, type })}
+      />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('d')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    expect(statusCalls).toEqual([
+      { text: 'Action already running for feature-auth', type: 'error' },
+    ])
+  })
+
+  test('shows running and failed markers from latest job state', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          isWorktreeBusy: () => true,
+          latestJobByWorktree: new Map([
+            [
+              'feature-auth',
+              {
+                id: 'job-running',
+                kind: 'down',
+                worktreeName: 'feature-auth',
+                worktreePath: '/repo/.port/trees/feature-auth',
+                status: 'running',
+                summary: 'down',
+                logs: [],
+              },
+            ],
+          ]),
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+    expect(frame).toContain('down...')
+  })
+
+  test('c triggers cancellation for current worktree', async () => {
+    const calls: string[] = []
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          cancelWorktreeAction: (name: string) => {
+            calls.push(name)
+            return true
+          },
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 90, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('c')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    expect(calls).toEqual(['feature-auth'])
+  })
+
+  test('shows cancel status error when no running job is selected', async () => {
+    const statusCalls: Array<{ text: string; type: 'success' | 'error' }> = []
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          cancelWorktreeAction: () => false,
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={(text: string, type: 'success' | 'error') => statusCalls.push({ text, type })}
+      />,
+      { width: 90, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('c')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    expect(statusCalls).toEqual([{ text: 'No running action selected to cancel', type: 'error' }])
+  })
+
+  test('renders two-line output tail', async () => {
+    const tail = [
+      { stream: 'stdout' as const, line: 'Stopping services...' },
+      { stream: 'stderr' as const, line: 'warning: network busy' },
+    ]
+
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          getOutputTail: () => tail,
+        }}
         refresh={noop}
         loading={false}
         statusMessage={null}
@@ -377,104 +478,25 @@ describe('WorktreeView', () => {
     currentRenderer = renderer
 
     await renderOnce()
-    mockInput.pressKey('/')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    mockInput.pressKey('a')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    mockInput.pressEnter()
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    let frame = captureCharFrame()
-    expect(frameLine(frame, 'alpha:3000')).toContain('>')
-
-    mockInput.pressKey('j')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    frame = captureCharFrame()
-    expect(frameLine(frame, 'api:8080')).toContain('>')
-    expect(frameLine(frame, 'db:5432')).not.toContain('>')
-
-    mockInput.pressKey('k')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    frame = captureCharFrame()
-    expect(frameLine(frame, 'alpha:3000')).toContain('>')
-
-    mockInput.pressKey('k')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    frame = captureCharFrame()
-    expect(frameLine(frame, 'api:8080')).toContain('>')
-
-    mockInput.pressKey('j')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    frame = captureCharFrame()
-    expect(frameLine(frame, 'alpha:3000')).toContain('>')
+    const frame = captureCharFrame()
+    expect(frame).toContain('Output (feature-auth)')
+    expect(frame).toContain('[l] hide')
+    expect(frame).toContain('Stopping services...')
+    expect(frame).toContain('warning: network busy')
   })
 
-  test('Esc clears filtered mode and returns to normal navigation', async () => {
-    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+  test('renders output section below services', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
       <WorktreeView
         worktree={mockWorktree}
         hostServices={mockHostServices}
         config={mockConfig}
         repoRoot="/repo"
         onBack={noop}
-        actions={mockActions}
-        refresh={noop}
-        loading={false}
-        statusMessage={null}
-        showStatus={noop}
-      />,
-      { width: 90, height: 22 }
-    )
-    currentRenderer = renderer
-
-    await renderOnce()
-    mockInput.pressKey('/')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-    mockInput.pressKey('a')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-    mockInput.pressEnter()
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    mockInput.pressEscape()
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    let frame = captureCharFrame()
-    expect(frame).not.toContain('(match')
-
-    mockInput.pressKey('j')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    frame = captureCharFrame()
-    expect(frameLine(frame, 'db:5432')).toContain('>')
-  })
-
-  test('can filter by host-service port', async () => {
-    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
-      <WorktreeView
-        worktree={mockWorktree}
-        hostServices={mockHostServices}
-        config={mockConfig}
-        repoRoot="/repo"
-        onBack={noop}
-        actions={mockActions}
+        actions={{
+          ...mockActions,
+          getOutputTail: () => [{ stream: 'stdout', line: 'post-services-output' }],
+        }}
         refresh={noop}
         loading={false}
         statusMessage={null}
@@ -485,92 +507,181 @@ describe('WorktreeView', () => {
     currentRenderer = renderer
 
     await renderOnce()
-    mockInput.pressKey('/')
+    const frame = captureCharFrame()
+
+    expect(frame.indexOf('Docker Services')).toBeGreaterThanOrEqual(0)
+    expect(frame.indexOf('Output (feature-auth)')).toBeGreaterThan(frame.indexOf('Docker Services'))
+  })
+
+  test('l toggles output visibility for current worktree', async () => {
+    const toggled: string[] = []
+
+    const { renderer, mockInput, renderOnce } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          getOutputTail: () => [{ stream: 'stdout', line: 'line-1' }],
+          toggleOutputVisible: (name: string) => toggled.push(name),
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 90, height: 22 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('l')
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
-    for (const ch of ['5', '1', '7', '3']) {
-      mockInput.pressKey(ch)
-      await new Promise(resolve => setTimeout(resolve, 50))
-      await renderOnce()
+    expect(toggled).toEqual(['feature-auth'])
+  })
+
+  test('shows output placeholder when visibility is off for worktree', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          isOutputVisible: () => false,
+          getOutputTail: () => [{ stream: 'stdout', line: 'line-1' }],
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 90, height: 22 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+    expect(frame).toContain('Output (feature-auth)')
+    expect(frame).toContain('[l] show')
+    expect(frame).not.toContain('line-1')
+  })
+
+  test('shows running and finished output titles with elapsed seconds', async () => {
+    const runningJob = {
+      id: 'job-running',
+      kind: 'down' as const,
+      worktreeName: 'feature-auth',
+      worktreePath: '/repo/.port/trees/feature-auth',
+      status: 'running' as const,
+      summary: 'down',
+      startedAt: 500,
+      logs: [],
+    }
+    const finishedJob = {
+      ...runningJob,
+      id: 'job-finished',
+      status: 'success' as const,
+      endedAt: 3_000,
     }
 
-    mockInput.pressEnter()
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    const frame = captureCharFrame()
-    expect(frame).toContain('/5173 (1 match)')
-    expect(frameLine(frame, 'port 5173')).toContain('>')
-  })
-
-  test('Esc in query mode cancels back to normal mode', async () => {
-    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+    const {
+      renderer: runningRenderer,
+      renderOnce: renderRunning,
+      captureCharFrame: captureRunning,
+    } = await testRender(
       <WorktreeView
         worktree={mockWorktree}
-        hostServices={mockHostServices}
+        hostServices={[]}
         config={mockConfig}
         repoRoot="/repo"
         onBack={noop}
-        actions={mockActions}
+        actions={{
+          ...mockActions,
+          isWorktreeBusy: () => true,
+          latestJobByWorktree: new Map([['feature-auth', runningJob]]),
+        }}
         refresh={noop}
         loading={false}
         statusMessage={null}
         showStatus={noop}
       />,
-      { width: 90, height: 22 }
+      { width: 110, height: 22 }
     )
-    currentRenderer = renderer
+    currentRenderer = runningRenderer
+    await renderRunning()
+    expect(captureRunning()).toContain('Output (feature-auth) - running for ')
 
-    await renderOnce()
-    mockInput.pressKey('/')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-    mockInput.pressKey('d')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    let frame = captureCharFrame()
-    expect(frame).toContain('/d')
-
-    mockInput.pressEscape()
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    frame = captureCharFrame()
-    expect(frame).not.toContain('/d')
-    expect(frame).toContain('[/]')
-  })
-
-  test('empty query Enter clears filter prompt', async () => {
-    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+    const {
+      renderer: finishedRenderer,
+      renderOnce: renderFinished,
+      captureCharFrame: captureFinished,
+    } = await testRender(
       <WorktreeView
         worktree={mockWorktree}
-        hostServices={mockHostServices}
+        hostServices={[]}
         config={mockConfig}
         repoRoot="/repo"
         onBack={noop}
-        actions={mockActions}
+        actions={{
+          ...mockActions,
+          latestJobByWorktree: new Map([['feature-auth', finishedJob]]),
+          getOutputTail: () => [{ stream: 'stdout', line: 'done' }],
+        }}
         refresh={noop}
         loading={false}
         statusMessage={null}
         showStatus={noop}
       />,
-      { width: 90, height: 22 }
+      { width: 110, height: 22 }
+    )
+    currentRenderer = finishedRenderer
+    await renderFinished()
+    expect(captureFinished()).toContain('Output (feature-auth) - finished in 3s')
+  })
+
+  test('shows failure-specific output title wording', async () => {
+    const failedJob = {
+      id: 'job-failed',
+      kind: 'down' as const,
+      worktreeName: 'feature-auth',
+      worktreePath: '/repo/.port/trees/feature-auth',
+      status: 'error' as const,
+      summary: 'down',
+      startedAt: 1_000,
+      endedAt: 5_900,
+      logs: [],
+    }
+
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={{
+          ...mockActions,
+          latestJobByWorktree: new Map([['feature-auth', failedJob]]),
+          getOutputTail: () => [{ stream: 'stderr', line: 'failed' }],
+        }}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 110, height: 22 }
     )
     currentRenderer = renderer
-
-    await renderOnce()
-    mockInput.pressKey('/')
-    await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
-    mockInput.pressEnter()
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    const frame = captureCharFrame()
-    expect(frame).not.toContain('(type to filter)')
-    expect(frame).toContain('[/]')
+    expect(captureCharFrame()).toContain('Output (feature-auth) - failed in 5s')
   })
 })
