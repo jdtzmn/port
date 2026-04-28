@@ -1,5 +1,5 @@
 import { test, expect, describe, vi } from 'vitest'
-import * as worktreeStatus from './worktreeStatus.ts'
+import { getRunningWorktreeNames } from './worktreeStatus.ts'
 
 describe('getRunningWorktreeNames', () => {
   const mockRepoRoot = '/test/repo'
@@ -7,8 +7,7 @@ describe('getRunningWorktreeNames', () => {
   const mockComposeFile = 'docker-compose.yml'
 
   test('returns empty array when no worktrees are running', async () => {
-    // Spy on collectWorktreeStatuses to return no running worktrees
-    const spy = vi.spyOn(worktreeStatus, 'collectWorktreeStatuses').mockResolvedValue([
+    const mockCollect = vi.fn().mockResolvedValue([
       {
         name: 'main',
         path: mockRepoRoot,
@@ -23,19 +22,12 @@ describe('getRunningWorktreeNames', () => {
       },
     ])
 
-    const result = await worktreeStatus.getRunningWorktreeNames(
-      mockRepoRoot,
-      mockComposeFile,
-      mockDomain
-    )
+    const result = await getRunningWorktreeNames(mockRepoRoot, mockComposeFile, mockDomain, mockCollect)
     expect(result).toEqual([])
-
-    spy.mockRestore()
   })
 
   test('returns names of running worktrees', async () => {
-    // Spy on collectWorktreeStatuses to return mixed running/stopped
-    const spy = vi.spyOn(worktreeStatus, 'collectWorktreeStatuses').mockResolvedValue([
+    const mockCollect = vi.fn().mockResolvedValue([
       {
         name: 'main',
         path: mockRepoRoot,
@@ -56,41 +48,21 @@ describe('getRunningWorktreeNames', () => {
       },
     ])
 
-    const result = await worktreeStatus.getRunningWorktreeNames(
-      mockRepoRoot,
-      mockComposeFile,
-      mockDomain
-    )
+    const result = await getRunningWorktreeNames(mockRepoRoot, mockComposeFile, mockDomain, mockCollect)
     expect(result).toEqual(['main', 'feature-2'])
-
-    spy.mockRestore()
   })
 
   test('returns empty array when collectWorktreeStatuses returns empty', async () => {
-    const spy = vi.spyOn(worktreeStatus, 'collectWorktreeStatuses').mockResolvedValue([])
+    const mockCollect = vi.fn().mockResolvedValue([])
 
-    const result = await worktreeStatus.getRunningWorktreeNames(
-      mockRepoRoot,
-      mockComposeFile,
-      mockDomain
-    )
+    const result = await getRunningWorktreeNames(mockRepoRoot, mockComposeFile, mockDomain, mockCollect)
     expect(result).toEqual([])
-
-    spy.mockRestore()
   })
 
   test('handles errors gracefully', async () => {
-    const spy = vi
-      .spyOn(worktreeStatus, 'collectWorktreeStatuses')
-      .mockRejectedValue(new Error('Docker not running'))
+    const mockCollect = vi.fn().mockRejectedValue(new Error('Docker not running'))
 
-    const result = await worktreeStatus.getRunningWorktreeNames(
-      mockRepoRoot,
-      mockComposeFile,
-      mockDomain
-    )
+    const result = await getRunningWorktreeNames(mockRepoRoot, mockComposeFile, mockDomain, mockCollect)
     expect(result).toEqual([])
-
-    spy.mockRestore()
   })
 })
