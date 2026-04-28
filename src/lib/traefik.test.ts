@@ -1,5 +1,6 @@
-import { readFile, rm } from 'fs/promises'
+import { readFile, rm, writeFile } from 'fs/promises'
 import { existsSync } from 'fs'
+import { stringify as yamlStringify } from 'yaml'
 import { describe, test, expect, beforeAll, beforeEach } from 'vitest'
 import { useIsolatedPortGlobalDir } from '@tests/isolatedGlobalDir'
 
@@ -146,5 +147,55 @@ describe('Traefik 404 handler', () => {
     // The logic now lives in the Docker image, not in an inline shell command
     expect(composeContent).not.toContain('docker ps')
     expect(composeContent).not.toContain('socat')
+  })
+})
+
+describe('composeNeeds404HandlerUpdate', () => {
+  useIsolatedPortGlobalDir('port-traefik-404-drift-test', { resetModules: true })
+
+  beforeAll(async () => {
+    traefik = await import('./traefik.ts')
+  })
+
+  beforeEach(async () => {
+    await rm(traefik.TRAEFIK_DIR, { recursive: true, force: true })
+  })
+
+  test('returns true when compose file is missing', async () => {
+    expect(await traefik.composeNeeds404HandlerUpdate()).toBe(true)
+  })
+
+  test('returns true when compose file is unparseable', async () => {
+    await traefik.ensureTraefikDir()
+    await writeFile(traefik.TRAEFIK_COMPOSE_FILE, ': : not yaml :\n  -')
+    expect(await traefik.composeNeeds404HandlerUpdate()).toBe(true)
+  })
+
+  test('returns true when port-404-handler service is missing', async () => {
+    await traefik.ensureTraefikDir()
+    const stripped = yamlStringify({
+      services: {
+        traefik: { image: 'traefik:v3.6' },
+      },
+      networks: { 'traefik-network': { external: true } },
+    })
+    await writeFile(traefik.TRAEFIK_COMPOSE_FILE, stripped)
+    expect(await traefik.composeNeeds404HandlerUpdate()).toBe(true)
+  })
+
+  test('returns true when port-404-handler image does not match', async () => {
+    await traefik.initTraefikFiles([3000])
+    const content = await readFile(traefik.TRAEFIK_COMPOSE_FILE, 'utf-8')
+    const stale = content.replace(
+      /image: ghcr\.io\/jdtzmn\/port-404-handler:[^\s]+/,
+      'image: ghcr.io/jdtzmn/port-404-handler:0.0.0'
+    )
+    await writeFile(traefik.TRAEFIK_COMPOSE_FILE, stale)
+    expect(await traefik.composeNeeds404HandlerUpdate()).toBe(true)
+  })
+
+  test('returns false when service exists with current image', async () => {
+    await traefik.initTraefikFiles([3000])
+    expect(await traefik.composeNeeds404HandlerUpdate()).toBe(false)
   })
 })
