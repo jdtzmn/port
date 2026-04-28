@@ -482,6 +482,40 @@ export async function ensureFileProvider(): Promise<boolean> {
 }
 
 /**
+ * Check whether the on-disk Traefik docker-compose.yml is missing the
+ * `port-404-handler` service, or has it pinned to an image other than the
+ * one we'd generate for this build of port.
+ *
+ * Returns `true` when the compose file needs to be rewritten so Traefik can
+ * actually serve the friendly 404 page. Returns `false` only when the service
+ * is present and pinned to the exact expected image string.
+ *
+ * Any read or YAML-parse failure is treated as "needs update" — better to
+ * regenerate a corrupt or unreadable file than to silently leave it broken.
+ */
+export async function composeNeeds404HandlerUpdate(): Promise<boolean> {
+  if (!existsSync(TRAEFIK_COMPOSE_FILE)) {
+    return true
+  }
+
+  let parsed: unknown
+  try {
+    const content = await readFile(TRAEFIK_COMPOSE_FILE, 'utf-8')
+    parsed = yamlParse(content)
+  } catch {
+    return true
+  }
+
+  const services = (parsed as { services?: Record<string, { image?: unknown }> } | null)?.services
+  const handler = services?.['port-404-handler']
+  if (!handler || typeof handler.image !== 'string') {
+    return true
+  }
+
+  return handler.image !== get404HandlerImage()
+}
+
+/**
  * Ensure Traefik is configured with all required ports
  * Updates config and compose if new ports are needed
  *
@@ -492,11 +526,17 @@ export async function ensureTraefikPorts(requiredPorts: number[]): Promise<boole
   const needsRestart = await withTraefikLock(async () => {
     const missingPorts = await getMissingPorts(requiredPorts)
     const needsFileProvider = !(await hasFileProvider())
+    const needs404HandlerUpdate = await composeNeeds404HandlerUpdate()
 
     // Fast path: nothing to change. Skip rewriting config + compose so that
     // concurrent `port up` invocations (e.g. parallel test workers) don't
     // serialize on the traefik lock for no-op work.
-    if (missingPorts.length === 0 && traefikFilesExist() && !needsFileProvider) {
+    if (
+      missingPorts.length === 0 &&
+      traefikFilesExist() &&
+      !needsFileProvider &&
+      !needs404HandlerUpdate
+    ) {
       return false
     }
 
