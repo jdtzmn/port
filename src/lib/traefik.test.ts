@@ -1,6 +1,6 @@
 import { readFile, rm, writeFile } from 'fs/promises'
 import { existsSync } from 'fs'
-import { stringify as yamlStringify } from 'yaml'
+import { stringify as yamlStringify, parse as yamlParse } from 'yaml'
 import { describe, test, expect, beforeAll, beforeEach } from 'vitest'
 import { useIsolatedPortGlobalDir } from '@tests/isolatedGlobalDir'
 
@@ -197,5 +197,58 @@ describe('composeNeeds404HandlerUpdate', () => {
   test('returns false when service exists with current image', async () => {
     await traefik.initTraefikFiles([3000])
     expect(await traefik.composeNeeds404HandlerUpdate()).toBe(false)
+  })
+})
+
+describe('ensureTraefikPorts compose drift handling', () => {
+  useIsolatedPortGlobalDir('port-traefik-ports-drift-test', { resetModules: true })
+
+  beforeAll(async () => {
+    traefik = await import('./traefik.ts')
+  })
+
+  beforeEach(async () => {
+    await rm(traefik.TRAEFIK_DIR, { recursive: true, force: true })
+  })
+
+  test('rewrites compose when port-404-handler service is missing', async () => {
+    await traefik.initTraefikFiles([3000])
+
+    // Strip port-404-handler to simulate a pre-fa14450 compose file.
+    const before = await readFile(traefik.TRAEFIK_COMPOSE_FILE, 'utf-8')
+    const parsed = yamlParse(before) as { services: Record<string, unknown> }
+    delete parsed.services['port-404-handler']
+    await writeFile(traefik.TRAEFIK_COMPOSE_FILE, yamlStringify(parsed))
+
+    const updated = await traefik.ensureTraefikPorts([3000])
+    expect(updated).toBe(true)
+
+    const after = await readFile(traefik.TRAEFIK_COMPOSE_FILE, 'utf-8')
+    expect(after).toContain('port-404-handler')
+    expect(after).toContain('ghcr.io/jdtzmn/port-404-handler:')
+  })
+
+  test('rewrites compose when port-404-handler image is stale', async () => {
+    await traefik.initTraefikFiles([3000])
+
+    const content = await readFile(traefik.TRAEFIK_COMPOSE_FILE, 'utf-8')
+    const stale = content.replace(
+      /image: ghcr\.io\/jdtzmn\/port-404-handler:[^\s]+/,
+      'image: ghcr.io/jdtzmn/port-404-handler:0.0.0'
+    )
+    await writeFile(traefik.TRAEFIK_COMPOSE_FILE, stale)
+
+    const updated = await traefik.ensureTraefikPorts([3000])
+    expect(updated).toBe(true)
+
+    const after = await readFile(traefik.TRAEFIK_COMPOSE_FILE, 'utf-8')
+    expect(after).not.toContain('port-404-handler:0.0.0')
+  })
+
+  test('fast-path no-ops when everything matches', async () => {
+    await traefik.initTraefikFiles([3000])
+
+    const updated = await traefik.ensureTraefikPorts([3000])
+    expect(updated).toBe(false)
   })
 })

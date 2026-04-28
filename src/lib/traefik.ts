@@ -526,11 +526,17 @@ export async function ensureTraefikPorts(requiredPorts: number[]): Promise<boole
   const needsRestart = await withTraefikLock(async () => {
     const missingPorts = await getMissingPorts(requiredPorts)
     const needsFileProvider = !(await hasFileProvider())
+    const needs404HandlerUpdate = await composeNeeds404HandlerUpdate()
 
     // Fast path: nothing to change. Skip rewriting config + compose so that
     // concurrent `port up` invocations (e.g. parallel test workers) don't
     // serialize on the traefik lock for no-op work.
-    if (missingPorts.length === 0 && traefikFilesExist() && !needsFileProvider) {
+    if (
+      missingPorts.length === 0 &&
+      traefikFilesExist() &&
+      !needsFileProvider &&
+      !needs404HandlerUpdate
+    ) {
       return false
     }
 
