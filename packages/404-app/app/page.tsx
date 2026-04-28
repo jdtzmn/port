@@ -3,6 +3,14 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { WorktreeEntry, ServiceEntry } from '@/lib/docker'
 
+const ASCII_LOGO = `\
+██   
+████▄ ▄███▄ ████▄ ▀██▀▀ 
+██ ██ ██ ██ ██ ▀▀  ██   
+████▀ ▀███▀ ██     ██   
+██                      
+▀▀`
+
 // ---------------------------------------------------------------------------
 // Highlight helpers
 // ---------------------------------------------------------------------------
@@ -257,6 +265,10 @@ export default function DirectoryPage() {
     <div style={styles.page}>
       <style>{cssString}</style>
 
+      <div style={styles.logoWrapper}>
+        <pre style={styles.logo}>{ASCII_LOGO}</pre>
+      </div>
+
       <div style={styles.searchWrapper}>
         <div style={styles.searchContainer}>
           <input
@@ -308,6 +320,19 @@ const styles: Record<string, React.CSSProperties> = {
     maxWidth: 720,
     margin: '0 auto',
     padding: '48px 24px 80px',
+  },
+  logoWrapper: {
+    display: 'flex',
+    justifyContent: 'center',
+    marginBottom: 32,
+  },
+  logo: {
+    color: '#fff',
+    fontFamily: 'monospace',
+    fontSize: 13,
+    lineHeight: 1.2,
+    userSelect: 'none',
+    margin: 0,
   },
   searchWrapper: {
     position: 'sticky',
