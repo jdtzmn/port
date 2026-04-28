@@ -1,7 +1,12 @@
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import { registerProject } from '../lib/registry.ts'
-import { ensureTraefikPorts, traefikFilesExist, initTraefikFiles, ensure404HandlerImage } from '../lib/traefik.ts'
+import {
+  ensureTraefikPorts,
+  traefikFilesExist,
+  initTraefikFiles,
+  ensure404HandlerImage,
+} from '../lib/traefik.ts'
 import {
   runCompose,
   writeOverrideFile,

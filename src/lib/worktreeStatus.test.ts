@@ -22,7 +22,12 @@ describe('getRunningWorktreeNames', () => {
       },
     ])
 
-    const result = await getRunningWorktreeNames(mockRepoRoot, mockComposeFile, mockDomain, mockCollect)
+    const result = await getRunningWorktreeNames(
+      mockRepoRoot,
+      mockComposeFile,
+      mockDomain,
+      mockCollect
+    )
     expect(result).toEqual([])
   })
 
@@ -48,21 +53,36 @@ describe('getRunningWorktreeNames', () => {
       },
     ])
 
-    const result = await getRunningWorktreeNames(mockRepoRoot, mockComposeFile, mockDomain, mockCollect)
+    const result = await getRunningWorktreeNames(
+      mockRepoRoot,
+      mockComposeFile,
+      mockDomain,
+      mockCollect
+    )
     expect(result).toEqual(['main', 'feature-2'])
   })
 
   test('returns empty array when collectWorktreeStatuses returns empty', async () => {
     const mockCollect = vi.fn().mockResolvedValue([])
 
-    const result = await getRunningWorktreeNames(mockRepoRoot, mockComposeFile, mockDomain, mockCollect)
+    const result = await getRunningWorktreeNames(
+      mockRepoRoot,
+      mockComposeFile,
+      mockDomain,
+      mockCollect
+    )
     expect(result).toEqual([])
   })
 
   test('handles errors gracefully', async () => {
     const mockCollect = vi.fn().mockRejectedValue(new Error('Docker not running'))
 
-    const result = await getRunningWorktreeNames(mockRepoRoot, mockComposeFile, mockDomain, mockCollect)
+    const result = await getRunningWorktreeNames(
+      mockRepoRoot,
+      mockComposeFile,
+      mockDomain,
+      mockCollect
+    )
     expect(result).toEqual([])
   })
 })
