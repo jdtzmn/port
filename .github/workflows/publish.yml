@@ -3,10 +3,6 @@ name: Publish to npm
 on:
   release:
     types: [published]
-  # or use tags:
-  # push:
-  #   tags:
-  #     - 'v*.*.*'
 
 jobs:
   verify:
@@ -15,8 +11,13 @@ jobs:
     with:
       run-traefik-diagnostics: true
 
-  publish:
+  publish-docker:
+    name: Publish Docker image
     needs: verify
+    uses: ./.github/workflows/publish-docker.yml
+
+  publish:
+    needs: [verify, publish-docker]
     runs-on: ubuntu-latest
     permissions:
       contents: read
