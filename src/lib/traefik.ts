@@ -40,16 +40,28 @@ async function saveTraefikConfigUnlocked(config: TraefikConfig): Promise<void> {
 /**
  * Get the versioned Docker image name for the 404 handler.
  * Reads version from package.json to stay in sync with the published npm package.
+ *
+ * Tries candidate paths relative to import.meta.url to handle both running
+ * from compiled dist/ output (one level up) and from source src/lib/ (two levels up).
  */
 function get404HandlerImage(): string {
-  try {
-    const packageJsonPath = fileURLToPath(new URL('../package.json', import.meta.url))
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { version?: unknown }
-    const version = typeof packageJson.version === 'string' ? packageJson.version : 'latest'
-    return `ghcr.io/jdtzmn/port-404-handler:${version}`
-  } catch {
-    return 'ghcr.io/jdtzmn/port-404-handler:latest'
+  const candidates = ['../package.json', '../../package.json']
+  for (const candidate of candidates) {
+    try {
+      const packageJsonPath = fileURLToPath(new URL(candidate, import.meta.url))
+      const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+        version?: unknown
+        name?: unknown
+      }
+      // Ensure we found the root package.json (not some other package.json)
+      if (typeof packageJson.version === 'string' && packageJson.name === '@jdtzmn/port') {
+        return `ghcr.io/jdtzmn/port-404-handler:${packageJson.version}`
+      }
+    } catch {
+      // Try next candidate
+    }
   }
+  return 'ghcr.io/jdtzmn/port-404-handler:latest'
 }
 
 /**
