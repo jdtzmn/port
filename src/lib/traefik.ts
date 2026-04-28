@@ -492,7 +492,13 @@ export async function ensureTraefikPorts(requiredPorts: number[]): Promise<boole
   const needsRestart = await withTraefikLock(async () => {
     const missingPorts = await getMissingPorts(requiredPorts)
     const needsFileProvider = !(await hasFileProvider())
-    const needsRestart = missingPorts.length > 0 || !traefikFilesExist() || needsFileProvider
+
+    // Fast path: nothing to change. Skip rewriting config + compose so that
+    // concurrent `port up` invocations (e.g. parallel test workers) don't
+    // serialize on the traefik lock for no-op work.
+    if (missingPorts.length === 0 && traefikFilesExist() && !needsFileProvider) {
+      return false
+    }
 
     const configuredPorts = await getConfiguredPorts()
     const allPorts = [...new Set([...configuredPorts, ...requiredPorts])].sort((a, b) => a - b)
@@ -501,8 +507,10 @@ export async function ensureTraefikPorts(requiredPorts: number[]): Promise<boole
     await saveTraefikConfigUnlocked(config)
     await updateTraefikComposeUnlocked(allPorts)
 
-    return needsRestart
+    return true
   })
+  // ensure404Handler is idempotent (early-returns if the dynamic config file
+  // already exists), so calling it on every `port up` is cheap.
   await ensure404Handler()
   return needsRestart
 }

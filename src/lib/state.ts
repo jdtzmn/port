@@ -51,7 +51,10 @@ export async function withFileLock<T>(
   callback: () => Promise<T>,
   options: FileLockOptions = {}
 ): Promise<T> {
-  const timeoutMs = options.timeoutMs ?? 10000
+  // Default 30s gives integration tests room to serialize on shared global
+  // state across parallel vitest workers. Individual call sites can override
+  // with options.timeoutMs when they want tighter bounds.
+  const timeoutMs = options.timeoutMs ?? 30000
   const retryDelayMs = options.retryDelayMs ?? 25
   const staleLockThresholdMs = options.staleLockThresholdMs ?? 30000
   const startTimeMs = Date.now()
