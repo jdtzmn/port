@@ -86,7 +86,7 @@ export async function up(): Promise<void> {
   // Ensure all required ports are configured in Traefik
   const configUpdated = await ensureTraefikPorts(ports)
   if (configUpdated) {
-    output.info('Updated Traefik configuration with new ports')
+    output.info('Updated Traefik configuration')
   }
 
   // Ensure the 404 handler image is available (builds locally when running from source)
