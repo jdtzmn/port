@@ -192,80 +192,58 @@ export default function DirectoryPage() {
   const flat = flattenServices(filtered)
   const total = flat.length
 
-  const focusInput = useCallback(() => {
-    setActiveIndex(-1)
-    inputRef.current?.focus()
-  }, [])
 
-  // Handler attached to the input element — intercepts arrow/enter/escape
-  // before the browser can move the text cursor or submit
+
+  // Single keydown handler on the input — input stays focused at all times.
+  // Arrow up/down navigate the list (preventDefault stops cursor movement).
+  // Left/right are left alone for normal text cursor navigation.
   const onInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        if (total > 0) {
-          setActiveIndex(0)
-          anchorRefs.current[0]?.scrollIntoView({ block: 'nearest' })
-          inputRef.current?.blur()
-        }
-      } else if (e.key === 'Escape') {
-        e.preventDefault()
-        if (query) setQuery('')
-      }
-    },
-    [total, query]
-  )
-
-  // Window-level handler for list navigation (input is blurred in list mode)
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      // Cmd/Ctrl+K — always focus input
-      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        focusInput()
-        inputRef.current?.select()
-        return
-      }
-
-      // Only handle list navigation when input is not focused
-      if (document.activeElement === inputRef.current) return
-
-      const inListMode = activeIndex >= 0
-
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        const next = inListMode
-          ? Math.min(activeIndex + 1, total - 1)
-          : total > 0 ? 0 : -1
-        if (next >= 0) {
-          setActiveIndex(next)
-          anchorRefs.current[next]?.scrollIntoView({ block: 'nearest' })
-        }
+        if (total === 0) return
+        const next = activeIndex < total - 1 ? activeIndex + 1 : activeIndex
+        setActiveIndex(next)
+        anchorRefs.current[next]?.scrollIntoView({ block: 'nearest' })
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
-        if (!inListMode) return
         if (activeIndex <= 0) {
-          focusInput()
+          setActiveIndex(-1)
         } else {
           const next = activeIndex - 1
           setActiveIndex(next)
           anchorRefs.current[next]?.scrollIntoView({ block: 'nearest' })
         }
-      } else if (e.key === 'Enter' && inListMode) {
-        e.preventDefault()
-        const anchor = anchorRefs.current[activeIndex]
-        if (anchor) window.location.href = anchor.href
+      } else if (e.key === 'Enter') {
+        if (activeIndex >= 0) {
+          e.preventDefault()
+          const anchor = anchorRefs.current[activeIndex]
+          if (anchor) window.location.href = anchor.href
+        }
       } else if (e.key === 'Escape') {
-        focusInput()
-        if (query) setQuery('')
-      } else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        focusInput()
+        e.preventDefault()
+        if (activeIndex >= 0) {
+          setActiveIndex(-1)
+        } else if (query) {
+          setQuery('')
+        }
+      }
+    },
+    [activeIndex, total, query]
+  )
+
+  // Window-level handler only for Cmd/Ctrl+K
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        inputRef.current?.focus()
+        inputRef.current?.select()
       }
     }
-
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeIndex, total, query, focusInput])
+  }, [])
 
   // Compute per-worktree offsets into the flat array
   let offset = 0
