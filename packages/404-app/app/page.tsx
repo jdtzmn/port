@@ -4,11 +4,11 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import type { WorktreeEntry, ServiceEntry } from '@/lib/docker'
 
 const ASCII_LOGO = `\
-██   
-████▄ ▄███▄ ████▄ ▀██▀▀ 
-██ ██ ██ ██ ██ ▀▀  ██   
-████▀ ▀███▀ ██     ██   
-██                      
+                   ██
+████▄ ▄███▄ ████▄ ▀██▀▀
+██ ██ ██ ██ ██ ▀▀  ██
+████▀ ▀███▀ ██     ██
+██
 ▀▀`
 
 // ---------------------------------------------------------------------------
@@ -200,8 +200,6 @@ export default function DirectoryPage() {
   const flat = flattenServices(filtered)
   const total = flat.length
 
-
-
   // Single keydown handler on the input — input stays focused at all times.
   // Arrow up/down navigate the list (preventDefault stops cursor movement).
   // Left/right are left alone for normal text cursor navigation.
@@ -283,7 +281,9 @@ export default function DirectoryPage() {
             spellCheck={false}
             autoComplete="off"
           />
-          <kbd style={styles.kbdHint} className="kbd-hint">⌘K</kbd>
+          <kbd style={styles.kbdHint} className="kbd-hint">
+            ⌘K
+          </kbd>
         </div>
       </div>
 
