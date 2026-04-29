@@ -125,7 +125,24 @@ port shell-hook fish | source
 
 Without shell integration, `port enter` and `port exit` will print a `cd` command for you to run manually.
 
-### 5. Enter a Worktree
+### 5. Shell Completions (Optional)
+
+Enable tab completion for port commands and options:
+
+```bash
+# Bash - add to ~/.bashrc
+eval "$(port completion bash)"
+
+# Zsh - add to ~/.zshrc
+eval "$(port completion zsh)"
+
+# Fish - add to ~/.config/fish/config.fish
+port completion fish | source
+```
+
+This enables tab completion for all port commands, options, and branch names.
+
+### 6. Enter a Worktree
 
 ```bash
 port feature-1
@@ -136,7 +153,7 @@ This creates a new worktree and changes into it (with shell integration) or prin
 Use `port enter <branch>` when your branch name collides with a command (for example `status` or `install`).
 If a branch and command collide, running `port <command>` shows a hint to use `port enter <branch>`.
 
-### 6. Exit a Worktree
+### 7. Exit a Worktree
 
 ```bash
 port exit
@@ -144,7 +161,7 @@ port exit
 
 Returns to the repository root and clears the `PORT_WORKTREE` environment variable.
 
-### 7. Start Services
+### 8. Start Services
 
 ```bash
 port up
@@ -159,7 +176,7 @@ rerun that hook with:
 port open
 ```
 
-### 8. Stop Services
+### 9. Stop Services
 
 ```bash
 port down
@@ -167,7 +184,7 @@ port down
 
 Stops services and optionally shuts down Traefik if no other projects are running.
 
-### 9. Run Host Processes (Non-Docker)
+### 10. Run Host Processes (Non-Docker)
 
 ```bash
 port run 3000 -- npm run dev
@@ -181,7 +198,7 @@ This is useful for:
 - Quick testing without containerization
 - Running multiple instances of the same service on different worktrees
 
-### 10. Check Status
+### 11. Check Status
 
 ```bash
 port status
@@ -198,7 +215,7 @@ port urls ui-frontend
 
 `port urls` works in either a worktree or the main repository.
 
-### 11. Remove a Worktree
+### 12. Remove a Worktree
 
 ```bash
 port remove feature-1
@@ -211,7 +228,7 @@ port rm --keep-branch feature-1
 Stops services, removes the worktree, and soft-deletes the local branch by archiving it under `archive/<name>-<timestamp>`.
 Use `--keep-branch` to preserve the local branch name.
 
-### 12. Clean Up Archived Branches
+### 13. Clean Up Archived Branches
 
 ```bash
 port cleanup
@@ -227,6 +244,7 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port onboard`                                   | Print recommended workflow and command usage guide             |
 | `port install [--dns-ip IP] [--domain DOMAIN]`   | Set up DNS for wildcard domain (default from config)           |
 | `port shell-hook <bash\|zsh\|fish>`              | Print shell integration code for automatic cd                  |
+| `port completion <bash\|zsh\|fish>`              | Generate shell completion script for tab completion            |
 | `port enter <branch>`                            | Enter a worktree explicitly (including command names)          |
 | `port <branch>`                                  | Enter a worktree (creates if doesn't exist)                    |
 | `port exit`                                      | Exit the current worktree and return to repo root              |
@@ -236,7 +254,7 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port run <port> -- <command...>`                | Run a host process with Traefik routing                        |
 | `port kill [port]`                               | Stop host services (optionally by logical port)                |
 | `port remove <branch> [--force] [--keep-branch]` | Remove worktree and archive local branch                       |
-| `port compose <args...>`                         | Run docker compose with auto `-f` flags                        |
+| `port compose <args...>` (alias: `dc`)           | Run docker compose with auto `-f` flags                        |
 | `port list`                                      | Print worktree names, one per line                             |
 | `port status`                                    | Show service status across all worktrees                       |
 | `port urls [service]`                            | Show service URLs for current worktree                         |
@@ -322,6 +340,47 @@ port up
 
 # No conflicts! Traefik routes both to the same internal port on different containers
 ```
+
+### Custom 404 Handler
+
+Port includes a custom 404 handler that helps you discover what's actually running when you visit an unknown URL.
+
+When you navigate to a URL that doesn't match any running worktree (e.g., `http://nonexistent.port:3000`), instead of seeing a generic Traefik error, you'll receive a plain-text response showing:
+
+- **Running worktrees**: If any worktrees have services up, it lists their names
+- **Empty state**: If no worktrees are running, it displays "No running worktrees"
+
+**Example responses:**
+
+```
+404 - Worktree Not Found
+
+Running worktrees:
+feature-1
+feature-2
+main
+```
+
+Or when nothing is running:
+
+```
+404 - Worktree Not Found
+
+No running worktrees
+```
+
+The handler works by:
+
+1. Running as a lightweight Alpine Linux container alongside Traefik
+2. Querying Docker for containers with `traefik.enable=true` labels
+3. Extracting worktree names from the `Host()` routing rules
+4. Returning the list as plain text on every 404 request
+
+This makes it easy to:
+
+- Debug routing issues
+- See what's currently available
+- Quickly identify the correct worktree URL to access
 
 ### Host Process Routing
 

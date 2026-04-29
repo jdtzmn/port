@@ -232,4 +232,42 @@ describe('Host Service Registry Functions', () => {
       expect(result).toHaveLength(2)
     })
   })
+
+  describe('getRunningWorktreesFromRegistry', () => {
+    test('returns empty array when no projects are registered', async () => {
+      const result = await registry.getRunningWorktreesFromRegistry()
+
+      expect(result).toEqual([])
+    })
+
+    test('returns unique branch names from registered projects', async () => {
+      await registry.registerProject('/test/repo', 'main', [3000])
+      await registry.registerProject('/test/repo', 'feature-1', [3001])
+      await registry.registerProject('/test/repo', 'feature-2', [3002])
+
+      const result = await registry.getRunningWorktreesFromRegistry()
+
+      expect(result).toEqual(['feature-1', 'feature-2', 'main'])
+    })
+
+    test('deduplicates branch names from different repos', async () => {
+      await registry.registerProject('/test/repo1', 'main', [3000])
+      await registry.registerProject('/test/repo2', 'main', [3001])
+      await registry.registerProject('/test/repo1', 'feature-1', [3002])
+
+      const result = await registry.getRunningWorktreesFromRegistry()
+
+      expect(result).toEqual(['feature-1', 'main'])
+    })
+
+    test('sorts branch names alphabetically', async () => {
+      await registry.registerProject('/test/repo', 'zebra', [3000])
+      await registry.registerProject('/test/repo', 'apple', [3001])
+      await registry.registerProject('/test/repo', 'main', [3002])
+
+      const result = await registry.getRunningWorktreesFromRegistry()
+
+      expect(result).toEqual(['apple', 'main', 'zebra'])
+    })
+  })
 })
