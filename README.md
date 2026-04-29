@@ -360,6 +360,47 @@ port up
 # No conflicts! Traefik routes both to the same internal port on different containers
 ```
 
+### Custom 404 Handler
+
+Port includes a custom 404 handler that helps you discover what's actually running when you visit an unknown URL.
+
+When you navigate to a URL that doesn't match any running worktree (e.g., `http://nonexistent.port:3000`), instead of seeing a generic Traefik error, you'll receive a plain-text response showing:
+
+- **Running worktrees**: If any worktrees have services up, it lists their names
+- **Empty state**: If no worktrees are running, it displays "No running worktrees"
+
+**Example responses:**
+
+```
+404 - Worktree Not Found
+
+Running worktrees:
+feature-1
+feature-2
+main
+```
+
+Or when nothing is running:
+
+```
+404 - Worktree Not Found
+
+No running worktrees
+```
+
+The handler works by:
+
+1. Running as a lightweight Alpine Linux container alongside Traefik
+2. Querying Docker for containers with `traefik.enable=true` labels
+3. Extracting worktree names from the `Host()` routing rules
+4. Returning the list as plain text on every 404 request
+
+This makes it easy to:
+
+- Debug routing issues
+- See what's currently available
+- Quickly identify the correct worktree URL to access
+
 ### Host Process Routing
 
 The `port run` command enables running non-Docker processes with Traefik routing:
