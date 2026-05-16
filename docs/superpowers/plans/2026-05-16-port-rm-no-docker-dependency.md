@@ -12,16 +12,17 @@
 
 ## File Map
 
-| File | Change |
-|------|--------|
-| `src/lib/removal.ts` | Add compose file existence check in `stopWorktreeServices()` |
-| `src/commands/remove.test.ts` | Add test: skips `runCompose` when compose file is absent |
+| File                          | Change                                                       |
+| ----------------------------- | ------------------------------------------------------------ |
+| `src/lib/removal.ts`          | Add compose file existence check in `stopWorktreeServices()` |
+| `src/commands/remove.test.ts` | Add test: skips `runCompose` when compose file is absent     |
 
 ---
 
 ### Task 1: Add compose-file existence guard in `stopWorktreeServices()`
 
 **Files:**
+
 - Modify: `src/lib/removal.ts:54-80`
 
 The current function calls `runCompose()` unconditionally whenever the worktree path exists. We need to also check that the compose file exists inside that worktree before invoking docker.
@@ -56,19 +57,19 @@ import { join } from 'path'
 After the existing early-return block (lines 64-66):
 
 ```typescript
-  if (!worktreePathExists) {
-    return
-  }
+if (!worktreePathExists) {
+  return
+}
 ```
 
 Insert:
 
 ```typescript
-  // Skip docker invocation when compose file is absent — repo may not use Docker
-  const composeFilePath = join(worktreePath, ctx.composeFile)
-  if (!existsSync(composeFilePath)) {
-    return
-  }
+// Skip docker invocation when compose file is absent — repo may not use Docker
+const composeFilePath = join(worktreePath, ctx.composeFile)
+if (!existsSync(composeFilePath)) {
+  return
+}
 ```
 
 The function should now look like:
@@ -129,6 +130,7 @@ git commit -m "fix: skip docker service stop when compose file is absent"
 ### Task 2: Add unit test for the new behavior
 
 **Files:**
+
 - Modify: `src/commands/remove.test.ts`
 
 The `existsSync` mock is a single `vi.fn()` shared across the whole module. To simulate "worktree directory exists, compose file does not", use `mockImplementation` to return `true` for the worktree path and `false` for the compose file path.
