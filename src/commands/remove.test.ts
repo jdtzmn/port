@@ -211,6 +211,22 @@ describe('remove command', () => {
     expect(mocks.removeWorktreeAtPath).not.toHaveBeenCalled()
   })
 
+  test('skips runCompose when compose file is absent in the worktree', async () => {
+    const worktreePath = '/repo/.port/trees/demo-2'
+    mocks.getWorktreePath.mockReturnValue(worktreePath)
+    // Worktree directory exists, but docker-compose.yml does not
+    mocks.existsSync.mockImplementation((p: string) => {
+      if (p === worktreePath) return true
+      if (p === `${worktreePath}/docker-compose.yml`) return false
+      return true
+    })
+
+    await remove('demo-2')
+
+    expect(mocks.runCompose).not.toHaveBeenCalled()
+    expect(mocks.removeWorktree).toHaveBeenCalledWith('/repo', 'demo-2', true)
+  })
+
   test('throws a CLI error when not in a git repository', async () => {
     mocks.detectWorktree.mockImplementation(() => {
       throw new Error('not a git repo')
