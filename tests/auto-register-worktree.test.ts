@@ -149,9 +149,7 @@ describe('auto-register current worktree', () => {
           code: 7,
         })
 
-        expect(
-          findProject(isolated.getDir(), repoRoot, 'auto-register-hook-fail')
-        ).toBeUndefined()
+        expect(findProject(isolated.getDir(), repoRoot, 'auto-register-hook-fail')).toBeUndefined()
       } finally {
         await sample.cleanup()
       }
