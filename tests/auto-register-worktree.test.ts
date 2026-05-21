@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, realpathSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { describe, expect, test } from 'vitest'
 import { execAsync } from '../src/lib/exec'
@@ -43,6 +43,17 @@ function findProject(globalDir: string, repo: string, branch: string): Project |
   return readRegistry(globalDir).projects.find(p => p.repo === repo && p.branch === branch)
 }
 
+/**
+ * Seed the isolated registry with a project entry so we can verify
+ * auto-register respects existing entries.
+ */
+function writeRegistry(globalDir: string, registry: Registry): void {
+  if (!existsSync(globalDir)) {
+    mkdirSync(globalDir, { recursive: true })
+  }
+  writeFileSync(join(globalDir, 'registry.json'), JSON.stringify(registry, null, 2))
+}
+
 describe('auto-register current worktree', () => {
   const isolated = useIsolatedPortGlobalDir('port-auto-register-e2e')
 
@@ -63,6 +74,34 @@ describe('auto-register current worktree', () => {
         const project = findProject(isolated.getDir(), repoRoot, 'auto-register-happy')
         expect(project).toBeDefined()
         expect(project?.ports).toEqual([])
+      } finally {
+        await sample.cleanup()
+      }
+    },
+    TIMEOUT
+  )
+
+  test(
+    'leaves an already-registered worktree untouched (idempotent)',
+    async () => {
+      const sample = await prepareSample('simple-server', { initWithConfig: true })
+
+      try {
+        const repoRoot = realpathSync(sample.dir)
+        const worktreePath = await createUnmanagedWorktree(sample.dir, 'auto-register-idempotent')
+
+        // Pre-register with non-empty ports to detect any overwrite by auto-register.
+        writeRegistry(isolated.getDir(), {
+          projects: [{ repo: repoRoot, branch: 'auto-register-idempotent', ports: [3000] }],
+          hostServices: [],
+        })
+
+        await execPortAsync(['status'], worktreePath)
+
+        const project = findProject(isolated.getDir(), repoRoot, 'auto-register-idempotent')
+        expect(project).toBeDefined()
+        // Ports must remain [3000]; auto-register must not overwrite with [].
+        expect(project?.ports).toEqual([3000])
       } finally {
         await sample.cleanup()
       }
