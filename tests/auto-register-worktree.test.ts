@@ -127,4 +127,27 @@ describe('auto-register current worktree', () => {
     },
     TIMEOUT
   )
+
+  test.each([['onboard'], ['cleanup'], ['--version']])(
+    'does not auto-register when invoking `%s`',
+    async invocation => {
+      const sample = await prepareSample('simple-server', { initWithConfig: true })
+
+      try {
+        const repoRoot = realpathSync(sample.dir)
+        const worktreePath = await createUnmanagedWorktree(
+          sample.dir,
+          `auto-register-skip-${invocation.replace(/^-+/, '')}`
+        )
+
+        await execPortAsync([invocation], worktreePath)
+
+        const projects = readRegistry(isolated.getDir()).projects.filter(p => p.repo === repoRoot)
+        expect(projects).toEqual([])
+      } finally {
+        await sample.cleanup()
+      }
+    },
+    TIMEOUT
+  )
 })
