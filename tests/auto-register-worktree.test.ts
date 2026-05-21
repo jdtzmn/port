@@ -69,4 +69,23 @@ describe('auto-register current worktree', () => {
     },
     TIMEOUT
   )
+
+  test(
+    'running a worktree-aware command in the main repo does not register the repo',
+    async () => {
+      const sample = await prepareSample('simple-server', { initWithConfig: true })
+
+      try {
+        const repoRoot = realpathSync(sample.dir)
+
+        await execPortAsync(['status'], sample.dir)
+
+        const projects = readRegistry(isolated.getDir()).projects.filter(p => p.repo === repoRoot)
+        expect(projects).toEqual([])
+      } finally {
+        await sample.cleanup()
+      }
+    },
+    TIMEOUT
+  )
 })
