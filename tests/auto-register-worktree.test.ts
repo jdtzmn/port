@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { describe, expect, test } from 'vitest'
 import { execAsync } from '../src/lib/exec'
@@ -121,6 +121,37 @@ describe('auto-register current worktree', () => {
 
         const projects = readRegistry(isolated.getDir()).projects.filter(p => p.repo === repoRoot)
         expect(projects).toEqual([])
+      } finally {
+        await sample.cleanup()
+      }
+    },
+    TIMEOUT
+  )
+
+  test(
+    'aborts and does not register when the post-create hook fails',
+    async () => {
+      const sample = await prepareSample('simple-server', { initWithConfig: true })
+
+      try {
+        const repoRoot = realpathSync(sample.dir)
+
+        // Replace the post-create hook template with a failing script.
+        // initWithConfig: true runs `port init`, which already writes a
+        // (no-op, but exit-0) template at .port/hooks/post-create.sh.
+        const hookPath = join(sample.dir, '.port/hooks/post-create.sh')
+        writeFileSync(hookPath, '#!/bin/bash\nexit 7\n')
+        chmodSync(hookPath, 0o755)
+
+        const worktreePath = await createUnmanagedWorktree(sample.dir, 'auto-register-hook-fail')
+
+        await expect(execPortAsync(['status'], worktreePath)).rejects.toMatchObject({
+          code: 7,
+        })
+
+        expect(
+          findProject(isolated.getDir(), repoRoot, 'auto-register-hook-fail')
+        ).toBeUndefined()
       } finally {
         await sample.cleanup()
       }
