@@ -13,6 +13,21 @@
 import { distance as levenshteinDistance } from 'fastest-levenshtein'
 import { program } from '../index.ts'
 
+/**
+ * Commands that should not opportunistically register the current worktree.
+ */
+export const NON_WORKTREE_COMMANDS = new Set([
+  'help',
+  'completion',
+  'init',
+  'install',
+  'cleanup',
+  'prune',
+  'uninstall',
+  'onboard',
+  'shell-hook',
+])
+
 // ---------------------------------------------------------------------------
 // Core introspection
 // ---------------------------------------------------------------------------
@@ -154,6 +169,22 @@ export function getCommandDescriptions(): Record<string, string> {
   result['help'] = 'Display help for command'
 
   return result
+}
+
+/**
+ * Decide whether this invocation should opportunistically register the
+ * current worktree before running the command.
+ */
+export function shouldAutoRegisterWorktree(commandName: string | undefined): boolean {
+  if (commandName?.startsWith('-')) {
+    return false
+  }
+
+  if (!commandName) {
+    return true
+  }
+
+  return !NON_WORKTREE_COMMANDS.has(commandName)
 }
 
 // ---------------------------------------------------------------------------
