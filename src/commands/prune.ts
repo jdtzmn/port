@@ -249,7 +249,10 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
       ? worktreeInfo.name
       : undefined
 
-  if (currentWorktreeBranch && candidates.some(candidate => candidate.sanitized === currentWorktreeBranch)) {
+  if (
+    currentWorktreeBranch &&
+    candidates.some(candidate => candidate.sanitized === currentWorktreeBranch)
+  ) {
     await exit()
   }
 
