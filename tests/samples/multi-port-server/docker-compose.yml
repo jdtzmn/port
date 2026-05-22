@@ -1,0 +1,7 @@
+services:
+  app:
+    build: .
+    image: port-test-multi-port-server
+    ports:
+      - '3000:3000'
+      - '3001:3001'
