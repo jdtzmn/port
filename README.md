@@ -223,44 +223,63 @@ port remove feature-1
 port rm -f feature-1
 # Keep the local branch name unchanged
 port rm --keep-branch feature-1
+# Clean up Docker images without prompting
+port rm --cleanup-images feature-1
 ```
 
 Stops services, removes the worktree, and soft-deletes the local branch by archiving it under `archive/<name>-<timestamp>`.
 Use `--keep-branch` to preserve the local branch name.
 
+**Docker Cleanup Behavior:**
+
+- Always cleans up containers, networks, and volumes (low-risk resources)
+- Prompts for image cleanup with default **No** (images may be shared across projects)
+- Use `--cleanup-images` to clean up images without prompting
+- Image cleanup is opt-in to prevent accidentally removing shared base images
+
 ### 13. Clean Up Archived Branches
 
 ```bash
 port cleanup
+# Clean up images without prompting
+port cleanup --cleanup-images
 ```
 
 Shows archived branches created by `port remove` and asks for confirmation before deleting all of them.
 
+**Docker Cleanup Behavior:**
+
+- Automatically cleans up containers, networks, and volumes for archived branches
+- Prompts for image cleanup with aggregate size estimate across all branches
+- Default answer is **No** to preserve shared images
+- Use `--cleanup-images` to clean up images without prompting
+
 ## Commands
 
-| Command                                          | Description                                                    |
-| ------------------------------------------------ | -------------------------------------------------------------- |
-| `port init`                                      | Initialize `.port/` directory structure                        |
-| `port onboard`                                   | Print recommended workflow and command usage guide             |
-| `port install [--dns-ip IP] [--domain DOMAIN]`   | Set up DNS for wildcard domain (default from config)           |
-| `port shell-hook <bash\|zsh\|fish>`              | Print shell integration code for automatic cd                  |
-| `port completion <bash\|zsh\|fish>`              | Generate shell completion script for tab completion            |
-| `port enter <branch>`                            | Enter a worktree explicitly (including command names)          |
-| `port <branch>`                                  | Enter a worktree (creates if doesn't exist)                    |
-| `port exit`                                      | Exit the current worktree and return to repo root              |
-| `port up`                                        | Start docker-compose services in current worktree              |
-| `port open`                                      | Re-run the `post-up` hook in the current repo/worktree context |
-| `port down`                                      | Stop docker-compose services and host processes                |
-| `port run <port> -- <command...>`                | Run a host process with Traefik routing                        |
-| `port kill [port]`                               | Stop host services (optionally by logical port)                |
-| `port remove <branch> [--force] [--keep-branch]` | Remove worktree and archive local branch                       |
-| `port compose <args...>` (alias: `dc`)           | Run docker compose with auto `-f` flags                        |
-| `port list`                                      | Print worktree names, one per line                             |
-| `port status`                                    | Show service status across all worktrees                       |
-| `port urls [service]`                            | Show service URLs for current worktree                         |
-| `port cleanup`                                   | Delete archived local branches with confirmation               |
-| `port uninstall [--yes] [--domain DOMAIN]`       | Remove DNS configuration for wildcard domain                   |
-| `port hook [hook-name] [--list]`                 | List or manually run a configured lifecycle hook               |
+| Command                                                             | Description                                                     |
+| ------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `port init`                                                         | Initialize `.port/` directory structure                         |
+| `port onboard`                                                      | Print recommended workflow and command usage guide              |
+| `port install [--dns-ip IP] [--domain DOMAIN]`                      | Set up DNS for wildcard domain (default from config)            |
+| `port shell-hook <bash\|zsh\|fish>`                                 | Print shell integration code for automatic cd                   |
+| `port completion <bash\|zsh\|fish>`                                 | Generate shell completion script for tab completion             |
+| `port enter <branch>`                                               | Enter a worktree explicitly (including command names)           |
+| `port <branch>`                                                     | Enter a worktree (creates if doesn't exist)                     |
+| `port exit`                                                         | Exit the current worktree and return to repo root               |
+| `port up`                                                           | Start docker-compose services in current worktree               |
+| `port open`                                                         | Re-run the `post-up` hook in the current repo/worktree context  |
+| `port down`                                                         | Stop docker-compose services and host processes                 |
+| `port run <port> -- <command...>`                                   | Run a host process with Traefik routing                         |
+| `port kill [port]`                                                  | Stop host services (optionally by logical port)                 |
+| `port remove <branch> [--force] [--keep-branch] [--cleanup-images]` | Remove worktree, archive branch, clean up Docker resources      |
+| `port prune [--dry-run] [--force] [--cleanup-images]`               | Remove worktrees for merged branches, clean up Docker resources |
+| `port cleanup [--cleanup-images]`                                   | Delete archived branches and their Docker resources             |
+| `port compose <args...>` (alias: `dc`)                              | Run docker compose with auto `-f` flags                         |
+| `port list`                                                         | Print worktree names, one per line                              |
+| `port status`                                                       | Show service status across all worktrees                        |
+| `port urls [service]`                                               | Show service URLs for current worktree                          |
+| `port uninstall [--yes] [--domain DOMAIN]`                          | Remove DNS configuration for wildcard domain                    |
+| `port hook [hook-name] [--list]`                                    | List or manually run a configured lifecycle hook                |
 
 ## Hooks
 
@@ -406,6 +425,79 @@ port run 3000 -- npm run dev
 4. Cleans up when the process exits (Ctrl+C, crash, etc.)
 
 Most frameworks (Express, Next.js, Vite, etc.) respect the `PORT` environment variable automatically.
+
+### Docker Cleanup
+
+Port automatically manages Docker resources when removing worktrees or cleaning up archived branches.
+
+#### Safety Levels
+
+Docker resources are cleaned up in two phases with different safety levels:
+
+**1. Low-Risk Cleanup (Automatic)**
+
+Always runs without prompting for:
+
+- **Containers**: Stopped containers specific to the project
+- **Volumes**: Named volumes created by the project
+- **Networks**: Custom networks created by compose
+
+These resources are safe to remove because they're project-specific and can be recreated.
+
+**2. High-Risk Cleanup (Opt-In)**
+
+Prompts before removing:
+
+- **Images**: Container images that may be shared across projects
+
+Images require confirmation because:
+
+- Base images (e.g., `node:20`, `postgres:15`) are often shared
+- Rebuilding images takes time and bandwidth
+- Removing shared images affects other projects
+
+#### Interactive vs Non-Interactive Mode
+
+**Interactive Mode** (default when running commands manually):
+
+- Shows image count and size estimate
+- Prompts with default answer **No**
+- Example: `Clean up 3 image(s) (150.0 MB)? (y/N)`
+
+**Non-Interactive Mode** (CI, scripts, `--force` flag):
+
+- Skips image cleanup by default
+- Use `--cleanup-images` flag to clean up images
+- Example: `port remove feature-1 --cleanup-images`
+
+#### Commands with Docker Cleanup
+
+All three cleanup commands follow the same safety pattern:
+
+```bash
+# port remove - cleans up single worktree
+port remove feature-1              # Prompts for images (default No)
+port remove feature-1 --cleanup-images  # Cleans images without prompt
+
+# port prune - cleans up merged worktrees
+port prune                         # Shows aggregate image estimate
+port prune --force --cleanup-images     # Non-interactive with images
+
+# port cleanup - cleans up archived branches
+port cleanup                       # Shows aggregate across all branches
+port cleanup --cleanup-images      # Cleans images for all archived branches
+```
+
+#### Why Default to No?
+
+Images default to **No** because:
+
+1. Images are expensive to rebuild (time + bandwidth)
+2. Base images are typically shared across projects
+3. Docker's layer cache means images often cost less disk than expected
+4. Users can always run cleanup later with `--cleanup-images`
+
+The conservative default prevents accidental removal of shared resources while still providing automatic cleanup of project-specific resources.
 
 ## Project Structure
 
