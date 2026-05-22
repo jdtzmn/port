@@ -2,7 +2,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
-import { runCompose, getProjectName, parseComposeFile, writeOverrideFile } from '../lib/compose.ts'
+import * as composeLib from '../lib/compose.ts'
 import * as output from '../lib/output.ts'
 
 /**
@@ -50,23 +50,33 @@ export async function compose(args: string[]): Promise<void> {
   // Synchronize override file before execution (fail-closed)
   let parsedCompose
   try {
-    parsedCompose = await parseComposeFile(worktreePath, composeFile)
+    parsedCompose = await composeLib.parseComposeFile(worktreePath, composeFile)
   } catch (error) {
     output.error(`Failed to parse compose file: ${error}`)
     process.exit(1)
   }
 
-  const projectName = getProjectName(repoRoot, name)
+  const projectName = composeLib.getProjectName(repoRoot, name)
 
   try {
-    await writeOverrideFile(worktreePath, parsedCompose, name, config.domain, projectName)
+    await composeLib.writeOverrideFile(worktreePath, parsedCompose, name, config.domain, projectName)
   } catch (error) {
     output.error(`Failed to write override file: ${error}`)
     process.exit(1)
   }
 
+  try {
+    if (!(await composeLib.isTraefikRunning())) {
+      output.info('Starting Traefik...')
+      await composeLib.startTraefik()
+    }
+  } catch (error) {
+    output.error(`Failed to start Traefik: ${error}`)
+    process.exit(1)
+  }
+
   // Run the compose command with automatic -p and -f flags
-  const { exitCode } = await runCompose(worktreePath, composeFile, projectName, args, {
+  const { exitCode } = await composeLib.runCompose(worktreePath, composeFile, projectName, args, {
     repoRoot,
     branch: name,
     domain: config.domain,
