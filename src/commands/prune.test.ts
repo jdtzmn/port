@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   scanDockerResourcesForProject: vi.fn(),
   getProjectName: vi.fn(),
   stopWorktreeServices: vi.fn(),
+  exit: vi.fn(),
 }))
 
 vi.mock('inquirer', () => ({
@@ -61,6 +62,10 @@ vi.mock('../lib/github.ts', () => ({
 vi.mock('../lib/removal.ts', () => ({
   removeWorktreeAndCleanup: mocks.removeWorktreeAndCleanup,
   stopWorktreeServices: mocks.stopWorktreeServices,
+}))
+
+vi.mock('./exit.ts', () => ({
+  exit: mocks.exit,
 }))
 
 vi.mock('../lib/sanitize.ts', () => ({
@@ -119,6 +124,7 @@ describe('prune command', () => {
 
     mocks.getProjectName.mockImplementation((_repoRoot: string, branch: string) => `port-${branch}`)
     mocks.stopWorktreeServices.mockResolvedValue(undefined)
+    mocks.exit.mockResolvedValue(undefined)
     mocks.cleanupDockerResources.mockResolvedValue({
       volumesRemoved: 0,
       networksRemoved: 0,
@@ -168,6 +174,31 @@ describe('prune command', () => {
         branchAction: 'archive',
         quiet: true,
       })
+    )
+  })
+
+  test('exits current worktree before pruning it', async () => {
+    mocks.detectWorktree.mockReturnValue({
+      repoRoot: '/repo',
+      worktreePath: '/repo/.port/trees/feature-a',
+      name: 'feature-a',
+      isMainRepo: false,
+    })
+
+    await prune({ force: true })
+
+    expect(mocks.exit).toHaveBeenCalled()
+    expect(mocks.exit.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.stopWorktreeServices.mock.invocationCallOrder[0]!
+    )
+    expect(mocks.stopWorktreeServices).toHaveBeenCalledWith(
+      {
+        repoRoot: '/repo',
+        composeFile: 'docker-compose.yml',
+        domain: 'port',
+      },
+      'feature-a',
+      expect.objectContaining({ quiet: true })
     )
   })
 
