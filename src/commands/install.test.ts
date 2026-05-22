@@ -342,3 +342,160 @@ describe('install command domain handling', () => {
     expect(mocks.success).toHaveBeenCalledWith('dnsmasq service started')
   })
 })
+
+describe('install command confirmation prompts', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+
+    mocks.checkDns.mockResolvedValue(false)
+    mocks.getDnsSetupInstructions.mockReturnValue({ platform: 'macos', instructions: [] })
+    mocks.isValidIp.mockReturnValue(true)
+    mocks.detectWorktree.mockImplementation(() => {
+      throw new Error('not in git')
+    })
+    mocks.configExists.mockReturnValue(false)
+    mocks.loadConfig.mockResolvedValue({ domain: 'port' })
+    mocks.execPrivileged.mockResolvedValue({ stdout: '' })
+  })
+
+  test('prompts for dnsmasq installation when package is not installed (macOS)', async () => {
+    mocks.execAsync.mockImplementation(async (cmd: string) => {
+      if (cmd === 'which brew') {
+        return { stdout: '/opt/homebrew/bin/brew\n' }
+      }
+
+      if (cmd === 'which dnsmasq') {
+        throw new Error('dnsmasq not found')
+      }
+
+      return { stdout: '' }
+    })
+
+    mocks.prompt
+      .mockResolvedValueOnce({ confirm: true }) // DNS setup confirmation
+      .mockResolvedValueOnce({ confirmInstall: false }) // dnsmasq install confirmation
+
+    await install()
+
+    expect(mocks.prompt).toHaveBeenCalledWith([
+      expect.objectContaining({
+        type: 'confirm',
+        name: 'confirmInstall',
+        message: 'Install dnsmasq via Homebrew?',
+        default: true,
+      }),
+    ])
+    expect(mocks.dim).toHaveBeenCalledWith('dnsmasq installation cancelled')
+    expect(mocks.info).toHaveBeenCalledWith(
+      'Cannot proceed without dnsmasq. Install manually with: brew install dnsmasq'
+    )
+  })
+
+  test('skips dnsmasq installation prompt with --yes flag and installs (macOS)', async () => {
+    mocks.checkDns.mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+
+    mocks.execAsync.mockImplementation(async (cmd: string) => {
+      if (cmd === 'which brew') {
+        return { stdout: '/opt/homebrew/bin/brew\n' }
+      }
+
+      if (cmd === 'which dnsmasq') {
+        throw new Error('dnsmasq not found')
+      }
+
+      if (cmd === 'brew install dnsmasq') {
+        return { stdout: '' }
+      }
+
+      if (cmd === 'brew --prefix') {
+        return { stdout: '/opt/homebrew\n' }
+      }
+
+      if (cmd === 'cat /etc/resolver/port 2>/dev/null') {
+        throw new Error('missing resolver')
+      }
+
+      if (cmd === 'pgrep dnsmasq') {
+        throw new Error('not running')
+      }
+
+      return { stdout: '' }
+    })
+
+    await install({ yes: true })
+
+    expect(mocks.prompt).not.toHaveBeenCalled()
+    expect(mocks.info).toHaveBeenCalledWith('Installing dnsmasq via Homebrew...')
+    expect(mocks.execAsync).toHaveBeenCalledWith('brew install dnsmasq')
+    expect(mocks.success).toHaveBeenCalledWith('dnsmasq installed')
+  })
+
+  test('proceeds with installation after dnsmasq install confirmation (macOS)', async () => {
+    mocks.checkDns.mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+
+    mocks.execAsync.mockImplementation(async (cmd: string) => {
+      if (cmd === 'which brew') {
+        return { stdout: '/opt/homebrew/bin/brew\n' }
+      }
+
+      if (cmd === 'which dnsmasq') {
+        throw new Error('dnsmasq not found')
+      }
+
+      if (cmd === 'brew install dnsmasq') {
+        return { stdout: '' }
+      }
+
+      if (cmd === 'brew --prefix') {
+        return { stdout: '/opt/homebrew\n' }
+      }
+
+      if (cmd === 'cat /etc/resolver/port 2>/dev/null') {
+        throw new Error('missing resolver')
+      }
+
+      if (cmd === 'pgrep dnsmasq') {
+        throw new Error('not running')
+      }
+
+      return { stdout: '' }
+    })
+
+    mocks.prompt
+      .mockResolvedValueOnce({ confirm: true }) // DNS setup confirmation
+      .mockResolvedValueOnce({ confirmInstall: true }) // dnsmasq install confirmation
+
+    await install()
+
+    expect(mocks.prompt).toHaveBeenCalledWith([
+      expect.objectContaining({
+        message: 'Install dnsmasq via Homebrew?',
+      }),
+    ])
+    expect(mocks.execAsync).toHaveBeenCalledWith('brew install dnsmasq')
+    expect(mocks.success).toHaveBeenCalledWith('dnsmasq installed')
+  })
+
+  test('cancels installation when dnsmasq install is declined (macOS)', async () => {
+    mocks.execAsync.mockImplementation(async (cmd: string) => {
+      if (cmd === 'which brew') {
+        return { stdout: '/opt/homebrew/bin/brew\n' }
+      }
+
+      if (cmd === 'which dnsmasq') {
+        throw new Error('dnsmasq not found')
+      }
+
+      return { stdout: '' }
+    })
+
+    mocks.prompt
+      .mockResolvedValueOnce({ confirm: true }) // DNS setup confirmation
+      .mockResolvedValueOnce({ confirmInstall: false }) // dnsmasq install confirmation
+
+    await install()
+
+    expect(mocks.dim).toHaveBeenCalledWith('dnsmasq installation cancelled')
+    expect(mocks.execAsync).not.toHaveBeenCalledWith('brew install dnsmasq')
+  })
+})

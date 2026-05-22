@@ -71,8 +71,9 @@ async function resolveInstallDomain(explicitDomain?: string): Promise<string> {
  *
  * @param dnsIp - The IP address to configure DNS to resolve to
  * @param domain - The domain suffix to configure (e.g., 'port', 'custom')
+ * @param skipConfirm - Skip interactive confirmations (for --yes flag)
  */
-async function installMacOS(dnsIp: string, domain: string): Promise<boolean> {
+async function installMacOS(dnsIp: string, domain: string, skipConfirm = false): Promise<boolean> {
   // Check if Homebrew is installed
   if (!(await commandExists('brew'))) {
     output.error('Homebrew is required but not installed.')
@@ -84,6 +85,27 @@ async function installMacOS(dnsIp: string, domain: string): Promise<boolean> {
   const dnsmasqInstalled = await commandExists('dnsmasq')
 
   if (!dnsmasqInstalled) {
+    output.info('dnsmasq package is required but not installed.')
+
+    // Prompt for confirmation unless --yes flag is set
+    if (!skipConfirm) {
+      output.newline()
+      const { confirmInstall } = await inquirer.prompt<{ confirmInstall: boolean }>([
+        {
+          type: 'confirm',
+          name: 'confirmInstall',
+          message: 'Install dnsmasq via Homebrew?',
+          default: true,
+        },
+      ])
+
+      if (!confirmInstall) {
+        output.dim('dnsmasq installation cancelled')
+        output.info('Cannot proceed without dnsmasq. Install manually with: brew install dnsmasq')
+        return false
+      }
+    }
+
     output.info('Installing dnsmasq via Homebrew...')
     try {
       await execAsync('brew install dnsmasq')
@@ -218,10 +240,38 @@ function printLinuxManualInstructions(dnsIp: string, domain: string): boolean {
  * Used when systemd-resolved is already running on port 53
  *
  * @param dnsIp - The IP address to configure DNS to resolve to
+ * @param skipConfirm - Skip interactive confirmations (for --yes flag)
  */
-async function installLinuxDualMode(dnsIp: string, domain: string): Promise<boolean> {
+async function installLinuxDualMode(
+  dnsIp: string,
+  domain: string,
+  skipConfirm = false
+): Promise<boolean> {
   // 1. Check/install dnsmasq
   if (!(await commandExists('dnsmasq'))) {
+    output.info('dnsmasq package is required but not installed.')
+
+    // Prompt for confirmation unless --yes flag is set
+    if (!skipConfirm) {
+      output.newline()
+      const { confirmInstall } = await inquirer.prompt<{ confirmInstall: boolean }>([
+        {
+          type: 'confirm',
+          name: 'confirmInstall',
+          message: 'Install dnsmasq via apt-get?',
+          default: true,
+        },
+      ])
+
+      if (!confirmInstall) {
+        output.dim('dnsmasq installation cancelled')
+        output.info(
+          'Cannot proceed without dnsmasq. Install manually with: sudo apt-get install dnsmasq'
+        )
+        return false
+      }
+    }
+
     output.info('Installing dnsmasq...')
     try {
       await execPrivileged('apt-get update && apt-get install -y dnsmasq')
@@ -313,10 +363,38 @@ async function installLinuxDualMode(dnsIp: string, domain: string): Promise<bool
  * Used when systemd-resolved is NOT running
  *
  * @param dnsIp - The IP address to configure DNS to resolve to
+ * @param skipConfirm - Skip interactive confirmations (for --yes flag)
  */
-async function installLinuxStandalone(dnsIp: string, domain: string): Promise<boolean> {
+async function installLinuxStandalone(
+  dnsIp: string,
+  domain: string,
+  skipConfirm = false
+): Promise<boolean> {
   // 1. Check/install dnsmasq
   if (!(await commandExists('dnsmasq'))) {
+    output.info('dnsmasq package is required but not installed.')
+
+    // Prompt for confirmation unless --yes flag is set
+    if (!skipConfirm) {
+      output.newline()
+      const { confirmInstall } = await inquirer.prompt<{ confirmInstall: boolean }>([
+        {
+          type: 'confirm',
+          name: 'confirmInstall',
+          message: 'Install dnsmasq via apt-get?',
+          default: true,
+        },
+      ])
+
+      if (!confirmInstall) {
+        output.dim('dnsmasq installation cancelled')
+        output.info(
+          'Cannot proceed without dnsmasq. Install manually with: sudo apt-get install dnsmasq'
+        )
+        return false
+      }
+    }
+
     output.info('Installing dnsmasq...')
     try {
       await execPrivileged('apt-get update && apt-get install -y dnsmasq')
@@ -360,8 +438,9 @@ async function installLinuxStandalone(dnsIp: string, domain: string): Promise<bo
  * Detects systemd-resolved and chooses the appropriate mode
  *
  * @param dnsIp - The IP address to configure DNS to resolve to
+ * @param skipConfirm - Skip interactive confirmations (for --yes flag)
  */
-async function installLinux(dnsIp: string, domain: string): Promise<boolean> {
+async function installLinux(dnsIp: string, domain: string, skipConfirm = false): Promise<boolean> {
   const systemdResolvedActive = await isSystemdResolvedRunning()
   const port53InUse = await isPortInUse(53)
 
@@ -371,11 +450,11 @@ async function installLinux(dnsIp: string, domain: string): Promise<boolean> {
       `Using dual-mode: dnsmasq on port ${DNSMASQ_ALT_PORT} + systemd-resolved forwarding`
     )
     output.newline()
-    return await installLinuxDualMode(dnsIp, domain)
+    return await installLinuxDualMode(dnsIp, domain, skipConfirm)
   } else {
     output.info('Using standalone mode: dnsmasq on port 53')
     output.newline()
-    return await installLinuxStandalone(dnsIp, domain)
+    return await installLinuxStandalone(dnsIp, domain, skipConfirm)
   }
 }
 
@@ -440,11 +519,12 @@ export async function install(options?: {
   output.newline()
 
   let success = false
+  const skipConfirm = options?.yes ?? false
 
   if (platform === 'macos') {
-    success = await installMacOS(dnsIp, domain)
+    success = await installMacOS(dnsIp, domain, skipConfirm)
   } else if (platform === 'linux') {
-    success = await installLinux(dnsIp, domain)
+    success = await installLinux(dnsIp, domain, skipConfirm)
   }
 
   if (!success) {
