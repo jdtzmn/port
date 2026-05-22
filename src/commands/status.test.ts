@@ -10,12 +10,16 @@ const mocks = vi.hoisted(() => ({
   getAllHostServices: vi.fn(),
   isProcessRunning: vi.fn(),
   isTraefikRunning: vi.fn(),
+  getStaleWorktreeCandidates: vi.fn(),
+  STALE_WORKTREE_WARNING_THRESHOLD: 10,
+  formatStaleWorktreeWarning: vi.fn(),
   header: vi.fn(),
   newline: vi.fn(),
   branch: vi.fn(),
   success: vi.fn(),
   dim: vi.fn(),
   info: vi.fn(),
+  warn: vi.fn(),
   error: vi.fn(),
   url: vi.fn(),
 }))
@@ -47,6 +51,12 @@ vi.mock('../lib/compose.ts', () => ({
   isTraefikRunning: mocks.isTraefikRunning,
 }))
 
+vi.mock('../lib/staleWorktrees.ts', () => ({
+  getStaleWorktreeCandidates: mocks.getStaleWorktreeCandidates,
+  STALE_WORKTREE_WARNING_THRESHOLD: mocks.STALE_WORKTREE_WARNING_THRESHOLD,
+  formatStaleWorktreeWarning: mocks.formatStaleWorktreeWarning,
+}))
+
 vi.mock('../lib/output.ts', () => ({
   header: mocks.header,
   newline: mocks.newline,
@@ -54,6 +64,7 @@ vi.mock('../lib/output.ts', () => ({
   success: mocks.success,
   dim: mocks.dim,
   info: mocks.info,
+  warn: mocks.warn,
   error: mocks.error,
   url: mocks.url,
 }))
@@ -72,6 +83,10 @@ describe('status command', () => {
     mocks.getAllHostServices.mockResolvedValue([])
     mocks.isProcessRunning.mockReturnValue(true)
     mocks.isTraefikRunning.mockResolvedValue(false)
+    mocks.getStaleWorktreeCandidates.mockResolvedValue([])
+    mocks.formatStaleWorktreeWarning.mockImplementation(
+      (count: number) => `You have ${count} stale port worktrees. Consider running port prune.`
+    )
     mocks.branch.mockImplementation((value: string) => value)
     mocks.url.mockImplementation((value: string) => value)
   })
@@ -126,5 +141,57 @@ describe('status command', () => {
     expect(mocks.collectWorktreeStatuses).not.toHaveBeenCalled()
     expect(mocks.cleanupStaleHostServices).toHaveBeenCalledTimes(1)
     expect(mocks.error).not.toHaveBeenCalled()
+  })
+
+  test('shows a stale worktree warning when prune candidates cross the threshold', async () => {
+    mocks.getStaleWorktreeCandidates.mockResolvedValue([
+      { branch: 'feature-a', sanitized: 'feature-a', reason: 'merged' },
+      { branch: 'feature-b', sanitized: 'feature-b', reason: 'gone' },
+      { branch: 'feature-c', sanitized: 'feature-c', reason: 'pr-merged' },
+      { branch: 'feature-d', sanitized: 'feature-d', reason: 'merged' },
+      { branch: 'feature-e', sanitized: 'feature-e', reason: 'gone' },
+      { branch: 'feature-f', sanitized: 'feature-f', reason: 'merged' },
+      { branch: 'feature-g', sanitized: 'feature-g', reason: 'merged' },
+      { branch: 'feature-h', sanitized: 'feature-h', reason: 'merged' },
+      { branch: 'feature-i', sanitized: 'feature-i', reason: 'merged' },
+      { branch: 'feature-j', sanitized: 'feature-j', reason: 'merged' },
+    ])
+
+    await status()
+
+    expect(mocks.warn).toHaveBeenCalledWith(
+      'You have 10 stale port worktrees. Consider running port prune.'
+    )
+  })
+
+  test('does not show a stale worktree warning below the threshold', async () => {
+    mocks.getStaleWorktreeCandidates.mockResolvedValue([
+      { branch: 'feature-a', sanitized: 'feature-a', reason: 'merged' },
+      { branch: 'feature-b', sanitized: 'feature-b', reason: 'gone' },
+      { branch: 'feature-c', sanitized: 'feature-c', reason: 'pr-merged' },
+      { branch: 'feature-d', sanitized: 'feature-d', reason: 'merged' },
+      { branch: 'feature-e', sanitized: 'feature-e', reason: 'gone' },
+      { branch: 'feature-f', sanitized: 'feature-f', reason: 'merged' },
+      { branch: 'feature-g', sanitized: 'feature-g', reason: 'merged' },
+      { branch: 'feature-h', sanitized: 'feature-h', reason: 'merged' },
+      { branch: 'feature-i', sanitized: 'feature-i', reason: 'merged' },
+    ])
+
+    await status()
+
+    expect(mocks.warn).not.toHaveBeenCalledWith(
+      'You have 9 stale port worktrees. Consider running port prune.'
+    )
+  })
+
+  test('keeps status output when stale worktree lookup fails', async () => {
+    mocks.getStaleWorktreeCandidates.mockRejectedValue(new Error('lookup failed'))
+
+    await status()
+
+    expect(mocks.header).toHaveBeenCalledWith('Worktree service status:')
+    expect(mocks.warn).not.toHaveBeenCalledWith(
+      'You have 0 stale port worktrees. Consider running port prune.'
+    )
   })
 })

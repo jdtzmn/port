@@ -1,19 +1,12 @@
 import inquirer from 'inquirer'
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
-import {
-  getDefaultBranch,
-  getMergedBranches,
-  getGoneBranches,
-  fetchAndPrune,
-  listWorktrees,
-} from '../lib/git.ts'
-import { isGhAvailable, getMergedPrBranches, type MergedPrInfo } from '../lib/github.ts'
+import { getDefaultBranch, fetchAndPrune } from '../lib/git.ts'
 import { removeWorktreeAndCleanup, stopWorktreeServices } from '../lib/removal.ts'
-import { sanitizeBranchName } from '../lib/sanitize.ts'
 import { failWithError } from '../lib/cli.ts'
 import { getProjectName } from '../lib/compose.ts'
 import { cleanupDockerResources, scanDockerResourcesForProject } from '../lib/docker-cleanup.ts'
+import { getStaleWorktreeCandidates, type StaleWorktreeCandidate } from '../lib/staleWorktrees.ts'
 import * as output from '../lib/output.ts'
 
 interface PruneOptions {
@@ -24,19 +17,7 @@ interface PruneOptions {
   cleanupImages?: boolean
 }
 
-/** Why a branch was identified as safe to remove */
-type PruneReason = 'merged' | 'gone' | 'pr-merged'
-
-interface PruneCandidate {
-  /** Original git branch name */
-  branch: string
-  /** Sanitized name (matches worktree directory) */
-  sanitized: string
-  /** Why this branch is considered safe to remove */
-  reason: PruneReason
-  /** PR metadata if detected via gh */
-  pr?: MergedPrInfo
-}
+type PruneCandidate = StaleWorktreeCandidate
 
 async function mapWithConcurrency<T, R>(
   items: T[],
@@ -131,71 +112,7 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
 
   // 2. Determine the base branch
   const baseBranch = options.base ?? (await getDefaultBranch(repoRoot))
-
-  // 3. Get all worktrees managed by port (excluding main repo)
-  const worktrees = await listWorktrees(repoRoot)
-  const portWorktrees = worktrees.filter(wt => !wt.isMain)
-
-  if (portWorktrees.length === 0) {
-    output.info('No worktrees to prune.')
-    return
-  }
-
-  // Build a set of worktree branch names for fast lookup
-  const worktreeBranches = new Set(portWorktrees.map(wt => wt.branch))
-
-  // 4. Run detection strategies in parallel
-  const [mergedBranches, goneBranches, ghAvailable] = await Promise.all([
-    getMergedBranches(repoRoot, baseBranch),
-    getGoneBranches(repoRoot, { fetch: false }), // Already fetched above
-    isGhAvailable(),
-  ])
-
-  // Optionally fetch PR metadata
-  let prBranches = new Map<string, MergedPrInfo>()
-  if (ghAvailable) {
-    prBranches = await getMergedPrBranches(repoRoot)
-  }
-
-  // 5. Build candidates — only include branches that have worktrees
-  const candidateMap = new Map<string, PruneCandidate>()
-
-  for (const branch of mergedBranches) {
-    if (worktreeBranches.has(branch) && branch !== baseBranch) {
-      candidateMap.set(branch, {
-        branch,
-        sanitized: sanitizeBranchName(branch),
-        reason: 'merged',
-      })
-    }
-  }
-
-  for (const branch of goneBranches) {
-    if (worktreeBranches.has(branch) && !candidateMap.has(branch)) {
-      candidateMap.set(branch, {
-        branch,
-        sanitized: sanitizeBranchName(branch),
-        reason: 'gone',
-      })
-    }
-  }
-
-  // Check PR metadata for worktree branches not yet identified
-  for (const wt of portWorktrees) {
-    if (!candidateMap.has(wt.branch)) {
-      const prInfo = prBranches.get(wt.branch)
-      if (prInfo) {
-        candidateMap.set(wt.branch, {
-          branch: wt.branch,
-          sanitized: sanitizeBranchName(wt.branch),
-          reason: 'pr-merged',
-          pr: prInfo,
-        })
-      }
-    }
-  }
-
-  const candidates = Array.from(candidateMap.values())
+  const candidates = await getStaleWorktreeCandidates(repoRoot, { baseBranch })
 
   if (candidates.length === 0) {
     output.success('No merged worktrees found. Everything is clean.')

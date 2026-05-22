@@ -16,6 +16,11 @@ import inquirer from 'inquirer'
 import * as output from '../lib/output.ts'
 import { findSimilarCommand } from '../lib/commands.ts'
 import { buildEnterCommands, getEvalContext, writeEvalFile } from '../lib/shell.ts'
+import {
+  getStaleWorktreeCandidates,
+  STALE_WORKTREE_EXTREME_THRESHOLD,
+  formatStaleWorktreeWarning,
+} from '../lib/staleWorktrees.ts'
 
 /**
  * Enter a worktree (create if needed).
@@ -104,6 +109,15 @@ export async function enter(branch: string): Promise<void> {
           process.exit(1)
         }
       }
+    }
+
+    try {
+      const staleWorktrees = await getStaleWorktreeCandidates(repoRoot)
+      if (staleWorktrees.length >= STALE_WORKTREE_EXTREME_THRESHOLD) {
+        output.warn(formatStaleWorktreeWarning(staleWorktrees.length))
+      }
+    } catch {
+      // Opportunistic warning only; never block worktree creation.
     }
 
     output.info(`Creating worktree for branch: ${sanitized}`)

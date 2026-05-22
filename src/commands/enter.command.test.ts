@@ -21,6 +21,9 @@ const mocks = vi.hoisted(() => ({
   spawn: vi.fn(),
   findSimilarCommand: vi.fn(),
   writeEvalFile: vi.fn(),
+  getStaleWorktreeCandidates: vi.fn(),
+  STALE_WORKTREE_EXTREME_THRESHOLD: 25,
+  formatStaleWorktreeWarning: vi.fn(),
   success: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -76,6 +79,12 @@ vi.mock('../lib/commands.ts', () => ({
   findSimilarCommand: mocks.findSimilarCommand,
 }))
 
+vi.mock('../lib/staleWorktrees.ts', () => ({
+  getStaleWorktreeCandidates: mocks.getStaleWorktreeCandidates,
+  STALE_WORKTREE_EXTREME_THRESHOLD: mocks.STALE_WORKTREE_EXTREME_THRESHOLD,
+  formatStaleWorktreeWarning: mocks.formatStaleWorktreeWarning,
+}))
+
 vi.mock('../lib/output.ts', () => ({
   success: mocks.success,
   warn: mocks.warn,
@@ -124,6 +133,10 @@ describe('enter typo confirmation', () => {
     mocks.hookExists.mockResolvedValue(false)
     mocks.parseComposeFile.mockRejectedValue(new Error('compose missing'))
     mocks.getProjectName.mockReturnValue('repo-instal')
+    mocks.getStaleWorktreeCandidates.mockResolvedValue([])
+    mocks.formatStaleWorktreeWarning.mockImplementation(
+      (count: number) => `You have ${count} stale port worktrees. Consider running port prune.`
+    )
     mocks.branch.mockImplementation((value: string) => value)
     mocks.command.mockImplementation((value: string) => value)
 
@@ -222,6 +235,43 @@ describe('enter typo confirmation', () => {
 
     expect(mocks.prompt).not.toHaveBeenCalled()
     expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'status')
+  })
+
+  test('warns when creating a new worktree and the stale count is extreme', async () => {
+    mocks.getStaleWorktreeCandidates.mockResolvedValue([
+      { branch: 'feature-a', sanitized: 'feature-a', reason: 'merged' },
+      { branch: 'feature-b', sanitized: 'feature-b', reason: 'gone' },
+      { branch: 'feature-c', sanitized: 'feature-c', reason: 'pr-merged' },
+      { branch: 'feature-d', sanitized: 'feature-d', reason: 'merged' },
+      { branch: 'feature-e', sanitized: 'feature-e', reason: 'gone' },
+      { branch: 'feature-f', sanitized: 'feature-f', reason: 'merged' },
+      { branch: 'feature-g', sanitized: 'feature-g', reason: 'merged' },
+      { branch: 'feature-h', sanitized: 'feature-h', reason: 'merged' },
+      { branch: 'feature-i', sanitized: 'feature-i', reason: 'merged' },
+      { branch: 'feature-j', sanitized: 'feature-j', reason: 'merged' },
+      { branch: 'feature-k', sanitized: 'feature-k', reason: 'merged' },
+      { branch: 'feature-l', sanitized: 'feature-l', reason: 'merged' },
+      { branch: 'feature-m', sanitized: 'feature-m', reason: 'merged' },
+      { branch: 'feature-n', sanitized: 'feature-n', reason: 'merged' },
+      { branch: 'feature-o', sanitized: 'feature-o', reason: 'merged' },
+      { branch: 'feature-p', sanitized: 'feature-p', reason: 'merged' },
+      { branch: 'feature-q', sanitized: 'feature-q', reason: 'merged' },
+      { branch: 'feature-r', sanitized: 'feature-r', reason: 'merged' },
+      { branch: 'feature-s', sanitized: 'feature-s', reason: 'merged' },
+      { branch: 'feature-t', sanitized: 'feature-t', reason: 'merged' },
+      { branch: 'feature-u', sanitized: 'feature-u', reason: 'merged' },
+      { branch: 'feature-v', sanitized: 'feature-v', reason: 'merged' },
+      { branch: 'feature-w', sanitized: 'feature-w', reason: 'merged' },
+      { branch: 'feature-x', sanitized: 'feature-x', reason: 'merged' },
+      { branch: 'feature-y', sanitized: 'feature-y', reason: 'merged' },
+    ])
+
+    await enter('new-feature')
+
+    expect(mocks.warn).toHaveBeenCalledWith(
+      'You have 25 stale port worktrees. Consider running port prune.'
+    )
+    expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'new-feature')
   })
 })
 

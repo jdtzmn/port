@@ -4,6 +4,11 @@ import { isTraefikRunning } from '../lib/compose.ts'
 import { getAllHostServices } from '../lib/registry.ts'
 import { isProcessRunning, cleanupStaleHostServices } from '../lib/hostService.ts'
 import { collectWorktreeStatuses, type WorktreeStatus } from '../lib/worktreeStatus.ts'
+import {
+  getStaleWorktreeCandidates,
+  STALE_WORKTREE_WARNING_THRESHOLD,
+  formatStaleWorktreeWarning,
+} from '../lib/staleWorktrees.ts'
 import * as output from '../lib/output.ts'
 
 /**
@@ -13,9 +18,10 @@ import * as output from '../lib/output.ts'
  */
 export async function status(): Promise<void> {
   let worktrees: WorktreeStatus[] = []
+  let repoRoot: string | undefined
 
   try {
-    const repoRoot = detectWorktree().repoRoot
+    repoRoot = detectWorktree().repoRoot
 
     if (configExists(repoRoot)) {
       const config = await loadConfig(repoRoot)
@@ -70,5 +76,16 @@ export async function status(): Promise<void> {
     output.success(`Traefik: running (dashboard: ${output.url('http://localhost:1211')})`)
   } else {
     output.dim('Traefik: not running')
+  }
+
+  if (repoRoot && configExists(repoRoot)) {
+    try {
+      const staleWorktrees = await getStaleWorktreeCandidates(repoRoot)
+      if (staleWorktrees.length >= STALE_WORKTREE_WARNING_THRESHOLD) {
+        output.warn(formatStaleWorktreeWarning(staleWorktrees.length))
+      }
+    } catch {
+      // Opportunistic warning only; never block status output.
+    }
   }
 }

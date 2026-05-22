@@ -3,6 +3,12 @@ import { detectWorktree } from '../lib/worktree.ts'
 import { getTreesDir } from '../lib/config.ts'
 import { sanitizeBranchName, sanitizeFolderName } from '../lib/sanitize.ts'
 import { listWorktrees } from '../lib/git.ts'
+import {
+  getStaleWorktreeCandidates,
+  STALE_WORKTREE_WARNING_THRESHOLD,
+  formatStaleWorktreeWarning,
+} from '../lib/staleWorktrees.ts'
+import * as output from '../lib/output.ts'
 
 /**
  * Get worktree names from the .port/trees/ directory without any expensive
@@ -85,6 +91,15 @@ export async function list(): Promise<void> {
     const names = await getWorktreeNamesWithOriginals(repoRoot)
     for (const name of names) {
       console.log(name)
+    }
+
+    try {
+      const staleWorktrees = await getStaleWorktreeCandidates(repoRoot)
+      if (staleWorktrees.length >= STALE_WORKTREE_WARNING_THRESHOLD) {
+        output.warn(formatStaleWorktreeWarning(staleWorktrees.length))
+      }
+    } catch {
+      // Opportunistic warning only; never block list output.
     }
   } catch {
     // Not in a git repo — output nothing
