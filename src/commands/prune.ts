@@ -15,6 +15,7 @@ import { failWithError } from '../lib/cli.ts'
 import { getProjectName } from '../lib/compose.ts'
 import { cleanupDockerResources, scanDockerResourcesForProject } from '../lib/docker-cleanup.ts'
 import * as output from '../lib/output.ts'
+import { exit } from './exit.ts'
 
 interface PruneOptions {
   dryRun?: boolean
@@ -113,8 +114,10 @@ function formatTimeAgo(isoDate: string): string {
  */
 export async function prune(options: PruneOptions = {}): Promise<void> {
   let repoRoot: string
+  let worktreeInfo: ReturnType<typeof detectWorktree>
   try {
-    repoRoot = detectWorktree().repoRoot
+    worktreeInfo = detectWorktree()
+    repoRoot = worktreeInfo.repoRoot
   } catch {
     failWithError('Not in a git repository')
   }
@@ -238,6 +241,16 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
       output.info('Prune cancelled')
       return
     }
+  }
+
+  const currentWorktreeBranch = process.env.PORT_WORKTREE
+    ? sanitizeBranchName(process.env.PORT_WORKTREE)
+    : !worktreeInfo.isMainRepo
+      ? worktreeInfo.name
+      : undefined
+
+  if (currentWorktreeBranch && candidates.some(candidate => candidate.sanitized === currentWorktreeBranch)) {
+    await exit()
   }
 
   // 9. Remove each candidate
