@@ -96,12 +96,16 @@ describe('generateOverrideContent', () => {
 
     const override = generateOverrideContent(parsedCompose, 'feature-1', 'port')
 
-    expect(override).toContain('traefik.http.routers.feature-1-web-alias.rule=Host(`web.feature-1.port`)')
+    expect(override).toContain(
+      'traefik.http.routers.feature-1-web-alias.rule=Host(`web.feature-1.port`)'
+    )
     expect(override).toContain('traefik.http.routers.feature-1-web-alias.entrypoints=web')
     expect(override).toContain(
       'traefik.http.services.feature-1-web-alias.loadbalancer.server.port=3000'
     )
-    expect(override).not.toContain('traefik.http.services.feature-1-web-alias.loadbalancer.server.port=3001')
+    expect(override).not.toContain(
+      'traefik.http.services.feature-1-web-alias.loadbalancer.server.port=3001'
+    )
   })
 
   test('keeps separate mappings when published and target differ', () => {

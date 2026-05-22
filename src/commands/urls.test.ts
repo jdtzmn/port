@@ -121,7 +121,11 @@ describe('urls command', () => {
     expect(mocks.serviceUrls).toHaveBeenCalledWith([
       {
         name: 'web',
-        urls: ['http://web.feature-1.port', 'http://feature-1.port:3000', 'http://feature-1.port:3001'],
+        urls: [
+          'http://web.feature-1.port',
+          'http://feature-1.port:3000',
+          'http://feature-1.port:3001',
+        ],
         running: false,
       },
     ])
