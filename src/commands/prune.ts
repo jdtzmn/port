@@ -12,6 +12,8 @@ import { isGhAvailable, getMergedPrBranches, type MergedPrInfo } from '../lib/gi
 import { removeWorktreeAndCleanup, stopWorktreeServices } from '../lib/removal.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import { failWithError } from '../lib/cli.ts'
+import { getProjectName } from '../lib/compose.ts'
+import { cleanupDockerResources, scanDockerResourcesForProject } from '../lib/docker-cleanup.ts'
 import * as output from '../lib/output.ts'
 
 interface PruneOptions {
@@ -19,6 +21,7 @@ interface PruneOptions {
   force?: boolean
   noFetch?: boolean
   base?: string
+  cleanupImages?: boolean
 }
 
 /** Why a branch was identified as safe to remove */
@@ -288,7 +291,116 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
     }
   }
 
-  // 11. Summary
+  // 11. Docker cleanup integration
+  output.newline()
+
+  // 11a. Low-risk cleanup for each candidate (non-fatal)
+  for (const candidate of candidates) {
+    const projectName = getProjectName(repoRoot, candidate.sanitized)
+    const lowRiskCleanup = await cleanupDockerResources(projectName, {
+      skipImages: true,
+      quiet: false,
+    })
+
+    // Display warnings non-fatally
+    for (const warning of lowRiskCleanup.warnings) {
+      output.warn(warning)
+    }
+
+    // Display cleanup results
+    if (lowRiskCleanup.dockerAvailable && lowRiskCleanup.totalRemoved > 0) {
+      const parts: string[] = []
+      if (lowRiskCleanup.containersRemoved > 0) {
+        parts.push(`${lowRiskCleanup.containersRemoved} container(s)`)
+      }
+      if (lowRiskCleanup.volumesRemoved > 0) {
+        parts.push(`${lowRiskCleanup.volumesRemoved} volume(s)`)
+      }
+      if (lowRiskCleanup.networksRemoved > 0) {
+        parts.push(`${lowRiskCleanup.networksRemoved} network(s)`)
+      }
+      if (parts.length > 0) {
+        output.success(
+          `${output.branch(candidate.sanitized)}: Cleaned up ${lowRiskCleanup.totalRemoved} resource(s): ${parts.join(', ')}`
+        )
+      }
+    }
+  }
+
+  // 11b. Batch image cleanup decision flow
+  // Scan all candidates for images
+  const imageScans = await mapWithConcurrency(candidates, 3, async candidate => {
+    const projectName = getProjectName(repoRoot, candidate.sanitized)
+    return {
+      candidate,
+      resources: await scanDockerResourcesForProject(projectName),
+    }
+  })
+
+  // Filter to candidates with images
+  const candidatesWithImages = imageScans.filter(scan => scan.resources.images.length > 0)
+
+  if (candidatesWithImages.length > 0) {
+    // Aggregate image stats
+    const totalImages = candidatesWithImages.reduce(
+      (sum, scan) => sum + scan.resources.images.length,
+      0
+    )
+
+    // Aggregate size (undefined if any project has undefined size)
+    const hasUnknownSize = candidatesWithImages.some(scan => scan.resources.imageSize === undefined)
+    const totalSize = hasUnknownSize
+      ? undefined
+      : candidatesWithImages.reduce((sum, scan) => sum + (scan.resources.imageSize || 0), 0)
+
+    const sizeStr = totalSize ? `${(totalSize / (1024 * 1024)).toFixed(1)} MB` : 'unknown size'
+
+    let shouldCleanupImages = false
+
+    // Determine if we should cleanup images
+    if (options.cleanupImages !== undefined) {
+      // Explicit flag provided (non-interactive or user specified)
+      shouldCleanupImages = options.cleanupImages
+    } else if (!options.force) {
+      // Interactive mode: prompt with default No
+      output.newline()
+      const { cleanupImages } = await inquirer.prompt<{ cleanupImages: boolean }>([
+        {
+          type: 'confirm',
+          name: 'cleanupImages',
+          message: `Clean up ${totalImages} image(s) across ${candidatesWithImages.length} project${candidatesWithImages.length === 1 ? '' : 's'} (${sizeStr})?`,
+          default: false,
+        },
+      ])
+      shouldCleanupImages = cleanupImages
+    }
+    // else: non-interactive without flag, skip images (shouldCleanupImages stays false)
+
+    if (shouldCleanupImages) {
+      // Run image-only cleanup for each candidate with images
+      for (const { candidate, resources } of candidatesWithImages) {
+        const imageCleanup = await cleanupDockerResources(resources.projectName, {
+          imagesOnly: true,
+          quiet: false,
+        })
+
+        for (const warning of imageCleanup.warnings) {
+          output.warn(warning)
+        }
+
+        if (imageCleanup.imagesRemoved > 0) {
+          output.success(
+            `${output.branch(candidate.sanitized)}: Cleaned up ${imageCleanup.imagesRemoved} image(s)`
+          )
+        }
+      }
+    } else if (options.cleanupImages === undefined && !options.force) {
+      // Only show decline message in interactive mode when user explicitly declined
+      output.info('Image cleanup declined')
+    }
+  }
+
+  // 12. Summary
   output.newline()
   if (failedCount > 0) {
     output.warn(

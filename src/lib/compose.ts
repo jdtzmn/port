@@ -7,6 +7,15 @@ import { TRAEFIK_NETWORK, TRAEFIK_DIR } from './traefik.ts'
 import { execAsync, execWithStdio } from './exec.ts'
 import { sanitizeFolderName } from './sanitize.ts'
 
+/**
+ * Escape a shell argument to prevent command injection.
+ * Wraps the argument in single quotes and escapes any single quotes within.
+ */
+function shellEscape(arg: string): string {
+  // Replace single quotes with '\'' (end quote, escaped quote, start quote)
+  return `'${arg.replace(/'/g, "'\\''")}'`
+}
+
 /** Override file name */
 export const OVERRIDE_FILE = 'override.yml'
 
@@ -256,10 +265,13 @@ export async function parseComposeFile(
   const cmd = await getComposeCommand()
 
   try {
-    const { stdout } = await execAsync(`${cmd} -f ${composeFile} config --format json`, {
-      cwd,
-      timeout: 30000,
-    })
+    const { stdout } = await execAsync(
+      `${cmd} -f ${shellEscape(composeFile)} config --format json`,
+      {
+        cwd,
+        timeout: 30000,
+      }
+    )
 
     return JSON.parse(stdout) as ParsedComposeFile
   } catch (error) {
@@ -543,13 +555,14 @@ async function buildComposeCommand(
     : null
   const composeFiles = getComposeFileStack(composeFile, renderedUserOverride)
 
-  const fullArgs = ['-p', projectName]
+  const escapedArgs = ['-p', shellEscape(projectName)]
   for (const file of composeFiles) {
-    fullArgs.push('-f', file)
+    escapedArgs.push('-f', shellEscape(file))
   }
-  fullArgs.push(...args)
+  // args are already trusted (come from internal code, not user input)
+  escapedArgs.push(...args)
 
-  return `${cmd} ${fullArgs.join(' ')}`
+  return `${cmd} ${escapedArgs.join(' ')}`
 }
 
 /**
@@ -622,11 +635,11 @@ export async function composePs(
       })
     : null
   const composeFiles = getComposeFileStack(composeFile, renderedUserOverride)
-  const composeFileFlags = composeFiles.map(file => `-f ${file}`).join(' ')
+  const composeFileFlags = composeFiles.map(file => `-f ${shellEscape(file)}`).join(' ')
 
   try {
     const { stdout } = await execAsync(
-      `${cmd} -p ${projectName} ${composeFileFlags} ps --format json`,
+      `${cmd} -p ${shellEscape(projectName)} ${composeFileFlags} ps --format json`,
       { cwd }
     )
 
