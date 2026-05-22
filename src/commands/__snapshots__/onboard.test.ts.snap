@@ -66,6 +66,8 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 
 ## Additional Commands
 
+- **\`port docker\`**: Alias: port compose. Automatically applies -f flags for the worktree's compose files.
+  - Run inside a worktree to run docker compose commands.
 - **\`port compose [args...]\`**: Automatically applies -f flags for the worktree's compose files.
   - Alias: port dc. Run inside a worktree to run docker compose commands.
 - **\`port completion <shell>\`**: Enables tab completion for port commands and options.
@@ -145,6 +147,8 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 
 ## Additional Commands
 
+- **\`port docker\`**: Alias: port compose. Automatically applies -f flags for the worktree's compose files.
+  - Run inside a worktree to run docker compose commands.
 - **\`port compose [args...]\`**: Automatically applies -f flags for the worktree's compose files.
   - Alias: port dc. Run inside a worktree to run docker compose commands.
 - **\`port completion <shell>\`**: Enables tab completion for port commands and options.

@@ -69,6 +69,11 @@ const STEPS: OnboardStep[] = [
 
 const ADDITIONAL_COMMANDS: OnboardStep[] = [
   {
+    command: 'port docker',
+    how: 'Run inside a worktree to run docker compose commands.',
+    why: 'Alias: port compose. Automatically applies -f flags for the worktree\'s compose files.',
+  },
+  {
     command: 'port compose [args...]',
     how: 'Alias: port dc. Run inside a worktree to run docker compose commands.',
     why: "Automatically applies -f flags for the worktree's compose files.",
