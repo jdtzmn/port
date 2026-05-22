@@ -81,6 +81,29 @@ describe('generateOverrideContent', () => {
     )
   })
 
+  test('adds a service-name alias on web for the first published port', () => {
+    const parsedCompose: ParsedComposeFile = {
+      name: 'demo',
+      services: {
+        web: {
+          ports: [
+            { published: 3000, target: 3000 },
+            { published: 3001, target: 3001 },
+          ],
+        },
+      },
+    }
+
+    const override = generateOverrideContent(parsedCompose, 'feature-1', 'port')
+
+    expect(override).toContain('traefik.http.routers.feature-1-web-alias.rule=Host(`web.feature-1.port`)')
+    expect(override).toContain('traefik.http.routers.feature-1-web-alias.entrypoints=web')
+    expect(override).toContain(
+      'traefik.http.services.feature-1-web-alias.loadbalancer.server.port=3000'
+    )
+    expect(override).not.toContain('traefik.http.services.feature-1-web-alias.loadbalancer.server.port=3001')
+  })
+
   test('keeps separate mappings when published and target differ', () => {
     const parsedCompose: ParsedComposeFile = {
       name: 'layerone',

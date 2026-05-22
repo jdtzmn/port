@@ -364,9 +364,30 @@ function generateTraefikHttpLabels(
   const routerName = `${worktreeName}-${serviceName}-${publishedPort}`
   const hostname = `${worktreeName}.${domain}`
 
+  return generateTraefikHttpRouterLabels(routerName, hostname, `port${publishedPort}`, targetPort)
+}
+
+function generateTraefikHttpAliasLabels(
+  worktreeName: string,
+  serviceName: string,
+  targetPort: number,
+  domain: string
+): string[] {
+  const routerName = `${worktreeName}-${serviceName}-alias`
+  const hostname = `${serviceName}.${worktreeName}.${domain}`
+
+  return generateTraefikHttpRouterLabels(routerName, hostname, 'web', targetPort)
+}
+
+function generateTraefikHttpRouterLabels(
+  routerName: string,
+  hostname: string,
+  entryPoint: string,
+  targetPort: number
+): string[] {
   return [
     `traefik.http.routers.${routerName}.rule=Host(\`${hostname}\`)`,
-    `traefik.http.routers.${routerName}.entrypoints=port${publishedPort}`,
+    `traefik.http.routers.${routerName}.entrypoints=${entryPoint}`,
     `traefik.http.routers.${routerName}.service=${routerName}`,
     `traefik.http.services.${routerName}.loadbalancer.server.port=${targetPort}`,
   ]
@@ -403,12 +424,19 @@ function generateTraefikLabels(
   serviceName: string,
   publishedPort: number,
   targetPort: number,
-  domain: string
+  domain: string,
+  includeAlias: boolean
 ): string[] {
-  return [
+  const labels = [
     ...generateTraefikHttpLabels(worktreeName, serviceName, publishedPort, targetPort, domain),
     ...generateTraefikTcpLabels(worktreeName, serviceName, publishedPort, targetPort, domain),
   ]
+
+  if (includeAlias) {
+    labels.unshift(...generateTraefikHttpAliasLabels(worktreeName, serviceName, targetPort, domain))
+  }
+
+  return labels
 }
 
 /**
@@ -443,7 +471,14 @@ export function generateOverrideContent(
       // Add labels for each port
       for (const port of ports) {
         labels.push(
-          ...generateTraefikLabels(worktreeName, serviceName, port.published, port.target, domain)
+          ...generateTraefikLabels(
+            worktreeName,
+            serviceName,
+            port.published,
+            port.target,
+            domain,
+            port === ports[0]
+          )
         )
       }
 

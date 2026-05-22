@@ -92,8 +92,38 @@ describe('urls command', () => {
 
     expect(mocks.header).toHaveBeenCalledWith('Service URLs for feature-1:')
     expect(mocks.serviceUrls).toHaveBeenCalledWith([
-      { name: 'web', urls: ['http://feature-1.port:3000'], running: false },
-      { name: 'db', urls: ['http://feature-1.port:5432'], running: false },
+      {
+        name: 'web',
+        urls: ['http://web.feature-1.port', 'http://feature-1.port:3000'],
+        running: false,
+      },
+      {
+        name: 'db',
+        urls: ['http://db.feature-1.port', 'http://feature-1.port:5432'],
+        running: false,
+      },
+    ])
+  })
+
+  test('includes a service-name alias for the first published port', async () => {
+    const web = {}
+
+    mocks.parseComposeFile.mockResolvedValue({
+      name: 'repo',
+      services: {
+        web,
+      },
+    })
+    mocks.getServicePorts.mockReturnValue([3000, 3001])
+
+    await urls()
+
+    expect(mocks.serviceUrls).toHaveBeenCalledWith([
+      {
+        name: 'web',
+        urls: ['http://web.feature-1.port', 'http://feature-1.port:3000', 'http://feature-1.port:3001'],
+        running: false,
+      },
     ])
   })
 
@@ -117,7 +147,11 @@ describe('urls command', () => {
     await urls('web')
 
     expect(mocks.serviceUrls).toHaveBeenCalledWith([
-      { name: 'web', urls: ['http://feature-1.port:3000'], running: false },
+      {
+        name: 'web',
+        urls: ['http://web.feature-1.port', 'http://feature-1.port:3000'],
+        running: false,
+      },
     ])
   })
 
@@ -155,7 +189,11 @@ describe('urls command', () => {
 
     expect(mocks.header).toHaveBeenCalledWith('Service URLs for repo:')
     expect(mocks.serviceUrls).toHaveBeenCalledWith([
-      { name: 'web', urls: ['http://repo.port:3000'], running: false },
+      {
+        name: 'web',
+        urls: ['http://web.repo.port', 'http://repo.port:3000'],
+        running: false,
+      },
     ])
   })
 
@@ -183,8 +221,16 @@ describe('urls command', () => {
     await urls()
 
     expect(mocks.serviceUrls).toHaveBeenCalledWith([
-      { name: 'web', urls: ['http://feature-1.port:3000'], running: true },
-      { name: 'db', urls: ['http://feature-1.port:5432'], running: false },
+      {
+        name: 'web',
+        urls: ['http://web.feature-1.port', 'http://feature-1.port:3000'],
+        running: true,
+      },
+      {
+        name: 'db',
+        urls: ['http://db.feature-1.port', 'http://feature-1.port:5432'],
+        running: false,
+      },
     ])
   })
 })
