@@ -3,6 +3,7 @@ import { compose } from './compose.ts'
 import * as worktreeModule from '../lib/worktree.ts'
 import * as configModule from '../lib/config.ts'
 import * as composeModule from '../lib/compose.ts'
+import * as traefikModule from '../lib/traefik.ts'
 import * as output from '../lib/output.ts'
 
 /**
@@ -65,6 +66,7 @@ describe('port compose pre-sync behavior', () => {
     )
     vi.spyOn(composeModule, 'writeOverrideFile').mockResolvedValue()
     vi.spyOn(composeModule, 'getProjectName').mockReturnValue('repo-feature-1')
+    vi.spyOn(traefikModule, 'ensureTraefikPorts').mockResolvedValue(true)
     vi.spyOn(composeModule, 'isTraefikRunning').mockResolvedValue(true)
     vi.spyOn(composeModule, 'startTraefik').mockResolvedValue()
     vi.spyOn(composeModule, 'runCompose').mockResolvedValue({ exitCode: 0 } as unknown as Awaited<
@@ -202,6 +204,9 @@ describe('port compose pre-sync behavior', () => {
       const isTraefikRunningSpy = vi
         .spyOn(composeModule, 'isTraefikRunning')
         .mockResolvedValue(false)
+      const ensureTraefikPortsSpy = vi
+        .spyOn(traefikModule, 'ensureTraefikPorts')
+        .mockResolvedValue(true)
       const startTraefikSpy = vi.spyOn(composeModule, 'startTraefik').mockResolvedValue()
       const runComposeSpy = vi.spyOn(composeModule, 'runCompose')
       const infoSpy = vi.spyOn(output, 'info').mockImplementation(() => {})
@@ -213,6 +218,7 @@ describe('port compose pre-sync behavior', () => {
       }
 
       expect(isTraefikRunningSpy).toHaveBeenCalled()
+      expect(ensureTraefikPortsSpy).toHaveBeenCalledWith([3000])
       expect(startTraefikSpy).toHaveBeenCalled()
       expect(infoSpy).toHaveBeenCalledWith('Starting Traefik...')
       expect(runComposeSpy).toHaveBeenCalled()

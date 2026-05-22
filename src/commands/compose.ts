@@ -3,6 +3,7 @@ import { join } from 'path'
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import * as composeLib from '../lib/compose.ts'
+import * as traefikLib from '../lib/traefik.ts'
 import * as output from '../lib/output.ts'
 
 /**
@@ -73,6 +74,7 @@ export async function compose(args: string[]): Promise<void> {
 
   try {
     if (!(await composeLib.isTraefikRunning())) {
+      await traefikLib.ensureTraefikPorts(composeLib.getAllPorts(parsedCompose))
       output.info('Starting Traefik...')
       await composeLib.startTraefik()
     }
