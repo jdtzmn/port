@@ -199,7 +199,9 @@ describe('port compose pre-sync behavior', () => {
     })
 
     test('starts Traefik first when it is not running', async () => {
-      const isTraefikRunningSpy = vi.spyOn(composeModule, 'isTraefikRunning').mockResolvedValue(false)
+      const isTraefikRunningSpy = vi
+        .spyOn(composeModule, 'isTraefikRunning')
+        .mockResolvedValue(false)
       const startTraefikSpy = vi.spyOn(composeModule, 'startTraefik').mockResolvedValue()
       const runComposeSpy = vi.spyOn(composeModule, 'runCompose')
       const infoSpy = vi.spyOn(output, 'info').mockImplementation(() => {})

@@ -59,7 +59,13 @@ export async function compose(args: string[]): Promise<void> {
   const projectName = composeLib.getProjectName(repoRoot, name)
 
   try {
-    await composeLib.writeOverrideFile(worktreePath, parsedCompose, name, config.domain, projectName)
+    await composeLib.writeOverrideFile(
+      worktreePath,
+      parsedCompose,
+      name,
+      config.domain,
+      projectName
+    )
   } catch (error) {
     output.error(`Failed to write override file: ${error}`)
     process.exit(1)
