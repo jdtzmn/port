@@ -43,6 +43,26 @@ function normalizeDomain(domain: string): string {
   return domain.trim().toLowerCase()
 }
 
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`
+}
+
+function buildMacOSPrivilegedCommand(options: {
+  brewPrefix: string
+  dnsIp: string
+  domain: string
+  dnsmasqRunning: boolean
+}): string {
+  const resolverPath = shellQuote(`/etc/resolver/${options.domain}`)
+  const serviceAction = options.dnsmasqRunning ? 'restart' : 'start'
+
+  return [
+    'mkdir -p /etc/resolver',
+    `echo "nameserver ${options.dnsIp}" > ${resolverPath}`,
+    `${options.brewPrefix}/bin/brew services ${serviceAction} dnsmasq`,
+  ].join(' && ')
+}
+
 async function resolveInstallDomain(explicitDomain?: string): Promise<string> {
   if (explicitDomain !== undefined) {
     const normalized = normalizeDomain(explicitDomain)
@@ -151,39 +171,8 @@ async function installMacOS(dnsIp: string, domain: string, skipConfirm = false):
     }
   }
 
-  // Set up resolver first — this is what makes macOS dscacheutil (and
-  // therefore checkDns / `port up`) work.  Without /etc/resolver/<domain>,
-  // DNS resolution for *.<domain> won't use dnsmasq at all, even if the
-  // service is running correctly.
-  let resolverOk = true
-  try {
-    // Check if /etc/resolver already contains the correct config
-    const content = await fileOps.read(`/etc/resolver/${domain}`)
-    if (content.includes(`nameserver ${dnsIp}`)) {
-      output.dim(`Resolver already configured at /etc/resolver/${domain}`)
-    } else {
-      // File exists but has wrong content — overwrite it
-      await fileOps.write(`/etc/resolver/${domain}`, `nameserver ${dnsIp}`, { privileged: true })
-      output.success(`Resolver updated at /etc/resolver/${domain}`)
-    }
-  } catch {
-    // File doesn't exist or can't be read — create it
-    output.info(`Creating resolver for .${domain} domain...`)
-    try {
-      await fileOps.mkdir('/etc/resolver', { privileged: true })
-      await fileOps.write(`/etc/resolver/${domain}`, `nameserver ${dnsIp}`, { privileged: true })
-      output.success(`Resolver created at /etc/resolver/${domain}`)
-    } catch (error) {
-      output.error(`Failed to create resolver: ${error}`)
-      output.info('You can try running these commands manually:')
-      output.info('  sudo mkdir -p /etc/resolver')
-      output.info(`  echo "nameserver ${dnsIp}" | sudo tee /etc/resolver/${domain}`)
-      resolverOk = false
-    }
-  }
-
-  // Start or restart dnsmasq so it picks up any config changes
-  let serviceOk = true
+  // Set up the resolver and adjust the dnsmasq service in one privileged call
+  // so macOS only asks for admin credentials once.
   let dnsmasqRunning = false
   try {
     await execAsync('pgrep dnsmasq')
@@ -192,27 +181,29 @@ async function installMacOS(dnsIp: string, domain: string, skipConfirm = false):
     // pgrep returns non-zero if no process found
   }
 
-  const serviceCommand = dnsmasqRunning
-    ? `${brewPrefix}/bin/brew services restart dnsmasq`
-    : `${brewPrefix}/bin/brew services start dnsmasq`
+  const privilegedCommand = buildMacOSPrivilegedCommand({
+    brewPrefix,
+    dnsIp,
+    domain,
+    dnsmasqRunning,
+  })
 
-  if (dnsmasqRunning) {
-    output.info('Reloading dnsmasq service...')
-  } else {
-    output.info('Starting dnsmasq service...')
-  }
+  output.info(
+    dnsmasqRunning
+      ? 'Applying macOS DNS changes and restarting dnsmasq...'
+      : 'Applying macOS DNS changes and starting dnsmasq...'
+  )
 
   try {
-    await execPrivileged(serviceCommand)
+    await execPrivileged(privilegedCommand)
+    output.success(`Resolver configured at /etc/resolver/${domain}`)
     output.success(dnsmasqRunning ? 'dnsmasq service reloaded' : 'dnsmasq service started')
   } catch (error) {
-    output.error(`Failed to ${dnsmasqRunning ? 'reload' : 'start'} dnsmasq: ${error}`)
-    output.info('Run this command as an admin user:')
-    output.info(`  sudo ${serviceCommand}`)
-    serviceOk = false
+    output.error(`Failed to configure macOS DNS: ${error}`)
+    return false
   }
 
-  return resolverOk && serviceOk
+  return true
 }
 
 /**
