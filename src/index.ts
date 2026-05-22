@@ -25,7 +25,8 @@ import { shellHook } from './commands/shell-hook.ts'
 import { completion } from './commands/completion.ts'
 import { hook } from './commands/hook.ts'
 import { open } from './commands/open.ts'
-import { isReservedCommand } from './lib/commands.ts'
+import { isReservedCommand, shouldAutoRegisterWorktree } from './lib/commands.ts'
+import { ensureCurrentWorktreeRegistered } from './lib/worktreeRegistration.ts'
 import { detectWorktree } from './lib/worktree.ts'
 import { branchExists } from './lib/git.ts'
 import { loadConfig, configExists } from './lib/config.ts'
@@ -272,5 +273,15 @@ program
   })
 
 if (import.meta.main) {
-  program.parseAsync().catch(handleCliError)
+  const entryToken = process.argv[2]
+
+  try {
+    if (shouldAutoRegisterWorktree(entryToken)) {
+      await ensureCurrentWorktreeRegistered()
+    }
+
+    await program.parseAsync()
+  } catch (error) {
+    handleCliError(error)
+  }
 }
