@@ -281,6 +281,14 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port uninstall [--yes] [--domain DOMAIN]`                          | Remove DNS configuration for wildcard domain                    |
 | `port hook [hook-name] [--list]`                                    | List or manually run a configured lifecycle hook                |
 
+### Stale Worktree Warnings
+
+`port status` and `port list` may warn when the repo has 10 or more stale Port worktrees:
+
+`You have X stale port worktrees. Consider running port prune.`
+
+`port enter <branch>` shows the same warning only when the stale count is extreme (25+), and it never blocks worktree creation.
+
 ## Hooks
 
 Port supports executable shell hooks in `.port/hooks/`:
