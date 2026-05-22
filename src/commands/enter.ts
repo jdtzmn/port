@@ -6,7 +6,13 @@ import {
   getComposeFile,
   ensurePortRuntimeDir,
 } from '../lib/config.ts'
-import { branchExists, createWorktree, remoteBranchExists, removeWorktree } from '../lib/git.ts'
+import {
+  branchExists,
+  createWorktree,
+  parseDuplicateWorktreeError,
+  remoteBranchExists,
+  removeWorktree,
+} from '../lib/git.ts'
 import { writeOverrideFile, parseComposeFile, getProjectName } from '../lib/compose.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import { hookExists, runPostCreateHook } from '../lib/hooks.ts'
@@ -126,8 +132,17 @@ export async function enter(branch: string): Promise<void> {
       isNewWorktree = true
       output.success(`Created worktree: ${sanitized}`)
     } catch (error) {
-      output.error(`Failed to create worktree: ${error}`)
-      process.exit(1)
+      const duplicateWorktree = parseDuplicateWorktreeError(error)
+
+      if (!duplicateWorktree) {
+        output.error(`Failed to create worktree: ${error}`)
+        process.exit(1)
+      }
+
+      worktreePath = duplicateWorktree.path
+      output.warn(
+        `Branch "${sanitized}" is already checked out in another worktree; using ${worktreePath}`
+      )
     }
   }
 

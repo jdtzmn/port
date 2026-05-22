@@ -2,6 +2,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { execPortAsync, fetchWithTimeout, prepareSample, safeDown } from '@tests/utils'
 import { describe, test, expect } from 'vitest'
+import { execAsync } from '../lib/exec'
 
 const TIMEOUT = 240000
 const POLL_TIMEOUT = 150000
@@ -95,6 +96,33 @@ describe('parallel worktrees', () => {
       } finally {
         await safeDown(worktreeADir)
         await safeDown(worktreeBDir)
+        await sample.cleanup()
+      }
+    },
+    TIMEOUT + 1000
+  )
+
+  test(
+    'reuses an existing worktree outside .port/trees when the branch is already checked out',
+    async () => {
+      const sample = await prepareSample('db-and-server', {
+        gitInit: true,
+      })
+
+      const branch = 'shared-reuse'
+      const externalWorktreeDir = join(sample.dir, 'external-worktree')
+
+      try {
+        await execAsync(`git worktree add "${externalWorktreeDir}" -b "${branch}"`, {
+          cwd: sample.dir,
+        })
+
+        const result = await execPortAsync(['enter', branch], sample.dir)
+
+        expect(result.stderr).toContain('already checked out in another worktree')
+        expect(result.stderr).toContain(externalWorktreeDir)
+        expect(existsSync(join(externalWorktreeDir, '.port', 'override.yml'))).toBe(true)
+      } finally {
         await sample.cleanup()
       }
     },

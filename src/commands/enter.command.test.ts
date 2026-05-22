@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   createWorktree: vi.fn(),
   remoteBranchExists: vi.fn(),
   removeWorktree: vi.fn(),
+  parseDuplicateWorktreeError: vi.fn(),
   writeOverrideFile: vi.fn(),
   parseComposeFile: vi.fn(),
   getProjectName: vi.fn(),
@@ -52,6 +53,7 @@ vi.mock('../lib/git.ts', () => ({
   createWorktree: mocks.createWorktree,
   remoteBranchExists: mocks.remoteBranchExists,
   removeWorktree: mocks.removeWorktree,
+  parseDuplicateWorktreeError: mocks.parseDuplicateWorktreeError,
 }))
 
 vi.mock('../lib/compose.ts', () => ({
@@ -130,6 +132,7 @@ describe('enter typo confirmation', () => {
     mocks.remoteBranchExists.mockResolvedValue(false)
     mocks.findSimilarCommand.mockReturnValue({ command: 'install', distance: 1, similarity: 0.86 })
     mocks.createWorktree.mockResolvedValue('/repo/.port/trees/instal')
+    mocks.parseDuplicateWorktreeError.mockReturnValue(null)
     mocks.hookExists.mockResolvedValue(false)
     mocks.parseComposeFile.mockRejectedValue(new Error('compose missing'))
     mocks.getProjectName.mockReturnValue('repo-instal')
@@ -235,6 +238,35 @@ describe('enter typo confirmation', () => {
 
     expect(mocks.prompt).not.toHaveBeenCalled()
     expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'status')
+  })
+
+  test('reuses an existing worktree when git reports that the branch is already checked out', async () => {
+    mocks.createWorktree.mockRejectedValueOnce(
+      new Error(
+        "fatal: 'shared' is already used by worktree at '/repo/.port/trees/shared-external'"
+      )
+    )
+    mocks.parseDuplicateWorktreeError.mockReturnValue({
+      branch: 'shared',
+      path: '/repo/.port/trees/shared-external',
+    })
+    mocks.parseComposeFile.mockResolvedValue({ services: {} })
+    mocks.getProjectName.mockReturnValue('repo-shared')
+
+    await enter('shared')
+
+    expect(mocks.parseDuplicateWorktreeError).toHaveBeenCalledWith(expect.any(Error))
+    expect(mocks.warn).toHaveBeenCalledWith(
+      'Branch "shared" is already checked out in another worktree; using /repo/.port/trees/shared-external'
+    )
+    expect(mocks.writeOverrideFile).toHaveBeenCalledWith(
+      '/repo/.port/trees/shared-external',
+      { services: {} },
+      'shared',
+      'port',
+      'repo-shared'
+    )
+    expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'shared')
   })
 
   test('warns when creating a new worktree and the stale count is extreme', async () => {

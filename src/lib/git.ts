@@ -13,6 +13,37 @@ export class GitError extends Error {
   }
 }
 
+export interface DuplicateWorktreeErrorInfo {
+  branch: string
+  path: string
+}
+
+const DUPLICATE_WORKTREE_PATTERNS = [
+  /['"](?<branch>[^'"\n]+)['"]\s+is already used by worktree at\s+['"](?<path>[^'"\n]+)['"]/i,
+  /['"](?<branch>[^'"\n]+)['"]\s+is already checked out at\s+['"](?<path>[^'"\n]+)['"]/i,
+]
+
+export function parseDuplicateWorktreeError(error: unknown): DuplicateWorktreeErrorInfo | null {
+  const text =
+    error instanceof Error
+      ? `${error.message}\n${(error as { stderr?: string }).stderr ?? ''}`
+      : String(error)
+
+  for (const pattern of DUPLICATE_WORKTREE_PATTERNS) {
+    const match = text.match(pattern)
+    const groups = match?.groups as { branch?: string; path?: string } | undefined
+
+    if (groups?.branch && groups.path) {
+      return {
+        branch: groups.branch,
+        path: groups.path,
+      }
+    }
+  }
+
+  return null
+}
+
 /**
  * Get a simple-git instance for a repository
  */
