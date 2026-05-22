@@ -52,9 +52,12 @@ export async function urls(serviceName?: string): Promise<void> {
       const running = Array.from(runningServices.entries()).some(
         ([containerName, isRunning]) => containerName.includes(service) && isRunning
       )
+      const urls = ports.length > 0 ? [`http://${service}.${name}.${config.domain}`] : []
+      urls.push(...ports.map(port => `http://${name}.${config.domain}:${port}`))
+
       return {
         name: service,
-        urls: ports.map(port => `http://${name}.${config.domain}:${port}`),
+        urls,
         running,
       }
     })
