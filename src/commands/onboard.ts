@@ -27,8 +27,8 @@ const STEPS: OnboardStep[] = [
   },
   {
     command: 'port enter <branch>',
-    how: 'Use explicit enter, especially when branch names match commands.',
-    why: 'Creates or enters the branch worktree and changes into it.',
+    how: 'Use explicit enter, especially when branch names match commands or are already checked out elsewhere.',
+    why: 'Creates or enters the branch worktree and changes into it, reusing an existing checked-out worktree when needed.',
   },
   {
     command: 'port up',

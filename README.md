@@ -152,6 +152,7 @@ port enter feature-1
 This creates a new worktree and changes into it (with shell integration) or prints the path to `cd` into.
 Use `port enter <branch>` when your branch name collides with a command (for example `status` or `install`).
 If a branch and command collide, running `port <command>` shows a hint to use `port enter <branch>`.
+If the branch is already checked out in another worktree, `port enter` reuses that worktree and tells you where it is.
 
 ### 7. Exit a Worktree
 

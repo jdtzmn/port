@@ -59,10 +59,10 @@ describe('onboard command', () => {
     expect(mocks.header).toHaveBeenCalledWith(expect.stringContaining('port exit'))
     expect(mocks.header).toHaveBeenCalledWith(expect.stringContaining('port remove'))
     expect(mocks.dim).toHaveBeenCalledWith(
-      '   How: Use explicit enter, especially when branch names match commands.'
+      '   How: Use explicit enter, especially when branch names match commands or are already checked out elsewhere.'
     )
     expect(mocks.dim).toHaveBeenCalledWith(
-      '   Why: Stops project services and offers Traefik shutdown when appropriate.'
+      '   Why: Creates or enters the branch worktree and changes into it, reusing an existing checked-out worktree when needed.'
     )
     expect(mocks.info).toHaveBeenCalledWith('Useful checks:')
   })

@@ -23,8 +23,8 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 
 ### 4. `port enter <branch>`
 
-- **How**: Use explicit enter, especially when branch names match commands.
-- **Why**: Creates or enters the branch worktree and changes into it.
+- **How**: Use explicit enter, especially when branch names match commands or are already checked out elsewhere.
+- **Why**: Creates or enters the branch worktree and changes into it, reusing an existing checked-out worktree when needed.
 
 ### 5. `port up`
 
