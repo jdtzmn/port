@@ -34,6 +34,33 @@ function normalizeDomain(domain: string): string {
   return domain.trim().toLowerCase()
 }
 
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`
+}
+
+function buildMacOSUninstallCommand(options: {
+  resolverPath: string
+  brewPrefix: string
+  resolverExists: boolean
+  dnsmasqRunning: boolean
+}): string | null {
+  const actions = []
+
+  if (options.resolverExists) {
+    actions.push(`rm ${shellQuote(options.resolverPath)}`)
+  }
+
+  if (options.dnsmasqRunning) {
+    actions.push(`${options.brewPrefix}/bin/brew services restart dnsmasq`)
+  }
+
+  if (actions.length === 0) {
+    return null
+  }
+
+  return actions.join(' && ')
+}
+
 async function resolveUninstallDomain(explicitDomain?: string): Promise<string> {
   if (explicitDomain !== undefined) {
     const normalized = normalizeDomain(explicitDomain)
@@ -89,22 +116,41 @@ async function uninstallMacOS(domain: string): Promise<boolean> {
 
   // Remove the resolver file
   output.info(`Removing resolver for .${domain} domain...`)
-  try {
-    if (!(await fileOps.exists(`/etc/resolver/${domain}`))) throw new Error('not found')
-    await fileOps.delete(`/etc/resolver/${domain}`, { privileged: true })
-    output.success(`Removed /etc/resolver/${domain}`)
-  } catch {
+  const resolverPath = `/etc/resolver/${domain}`
+  const resolverExists = await fileOps.exists(resolverPath)
+  if (!resolverExists) {
     output.dim(`No resolver file found at /etc/resolver/${domain}`)
   }
 
-  // Restart dnsmasq if it's running (to apply the config changes)
-  if (await isDnsmasqRunning()) {
+  const dnsmasqRunning = await isDnsmasqRunning()
+  const privilegedCommand = buildMacOSUninstallCommand({
+    resolverPath,
+    brewPrefix,
+    resolverExists,
+    dnsmasqRunning,
+  })
+
+  if (!privilegedCommand) {
+    return true
+  }
+
+  if (dnsmasqRunning) {
     output.info('Restarting dnsmasq to apply changes...')
-    try {
-      await execPrivileged(`${brewPrefix}/bin/brew services restart dnsmasq`)
+  }
+
+  try {
+    await execPrivileged(privilegedCommand)
+    if (resolverExists) {
+      output.success(`Removed /etc/resolver/${domain}`)
+    }
+    if (dnsmasqRunning) {
       output.success('dnsmasq restarted')
-    } catch (error) {
+    }
+  } catch (error) {
+    if (dnsmasqRunning) {
       output.warn(`Could not restart dnsmasq: ${error}`)
+    } else {
+      output.warn(`Could not remove resolver: ${error}`)
     }
   }
 

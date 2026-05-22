@@ -181,10 +181,12 @@ describe('uninstall command', () => {
     expect(mocks.execAsync).toHaveBeenCalledWith(
       "sed -i '' '/address=\\/port\\//d' /usr/local/etc/dnsmasq.conf"
     )
-    expect(mocks.execPrivileged).toHaveBeenCalledWith('rm /etc/resolver/port')
     expect(mocks.execPrivileged).toHaveBeenCalledWith(
-      '/usr/local/bin/brew services restart dnsmasq'
+      expect.stringContaining(
+        "rm '/etc/resolver/port' && /usr/local/bin/brew services restart dnsmasq"
+      )
     )
+    expect(mocks.execPrivileged).toHaveBeenCalledTimes(1)
     expect(mocks.execPrivileged).not.toHaveBeenCalledWith('systemctl restart systemd-resolved')
   })
 
@@ -211,7 +213,8 @@ describe('uninstall command', () => {
     expect(mocks.execAsync).toHaveBeenCalledWith(
       "sed -i '' '/address=\\/custom\\//d' /usr/local/etc/dnsmasq.conf"
     )
-    expect(mocks.execPrivileged).toHaveBeenCalledWith('rm /etc/resolver/custom')
+    expect(mocks.execPrivileged).toHaveBeenCalledWith("rm '/etc/resolver/custom'")
+    expect(mocks.execPrivileged).toHaveBeenCalledTimes(1)
     expect(mocks.checkDns).toHaveBeenNthCalledWith(2, 'custom', '127.0.0.1')
   })
 
