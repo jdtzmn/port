@@ -25,7 +25,8 @@ import { shellHook } from './commands/shell-hook.ts'
 import { completion } from './commands/completion.ts'
 import { hook } from './commands/hook.ts'
 import { open } from './commands/open.ts'
-import { isReservedCommand } from './lib/commands.ts'
+import { isReservedCommand, shouldAutoRegisterWorktree } from './lib/commands.ts'
+import { ensureCurrentWorktreeRegistered } from './lib/worktreeRegistration.ts'
 import { detectWorktree } from './lib/worktree.ts'
 import { branchExists } from './lib/git.ts'
 import { loadConfig, configExists } from './lib/config.ts'
@@ -151,8 +152,15 @@ program
   .description('Remove a worktree and stop its services')
   .option('-f, --force', 'Skip confirmation prompts')
   .option('--keep-branch', 'Keep the local branch instead of archiving it')
-  .action((branch: string | undefined, options: { force?: boolean; keepBranch?: boolean }) =>
-    remove(branch, options)
+  .option(
+    '--cleanup-images',
+    'Clean up Docker images without prompting (defaults to interactive prompt with No)'
+  )
+  .action(
+    (
+      branch: string | undefined,
+      options: { force?: boolean; keepBranch?: boolean; cleanupImages?: boolean }
+    ) => remove(branch, options)
   )
 
 // port uninstall
@@ -195,6 +203,10 @@ program
 program
   .command('cleanup')
   .description('Delete archived branches created by port remove (with confirmation)')
+  .option(
+    '--cleanup-images',
+    'Clean up Docker images (requires explicit opt-in in non-interactive mode)'
+  )
   .action(cleanup)
 
 // port prune
@@ -205,6 +217,10 @@ program
   .option('-f, --force', 'Skip confirmation prompt')
   .option('--no-fetch', 'Skip git fetch --prune (for offline use)')
   .option('--base <branch>', 'Override default branch detection (e.g., --base develop)')
+  .option(
+    '--cleanup-images',
+    'Clean up Docker images (requires explicit opt-in in non-interactive mode)'
+  )
   .action(prune)
 
 // port hook [hook-name]
@@ -272,5 +288,15 @@ program
   })
 
 if (import.meta.main) {
-  program.parseAsync().catch(handleCliError)
+  const entryToken = process.argv[2]
+
+  try {
+    if (shouldAutoRegisterWorktree(entryToken)) {
+      await ensureCurrentWorktreeRegistered()
+    }
+
+    await program.parseAsync()
+  } catch (error) {
+    handleCliError(error)
+  }
 }

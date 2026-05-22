@@ -1,4 +1,5 @@
 import { existsSync } from 'fs'
+import { join } from 'path'
 import {
   archiveBranch,
   deleteLocalBranch,
@@ -62,6 +63,12 @@ export async function stopWorktreeServices(
   const log = options.quiet ? () => {} : output.info
 
   if (!worktreePathExists) {
+    return
+  }
+
+  // Skip docker invocation when compose file is absent — repo may not use Docker
+  const composeFilePath = join(worktreePath, ctx.composeFile)
+  if (!existsSync(composeFilePath)) {
     return
   }
 

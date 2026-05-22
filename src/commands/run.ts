@@ -91,7 +91,7 @@ export async function run(logicalPort: number, command: string[]): Promise<void>
 
   const configUpdated = await ensureTraefikPorts([logicalPort])
   if (configUpdated) {
-    output.info('Updated Traefik configuration with new port')
+    output.info('Updated Traefik configuration')
   }
 
   // Start or restart Traefik if needed

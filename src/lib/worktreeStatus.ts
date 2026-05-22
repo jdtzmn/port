@@ -1,5 +1,6 @@
 import { existsSync, readdirSync } from 'fs'
 import { join } from 'path'
+import type { RunningWorktreeNames } from '../types.ts'
 import { getTreesDir } from './config.ts'
 import { composePs, parseComposeFile, getServicePorts, getProjectName } from './compose.ts'
 import { sanitizeBranchName } from './sanitize.ts'
@@ -164,4 +165,38 @@ export async function collectWorktreeStatuses(
   }
 
   return skeletons
+}
+
+/**
+ * Get names of running worktrees for 404 rendering.
+ * Returns a minimal list of worktree names that have running services.
+ *
+ * This function reuses existing worktree discovery logic and filters for
+ * worktrees with at least one running service. It's designed to be used
+ * by the 404 page to display available alternatives.
+ *
+ * @param repoRoot - Absolute path to the repository root
+ * @param composeFile - Path to docker-compose file (e.g., 'docker-compose.yml')
+ * @param domain - Domain suffix for routing (e.g., 'port')
+ * @returns Array of worktree names with running services, or empty array if none or on error
+ *
+ * @example
+ * ```ts
+ * const running = await getRunningWorktreeNames('/path/to/repo', 'docker-compose.yml', 'port')
+ * // Returns: ['main', 'feature-1', 'feature-2']
+ * ```
+ */
+export async function getRunningWorktreeNames(
+  repoRoot: string,
+  composeFile: string,
+  domain: string,
+  _collectStatuses = collectWorktreeStatuses
+): Promise<RunningWorktreeNames> {
+  try {
+    const statuses = await _collectStatuses(repoRoot, composeFile, domain)
+    return statuses.filter(wt => wt.running).map(wt => wt.name)
+  } catch {
+    // If anything fails (Docker not running, etc.), return empty array
+    return []
+  }
 }

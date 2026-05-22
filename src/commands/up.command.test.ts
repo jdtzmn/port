@@ -57,6 +57,7 @@ vi.mock('../lib/traefik.ts', () => ({
   ensureTraefikPorts: mocks.ensureTraefikPorts,
   traefikFilesExist: mocks.traefikFilesExist,
   initTraefikFiles: mocks.initTraefikFiles,
+  ensure404HandlerImage: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('../lib/compose.ts', () => ({

@@ -8,6 +8,7 @@ import {
   getCommandFlags,
   getGlobalFlags,
   getCommandDescriptions,
+  shouldAutoRegisterWorktree,
 } from './commands.ts'
 
 describe('command name helpers', () => {
@@ -156,5 +157,24 @@ describe('getCommandDescriptions', () => {
     expect(descs['ls']).toBe(descs['list'])
     expect(descs['rm']).toBe(descs['remove'])
     expect(descs['dc']).toBe(descs['compose'])
+  })
+})
+
+describe('shouldAutoRegisterWorktree', () => {
+  test('allows normal worktree-aware commands and no-arg invocation', () => {
+    expect(shouldAutoRegisterWorktree(undefined)).toBe(true)
+    expect(shouldAutoRegisterWorktree('status')).toBe(true)
+    expect(shouldAutoRegisterWorktree('list')).toBe(true)
+  })
+
+  test('skips global-only commands and flags', () => {
+    expect(shouldAutoRegisterWorktree('help')).toBe(false)
+    expect(shouldAutoRegisterWorktree('completion')).toBe(false)
+    expect(shouldAutoRegisterWorktree('install')).toBe(false)
+    expect(shouldAutoRegisterWorktree('cleanup')).toBe(false)
+    expect(shouldAutoRegisterWorktree('prune')).toBe(false)
+    expect(shouldAutoRegisterWorktree('uninstall')).toBe(false)
+    expect(shouldAutoRegisterWorktree('--help')).toBe(false)
+    expect(shouldAutoRegisterWorktree('-V')).toBe(false)
   })
 })

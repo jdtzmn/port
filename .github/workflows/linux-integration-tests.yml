@@ -68,6 +68,14 @@ jobs:
           # Pull the Traefik image referenced in source code
           grep -roh "traefik:v[0-9.]*" src/lib/traefik.ts | head -1 | xargs docker pull &
 
+          # Build the 404 handler image locally (not yet published for this branch)
+          # Tag both versioned and :latest so either get404HandlerImage() path works
+          VERSION=$(jq -r .version package.json)
+          docker build \
+            -t "ghcr.io/jdtzmn/port-404-handler:${VERSION}" \
+            -t "ghcr.io/jdtzmn/port-404-handler:latest" \
+            packages/404-app/ &
+
           wait
 
       - name: Configure DNS
