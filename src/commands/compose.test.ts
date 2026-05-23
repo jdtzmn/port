@@ -205,7 +205,6 @@ describe('port compose pre-sync behavior', () => {
     test('prepares the shared stack before running compose', async () => {
       const prepareSharedStackSpy = vi.spyOn(sharedStackModule, 'prepareSharedStack')
       const runComposeSpy = vi.spyOn(composeModule, 'runCompose')
-      const infoSpy = vi.spyOn(output, 'info').mockImplementation(() => {})
 
       try {
         await compose(['up', '-d'])
