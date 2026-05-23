@@ -25,7 +25,11 @@ import { shellHook } from './commands/shell-hook.ts'
 import { completion } from './commands/completion.ts'
 import { hook } from './commands/hook.ts'
 import { open } from './commands/open.ts'
-import { isReservedCommand, shouldAutoRegisterWorktree } from './lib/commands.ts'
+import {
+  isReservedCommand,
+  shouldAutoRegisterWorktree,
+  shouldSkipEarlyWork,
+} from './lib/commands.ts'
 import { ensureCurrentWorktreeRegistered } from './lib/worktreeRegistration.ts'
 import { detectWorktree } from './lib/worktree.ts'
 import { branchExists } from './lib/git.ts'
@@ -48,7 +52,7 @@ function getCliVersion(): string {
 async function maybeWarnCommandBranchCollision(): Promise<void> {
   const token = process.argv[2]
 
-  if (!token || token.startsWith('-') || token === 'enter' || token === 'shell-hook') {
+  if (!token || token.startsWith('-') || shouldSkipEarlyWork(token)) {
     return
   }
 

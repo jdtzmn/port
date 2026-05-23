@@ -9,6 +9,7 @@ import {
   getGlobalFlags,
   getCommandDescriptions,
   shouldAutoRegisterWorktree,
+  shouldSkipEarlyWork,
 } from './commands.ts'
 
 describe('command name helpers', () => {
@@ -169,6 +170,7 @@ describe('shouldAutoRegisterWorktree', () => {
 
   test('skips global-only commands and flags', () => {
     expect(shouldAutoRegisterWorktree('help')).toBe(false)
+    expect(shouldAutoRegisterWorktree('enter')).toBe(false)
     expect(shouldAutoRegisterWorktree('completion')).toBe(false)
     expect(shouldAutoRegisterWorktree('install')).toBe(false)
     expect(shouldAutoRegisterWorktree('cleanup')).toBe(false)
@@ -176,5 +178,15 @@ describe('shouldAutoRegisterWorktree', () => {
     expect(shouldAutoRegisterWorktree('uninstall')).toBe(false)
     expect(shouldAutoRegisterWorktree('--help')).toBe(false)
     expect(shouldAutoRegisterWorktree('-V')).toBe(false)
+  })
+})
+
+describe('shouldSkipEarlyWork', () => {
+  test('skips pre-parse work for enter, completion, and shell-hook', () => {
+    expect(shouldSkipEarlyWork('enter')).toBe(true)
+    expect(shouldSkipEarlyWork('completion')).toBe(true)
+    expect(shouldSkipEarlyWork('shell-hook')).toBe(true)
+    expect(shouldSkipEarlyWork('status')).toBe(false)
+    expect(shouldSkipEarlyWork(undefined)).toBe(false)
   })
 })
