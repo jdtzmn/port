@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   parseComposeFile: vi.fn(),
   getAllPorts: vi.fn(),
   getServicePorts: vi.fn(),
+  resolveComposeServices: vi.fn(),
   getProjectName: vi.fn(),
   hookExists: vi.fn(),
   runPostUpHook: vi.fn(),
@@ -71,6 +72,7 @@ vi.mock('../lib/compose.ts', () => ({
   parseComposeFile: mocks.parseComposeFile,
   getAllPorts: mocks.getAllPorts,
   getServicePorts: mocks.getServicePorts,
+  resolveComposeServices: mocks.resolveComposeServices,
   getProjectName: mocks.getProjectName,
 }))
 
@@ -120,6 +122,7 @@ describe('up DNS preflight', () => {
     mocks.isTraefikRunning.mockResolvedValue(true)
     mocks.traefikHasRequiredPorts.mockResolvedValue(true)
     mocks.getProjectName.mockReturnValue('repo-main')
+    mocks.resolveComposeServices.mockReturnValue([])
     mocks.writeOverrideFile.mockResolvedValue(undefined)
     mocks.runCompose.mockResolvedValue({ exitCode: 0 })
     mocks.registerProject.mockResolvedValue(undefined)
@@ -168,6 +171,60 @@ describe('up DNS preflight', () => {
     expect(mocks.checkDns).toHaveBeenCalledWith('port')
     expect(mocks.parseComposeFile).toHaveBeenCalledWith('/repo', 'docker-compose.yml')
     expect(mocks.runCompose).toHaveBeenCalled()
+  })
+
+  test('starts only requested services while surfacing dependency URLs', async () => {
+    mocks.parseComposeFile.mockResolvedValue({
+      name: 'repo',
+      services: {
+        app: {
+          ports: [{ published: 3000, target: 3000 }],
+        },
+        postgres: {
+          ports: [{ published: 5432, target: 5432 }],
+        },
+      },
+    })
+    mocks.getAllPorts.mockReturnValue([3000, 5432])
+    mocks.resolveComposeServices.mockReturnValue(['app', 'postgres'])
+    mocks.getServicePorts.mockImplementation((service: { ports?: Array<{ published: number }> }) =>
+      service.ports?.map(port => port.published) ?? []
+    )
+
+    await up(['app'])
+
+    expect(mocks.runCompose).toHaveBeenCalledWith(
+      '/repo',
+      'docker-compose.yml',
+      'repo-main',
+      ['up', '-d', 'app'],
+      {
+        repoRoot: '/repo',
+        branch: 'main',
+        domain: 'port',
+      }
+    )
+    expect(mocks.serviceUrls).toHaveBeenCalledWith([
+      {
+        name: 'app',
+        urls: ['http://main.port:3000'],
+      },
+      {
+        name: 'postgres',
+        urls: ['http://main.port:5432'],
+      },
+    ])
+  })
+
+  test('fails before compose when a requested service is missing', async () => {
+    mocks.resolveComposeServices.mockImplementation(() => {
+      throw new Error('Service "missing" not found in compose file')
+    })
+
+    await expect(up(['missing'])).rejects.toThrow('process.exit:1')
+
+    expect(mocks.error).toHaveBeenCalledWith('Service "missing" not found in compose file')
+    expect(mocks.runCompose).not.toHaveBeenCalled()
   })
 
   test('runs post-up hook when configured', async () => {

@@ -138,7 +138,7 @@ program
 
 // port up
 program
-  .command('up')
+  .command('up [services...]')
   .description('Start docker-compose services in the current worktree')
   .action(up)
 

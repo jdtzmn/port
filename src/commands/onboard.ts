@@ -31,13 +31,13 @@ const STEPS: OnboardStep[] = [
     why: 'Creates or enters the branch worktree and changes into it, reusing an existing checked-out worktree when needed.',
   },
   {
-    command: 'port up',
-    how: 'Run inside a worktree after entering it.',
+    command: 'port up [services...]',
+    how: 'Run inside a worktree after entering it. Omit services to start everything, or pass specific service names to start a subset and their dependencies.',
     why: 'Starts services and wires routing through Traefik.',
   },
   {
     command: 'port open',
-    how: 'Run after port up if you want to trigger your post-up workflow manually.',
+    how: 'Run after port up [services...] if you want to trigger your post-up workflow manually.',
     why: 'Re-runs the post-up hook (for example, open the browser to your branch URL).',
   },
   {

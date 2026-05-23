@@ -51,6 +51,13 @@ test('Help includes the enter command', async () => {
   expect(instance).toBeInTheConsole()
 })
 
+test('Up command help includes the services syntax', async () => {
+  const { findByText } = await renderCLI(['up', '--help'])
+
+  const instance = await findByText('up [options] [services...]')
+  expect(instance).toBeInTheConsole()
+})
+
 test('Help includes the onboard command', async () => {
   const { findByText } = await renderCLI(['--help'])
 

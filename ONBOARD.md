@@ -26,14 +26,14 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 - **How**: Use explicit enter, especially when branch names match commands or are already checked out elsewhere.
 - **Why**: Creates or enters the branch worktree and changes into it, reusing an existing checked-out worktree when needed.
 
-### 5. `port up`
+### 5. `port up [services...]`
 
-- **How**: Run inside a worktree after entering it.
+- **How**: Run inside a worktree after entering it. Omit services to start everything, or pass specific service names to start a subset and their dependencies.
 - **Why**: Starts services and wires routing through Traefik.
 
 ### 6. `port open`
 
-- **How**: Run after port up if you want to trigger your post-up workflow manually.
+- **How**: Run after port up [services...] if you want to trigger your post-up workflow manually.
 - **Why**: Re-runs the post-up hook (for example, open the browser to your branch URL).
 
 ### 7. `port urls [service]`

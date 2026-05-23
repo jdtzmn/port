@@ -19,6 +19,7 @@ import {
   getAllPorts,
   getServicePorts,
   getProjectName,
+  resolveComposeServices,
 } from '../lib/compose.ts'
 import { checkDns } from '../lib/dns.ts'
 import { hookExists, runPostUpHook } from '../lib/hooks.ts'
@@ -27,7 +28,11 @@ import * as output from '../lib/output.ts'
 /**
  * Start docker-compose services in the current worktree
  */
-export async function up(): Promise<void> {
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : `${error}`
+}
+
+export async function up(requestedServices: string[] = []): Promise<void> {
   // Detect worktree info
   let worktreeInfo
   try {
@@ -75,6 +80,14 @@ export async function up(): Promise<void> {
   }
 
   const ports = getAllPorts(parsedCompose)
+  let resolvedServices: string[]
+
+  try {
+    resolvedServices = resolveComposeServices(parsedCompose, requestedServices)
+  } catch (error) {
+    output.error(describeError(error))
+    process.exit(1)
+  }
 
   // Ensure Traefik files exist
   if (!traefikFilesExist()) {
@@ -133,7 +146,7 @@ export async function up(): Promise<void> {
 
   // Start docker-compose services
   output.info(`Starting services in ${output.branch(name)}...`)
-  const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['up', '-d'], {
+  const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['up', '-d', ...requestedServices], {
     repoRoot,
     branch: name,
     domain: config.domain,
@@ -153,7 +166,12 @@ export async function up(): Promise<void> {
 
   // Build service URLs from parsed compose file
   const serviceUrls: Array<{ name: string; urls: string[] }> = []
-  for (const [serviceName, service] of Object.entries(parsedCompose.services)) {
+  for (const serviceName of resolvedServices) {
+    const service = parsedCompose.services[serviceName]
+    if (!service) {
+      continue
+    }
+
     const servicePorts = getServicePorts(service)
     if (servicePorts.length > 0) {
       const urls = servicePorts.map(port => `http://${name}.${config.domain}:${port}`)

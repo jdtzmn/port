@@ -2,7 +2,7 @@ import { waitFor } from 'cli-testing-library'
 import { createConnection } from 'net'
 import { describe, test, expect } from 'vitest'
 import { checkDns } from '../lib/dns'
-import { prepareSample, renderCLI } from '../../tests/utils'
+import { execPortAsync, prepareSample, renderCLI } from '../../tests/utils'
 
 const SAMPLES_TIMEOUT = 60_000
 
@@ -80,6 +80,25 @@ describe('samples start', () => {
         timeout: SAMPLES_TIMEOUT,
       })
       await sample.cleanup()
+    },
+    SAMPLES_TIMEOUT + 1000
+  )
+
+  test(
+    'starts a requested service and its dependency',
+    async () => {
+      const sample = await prepareSample('db-and-server', {
+        initWithConfig: true,
+      })
+
+      try {
+        const upResult = await execPortAsync(['up', 'app'], sample.dir)
+
+        expect(upResult.stderr).toContain(sample.urlWithPort(3000))
+        expect(upResult.stderr).toContain(sample.urlWithPort(5432))
+      } finally {
+        await sample.cleanup()
+      }
     },
     SAMPLES_TIMEOUT + 1000
   )
