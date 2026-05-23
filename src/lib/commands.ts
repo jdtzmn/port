@@ -28,6 +28,14 @@ export const NON_WORKTREE_COMMANDS = new Set([
   'shell-hook',
 ])
 
+/**
+ * Commands that should skip any work done before Commander parses the command.
+ *
+ * Use this for startup-time checks that should not run for commands like
+ * `enter`, `completion`, or `shell-hook`.
+ */
+const SKIP_EARLY_WORK_COMMANDS = new Set(['enter', 'completion', 'shell-hook'])
+
 // ---------------------------------------------------------------------------
 // Core introspection
 // ---------------------------------------------------------------------------
@@ -184,7 +192,21 @@ export function shouldAutoRegisterWorktree(commandName: string | undefined): boo
     return true
   }
 
+  if (shouldSkipEarlyWork(commandName)) {
+    return false
+  }
+
   return !NON_WORKTREE_COMMANDS.has(commandName)
+}
+
+/**
+ * Check whether startup-time work should be skipped before parsing the command.
+ *
+ * Keep this as the single gate for any logic that runs before
+ * `program.parseAsync()` so new callers do not reintroduce early startup work.
+ */
+export function shouldSkipEarlyWork(commandName: string | undefined): boolean {
+  return commandName != null && SKIP_EARLY_WORK_COMMANDS.has(commandName)
 }
 
 // ---------------------------------------------------------------------------
