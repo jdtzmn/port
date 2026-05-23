@@ -73,7 +73,8 @@ describe('TuiShell', () => {
     expect(frame).toContain('Worktrees')
     expect(frame).toContain('Services')
     expect(frame).toContain('myapp')
-    expect(frame).toContain('http://myapp.port')
+    expect(frame).not.toContain('http://myapp.port')
+    expect(frame).toContain('web:3000')
 
     mockInput.pressKey('j')
     await new Promise(resolve => setTimeout(resolve, 50))
@@ -81,7 +82,7 @@ describe('TuiShell', () => {
 
     frame = captureCharFrame()
     expect(frame).toContain('feature-auth')
-    expect(frame).toContain('http://feature-auth.port')
+    expect(frame).not.toContain('http://feature-auth.port')
 
     mockInput.pressKey('l')
     await new Promise(resolve => setTimeout(resolve, 50))

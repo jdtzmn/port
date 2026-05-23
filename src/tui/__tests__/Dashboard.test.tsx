@@ -128,10 +128,10 @@ describe('Dashboard', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    expect(frame).toContain('port: myapp')
-    expect(frame).toContain('Traefik:')
-    expect(frame).toContain('running')
-    expect(frame).toContain('Worktrees')
+    expect(frame).not.toContain('port: myapp')
+    expect(frame).not.toContain('Traefik:')
+    expect(frame).not.toContain('running')
+    expect(frame).not.toContain('Worktrees')
     expect(frame).toContain('myapp')
     expect(frame).toContain('feature-auth')
   })
@@ -501,7 +501,7 @@ describe('Dashboard', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    expect(frame).toContain('refreshing...')
+    expect(frame).not.toContain('refreshing...')
   })
 
   test('keeps active marker and total count without listing service names', async () => {
@@ -685,16 +685,16 @@ describe('Dashboard', () => {
     const frame = captureCharFrame()
     const lines = frame.split('\n')
 
-    // Header elements must remain visible and not be overwritten by worktree rows
-    expect(frame).toContain('port: myapp')
-    expect(frame).toContain('Traefik:')
-    expect(frame).toContain('Worktrees')
+    // No redundant header chrome should remain in the pane body
+    expect(frame).not.toContain('port: myapp')
+    expect(frame).not.toContain('Traefik:')
+    expect(frame).not.toContain('Worktrees')
 
-    // The "Worktrees" label should appear BEFORE any worktree row
-    const worktreesLabelLine = lines.findIndex(l => l.includes('Worktrees'))
+    // Worktree rows should still start near the top of the pane
+    const worktreesLabelLine = lines.findIndex(l => l.includes('myapp'))
     const firstRowLine = lines.findIndex(l => l.includes('> '))
     expect(worktreesLabelLine).toBeGreaterThan(-1)
-    expect(firstRowLine).toBeGreaterThan(worktreesLabelLine)
+    expect(firstRowLine).toBeGreaterThanOrEqual(worktreesLabelLine)
 
     // Not all 20 worktrees should be visible (some must be clipped)
     const visibleBranches = lines.filter(l => l.includes('branch-')).length

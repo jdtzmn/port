@@ -191,7 +191,6 @@ export function WorktreeView({
   }, [selectedIndex, worktree, hostServices, config])
 
   const worktreeName = worktree?.name ?? 'unknown'
-  const baseUrl = `http://${worktreeName}.${config.domain}`
   const services = buildServiceItems(worktree, hostServices, config, worktreeName)
   const {
     mode,
@@ -303,30 +302,6 @@ export function WorktreeView({
 
   return (
     <box flexDirection="column" width="100%" height="100%">
-      {/* Header */}
-      <box flexDirection="row" gap={1} flexShrink={0}>
-        <text>
-          <b>{worktreeName}</b>
-        </text>
-        {loading && <text fg="#888888"> refreshing...</text>}
-        {busy && <text fg="#FFFF00"> working...</text>}
-      </box>
-
-      {/* URL */}
-      <text fg="#00AAFF" flexShrink={0}>
-        {baseUrl}
-      </text>
-
-      <box height={1} flexShrink={0} />
-
-      {/* Docker services header (always visible) */}
-      {services.some(s => s.type === 'docker') && (
-        <text fg="#888888" flexShrink={0}>
-          <b>Docker Services</b>
-        </text>
-      )}
-
-      {/* Scrollable services list */}
       <scrollbox
         ref={scrollRef}
         flexGrow={1}
@@ -335,7 +310,6 @@ export function WorktreeView({
         scrollX={false}
         contentOptions={{ flexDirection: 'column', width: '100%' }}
       >
-        {/* Docker services */}
         {services.some(s => s.type === 'docker') && (
           <>
             {services
@@ -372,14 +346,8 @@ export function WorktreeView({
           </>
         )}
 
-        {/* Host services section */}
         {services.some(s => s.type === 'host') && (
           <>
-            <box height={1} />
-            <text fg="#888888">
-              <b>Host Services</b>
-            </text>
-
             {services
               .filter(s => s.type === 'host')
               .map(service => {
@@ -416,31 +384,10 @@ export function WorktreeView({
         {services.length === 0 && !loading && <text fg="#888888">No services configured</text>}
       </scrollbox>
 
-      <box height={1} flexShrink={0} />
-
       {/* Status message */}
       {statusMessage && (
         <text fg={statusMessage.type === 'success' ? '#00FF00' : '#FF4444'} flexShrink={0}>
           {statusMessage.text}
-        </text>
-      )}
-
-      {mode !== 'normal' && (
-        <text
-          fg={
-            mode === 'query'
-              ? highlightQuery.length === 0
-                ? '#888888'
-                : highlightMatches.length > 0
-                  ? '#00AAFF'
-                  : '#FFAA00'
-              : '#00AAFF'
-          }
-        >
-          /{highlightQuery}{' '}
-          {highlightQuery.length === 0
-            ? '(type to filter)'
-            : `(${highlightMatches.length} match${highlightMatches.length === 1 ? '' : 'es'})`}
         </text>
       )}
 

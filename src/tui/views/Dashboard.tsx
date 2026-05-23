@@ -4,7 +4,6 @@ import type { ScrollBoxRenderable } from '@opentui/core'
 import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
-import { StatusIndicator } from '../components/StatusIndicator.tsx'
 import { Confirm } from '../components/Confirm.tsx'
 import type { KeyHint } from '../components/KeyHints.tsx'
 import { useFilterNavigation } from '../hooks/useFilterNavigation.ts'
@@ -73,9 +72,7 @@ function buildHighlightedSegments(text: string, ranges: MatchRange[]): React.Rea
 
 export function Dashboard({
   repoRoot,
-  repoName,
   worktrees,
-  traefikRunning,
   onSelectWorktree,
   onOpenWorktree,
   activeWorktreeName,
@@ -282,32 +279,6 @@ export function Dashboard({
 
   return (
     <box flexDirection="column" width="100%" height="100%">
-      {/* Header */}
-      <box flexDirection="row" gap={1} flexShrink={0}>
-        <text>
-          <b>port: {repoName}</b>
-        </text>
-        {loading && <text fg="#888888"> refreshing...</text>}
-        {busy && <text fg="#FFFF00"> working...</text>}
-      </box>
-
-      <box height={1} flexShrink={0} />
-
-      {/* Traefik status */}
-      <box flexDirection="row" gap={1} flexShrink={0}>
-        <text fg="#888888">Traefik:</text>
-        <StatusIndicator running={traefikRunning} />
-        <text>{traefikRunning ? 'running' : 'stopped'}</text>
-      </box>
-
-      <box height={1} flexShrink={0} />
-
-      {/* Worktree list header */}
-      <text fg="#888888" flexShrink={0}>
-        <b>Worktrees</b>
-      </text>
-
-      {/* Worktree rows */}
       <scrollbox
         ref={scrollRef}
         flexGrow={1}
@@ -355,8 +326,6 @@ export function Dashboard({
           )
         })}
       </scrollbox>
-
-      <box height={1} flexShrink={0} />
 
       {/* Status message */}
       {statusMessage && (
