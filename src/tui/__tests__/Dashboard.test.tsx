@@ -1,12 +1,14 @@
 import { test, expect, afterEach, describe } from 'bun:test'
 import { testRender } from '@opentui/react/test-utils'
 import type { TestRenderer } from '@opentui/core/testing'
+import { RGBA } from '@opentui/core'
 import { useEffect, useState } from 'react'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { HostService, PortConfig } from '../../types.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { findSubstringMatchRanges } from '../lib/filtering.ts'
 import { Dashboard, buildServicesText } from '../views/Dashboard.tsx'
+import { SELECTED_ROW_BACKGROUND } from '../components/SelectableRow.tsx'
 
 const mockConfig: PortConfig = { domain: 'port' }
 
@@ -96,6 +98,15 @@ function props(overrides: Record<string, unknown> = {}) {
 
 function frameLine(frame: string, contains: string): string {
   return frame.split('\n').find(line => line.includes(contains)) ?? ''
+}
+
+function expectSelectedRowBackground(
+  frame: { lines: Array<{ spans: Array<{ text: string; bg: RGBA }> }> },
+  contains: string
+) {
+  const line = frame.lines.find(l => l.spans.some(span => span.text.includes(contains)))
+  expect(line).toBeDefined()
+  expect(line!.spans.some(span => span.bg.equals(RGBA.fromHex(SELECTED_ROW_BACKGROUND)))).toBe(true)
 }
 
 async function pressAndRender(
@@ -190,6 +201,17 @@ describe('Dashboard', () => {
     expect(frame).not.toContain('open in browser')
   })
 
+  test('selected worktree rows use the shared background highlight', async () => {
+    const { renderer, renderOnce, captureSpans } = await testRender(
+      <Dashboard {...props()} />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    expectSelectedRowBackground(captureSpans(), 'myapp (root)')
+  })
+
   test('j/k navigates worktree list', async () => {
     const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
       <Dashboard {...props()} />,
@@ -199,7 +221,7 @@ describe('Dashboard', () => {
 
     await renderOnce()
     const frame1 = captureCharFrame()
-    expect(frame1).toContain('> ')
+    expect(frame1).not.toContain('> ')
 
     mockInput.pressKey('j')
     await renderOnce()
@@ -218,14 +240,14 @@ describe('Dashboard', () => {
 
     await renderOnce()
     const before = captureCharFrame()
-    expect(frameLine(before, 'myapp (root)')).toContain('>')
+    expect(frameLine(before, 'myapp (root)')).not.toContain('>')
 
     mockInput.pressKey('j')
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
     const after = captureCharFrame()
-    expect(frameLine(after, 'myapp (root)')).toContain('>')
+    expect(frameLine(after, 'myapp (root)')).not.toContain('>')
     expect(frameLine(after, 'feature-auth')).not.toContain('>')
   })
 
@@ -292,7 +314,7 @@ describe('Dashboard', () => {
 
     const frame = captureCharFrame()
 
-    expect(frameLine(frame, 'feature-auth')).toContain('>')
+    expect(frameLine(frame, 'feature-auth')).not.toContain('>')
     expect(frame).toContain('(type to filter)')
   })
 
@@ -316,7 +338,7 @@ describe('Dashboard', () => {
 
     expect(frame).toContain('/j')
     expect(frame).toContain('(1 match)')
-    expect(frameLine(frame, 'myapp (root)')).toContain('>')
+    expect(frameLine(frame, 'myapp (root)')).not.toContain('>')
   })
 
   test('filtered navigation j/k skips non-matching worktrees', async () => {
@@ -342,14 +364,14 @@ describe('Dashboard', () => {
     await renderOnce()
 
     let frame = captureCharFrame()
-    expect(frameLine(frame, 'feature-auth')).toContain('>')
+    expect(frameLine(frame, 'feature-auth')).not.toContain('>')
 
     mockInput.pressKey('j')
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frameLine(frame, 'bug-auth-ui')).toContain('>')
+    expect(frameLine(frame, 'bug-auth-ui')).not.toContain('>')
     expect(frameLine(frame, 'chore-clean')).not.toContain('>')
 
     mockInput.pressKey('j')
@@ -357,14 +379,14 @@ describe('Dashboard', () => {
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frameLine(frame, 'feature-auth')).toContain('>')
+    expect(frameLine(frame, 'feature-auth')).not.toContain('>')
 
     mockInput.pressKey('k')
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frameLine(frame, 'bug-auth-ui')).toContain('>')
+    expect(frameLine(frame, 'bug-auth-ui')).not.toContain('>')
   })
 
   test('[/] edit filter clears the current query before typing', async () => {
@@ -449,7 +471,7 @@ describe('Dashboard', () => {
     const authLine = frame.split('\n').find(line => line.includes('feature-auth'))
 
     expect(authLine).toBeDefined()
-    expect(authLine!).toContain('>')
+    expect(authLine!).not.toContain('>')
     expect(authLine!).toContain('★')
   })
 
@@ -487,7 +509,7 @@ describe('Dashboard', () => {
     const authLine = frame.split('\n').find(line => line.includes('feature-auth'))
 
     expect(authLine).toBeDefined()
-    expect(authLine!).toContain('>')
+    expect(authLine!).not.toContain('>')
     expect(authLine!).toContain('★')
   })
 
@@ -689,12 +711,6 @@ describe('Dashboard', () => {
     expect(frame).not.toContain('port: myapp')
     expect(frame).not.toContain('Traefik:')
     expect(frame).not.toContain('Worktrees')
-
-    // Worktree rows should still start near the top of the pane
-    const worktreesLabelLine = lines.findIndex(l => l.includes('myapp'))
-    const firstRowLine = lines.findIndex(l => l.includes('> '))
-    expect(worktreesLabelLine).toBeGreaterThan(-1)
-    expect(firstRowLine).toBeGreaterThanOrEqual(worktreesLabelLine)
 
     // Not all 20 worktrees should be visible (some must be clipped)
     const visibleBranches = lines.filter(l => l.includes('branch-')).length

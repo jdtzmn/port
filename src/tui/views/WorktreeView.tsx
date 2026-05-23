@@ -6,6 +6,7 @@ import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
 import type { KeyHint } from '../components/KeyHints.tsx'
+import { SelectableRow } from '../components/SelectableRow.tsx'
 import { useFilterNavigation } from '../hooks/useFilterNavigation.ts'
 import { findSubstringMatchRanges, type MatchRange } from '../lib/filtering.ts'
 
@@ -323,8 +324,7 @@ export function WorktreeView({
                   : []
 
                 return (
-                  <box key={`${service.name}-${service.port}-${i}`} flexDirection="row" gap={1}>
-                    <text>{isSelected ? '>' : ' '}</text>
+                  <SelectableRow key={`${service.name}-${service.port}-${i}`} selected={isSelected}>
                     <text>
                       {isSelected ? (
                         <b>
@@ -340,7 +340,7 @@ export function WorktreeView({
                     </text>
                     <StatusIndicator running={service.running} />
                     <text fg="#888888">{service.running ? 'running' : 'stopped'}</text>
-                  </box>
+                  </SelectableRow>
                 )
               })}
           </>
@@ -359,8 +359,7 @@ export function WorktreeView({
                   : []
 
                 return (
-                  <box key={`host-${service.port}`} flexDirection="row" gap={1}>
-                    <text>{isSelected ? '>' : ' '}</text>
+                  <SelectableRow key={`host-${service.port}`} selected={isSelected}>
                     <text>
                       {isSelected ? (
                         <b>
@@ -375,7 +374,7 @@ export function WorktreeView({
                       )}
                     </text>
                     <StatusIndicator running={service.running} />
-                  </box>
+                  </SelectableRow>
                 )
               })}
           </>

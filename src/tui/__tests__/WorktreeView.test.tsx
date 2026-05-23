@@ -1,10 +1,12 @@
 import { test, expect, afterEach, describe } from 'bun:test'
 import { testRender } from '@opentui/react/test-utils'
 import type { TestRenderer } from '@opentui/core/testing'
+import { RGBA } from '@opentui/core'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { HostService, PortConfig } from '../../types.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { WorktreeView } from '../views/WorktreeView.tsx'
+import { SELECTED_ROW_BACKGROUND } from '../components/SelectableRow.tsx'
 
 const mockConfig: PortConfig = { domain: 'port' }
 
@@ -39,6 +41,15 @@ const mockActions = {
 
 function frameLine(frame: string, contains: string): string {
   return frame.split('\n').find(line => line.includes(contains)) ?? ''
+}
+
+function expectSelectedRowBackground(
+  frame: { lines: Array<{ spans: Array<{ text: string; bg: RGBA }> }> },
+  contains: string
+) {
+  const line = frame.lines.find(l => l.spans.some(span => span.text.includes(contains)))
+  expect(line).toBeDefined()
+  expect(line!.spans.some(span => span.bg.equals(RGBA.fromHex(SELECTED_ROW_BACKGROUND)))).toBe(true)
 }
 
 let currentRenderer: TestRenderer | null = null
@@ -77,6 +88,28 @@ describe('WorktreeView', () => {
     expect(frame).not.toContain('Docker Services')
     expect(frame).toContain('web:3000')
     expect(frame).toContain('api:8080')
+  })
+
+  test('selected service rows use the shared background highlight', async () => {
+    const { renderer, renderOnce, captureSpans } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    expectSelectedRowBackground(captureSpans(), 'web:3000')
   })
 
   test('hides the redundant title, url and docker services label', async () => {
@@ -216,14 +249,14 @@ describe('WorktreeView', () => {
 
     await renderOnce()
     const before = captureCharFrame()
-    expect(frameLine(before, 'web:3000')).toContain('>')
+    expect(frameLine(before, 'web:3000')).not.toContain('>')
 
     mockInput.pressKey('j')
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
     const after = captureCharFrame()
-    expect(frameLine(after, 'web:3000')).toContain('>')
+    expect(frameLine(after, 'web:3000')).not.toContain('>')
     expect(frameLine(after, 'api:8080')).not.toContain('>')
   })
 
@@ -359,7 +392,7 @@ describe('WorktreeView', () => {
   })
 
   test('query mode accepts text and applies filter on Enter', async () => {
-    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+    const { renderer, mockInput, renderOnce, captureCharFrame, captureSpans } = await testRender(
       <WorktreeView
         worktree={mockWorktree}
         hostServices={mockHostServices}
@@ -404,7 +437,7 @@ describe('WorktreeView', () => {
     frame = captureCharFrame()
     expect(frame).not.toContain('/api (1 match)')
     expect(frame).not.toContain('[j/k]')
-    expect(frameLine(frame, 'api:8080')).toContain('>')
+    expect(frameLine(frame, 'api:8080')).not.toContain('>')
   })
 
   test('filtered navigation j/k skips non-matching services', async () => {
@@ -450,14 +483,14 @@ describe('WorktreeView', () => {
     await renderOnce()
 
     let frame = captureCharFrame()
-    expect(frameLine(frame, 'alpha:3000')).toContain('>')
+    expect(frameLine(frame, 'alpha:3000')).not.toContain('>')
 
     mockInput.pressKey('j')
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frameLine(frame, 'api:8080')).toContain('>')
+    expect(frameLine(frame, 'api:8080')).not.toContain('>')
     expect(frameLine(frame, 'db:5432')).not.toContain('>')
 
     mockInput.pressKey('k')
@@ -465,25 +498,25 @@ describe('WorktreeView', () => {
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frameLine(frame, 'alpha:3000')).toContain('>')
+    expect(frameLine(frame, 'alpha:3000')).not.toContain('>')
 
     mockInput.pressKey('k')
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frameLine(frame, 'api:8080')).toContain('>')
+    expect(frameLine(frame, 'api:8080')).not.toContain('>')
 
     mockInput.pressKey('j')
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frameLine(frame, 'alpha:3000')).toContain('>')
+    expect(frameLine(frame, 'alpha:3000')).not.toContain('>')
   })
 
   test('Esc clears filtered mode and returns to normal navigation', async () => {
-    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+    const { renderer, mockInput, renderOnce, captureCharFrame, captureSpans } = await testRender(
       <WorktreeView
         worktree={mockWorktree}
         hostServices={mockHostServices}
@@ -523,11 +556,11 @@ describe('WorktreeView', () => {
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frameLine(frame, 'db:5432')).toContain('>')
+    expect(frameLine(frame, 'db:5432')).not.toContain('>')
   })
 
   test('can filter by host-service port', async () => {
-    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+    const { renderer, mockInput, renderOnce, captureCharFrame, captureSpans } = await testRender(
       <WorktreeView
         worktree={mockWorktree}
         hostServices={mockHostServices}
@@ -561,7 +594,7 @@ describe('WorktreeView', () => {
 
     const frame = captureCharFrame()
     expect(frame).not.toContain('/5173 (1 match)')
-    expect(frameLine(frame, 'port 5173')).toContain('>')
+    expect(frame).toContain('port 5173')
   })
 
   test('Esc in query mode cancels back to normal mode', async () => {

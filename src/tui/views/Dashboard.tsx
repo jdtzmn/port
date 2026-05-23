@@ -7,6 +7,7 @@ import type { ActionResult } from '../hooks/useActions.ts'
 import { Confirm } from '../components/Confirm.tsx'
 import type { KeyHint } from '../components/KeyHints.tsx'
 import { useFilterNavigation } from '../hooks/useFilterNavigation.ts'
+import { SelectableRow } from '../components/SelectableRow.tsx'
 import { findSubstringMatchRanges, type MatchRange } from '../lib/filtering.ts'
 import { orderWorktreesForDashboard } from '../lib/worktreeOrdering.ts'
 
@@ -300,10 +301,7 @@ export function Dashboard({
             : []
 
           return (
-            <box key={worktree.name} flexDirection="row" height={1} overflow="hidden">
-              <text wrapMode="none" flexShrink={0}>
-                {isSelected ? '> ' : '  '}
-              </text>
+            <SelectableRow key={worktree.name} selected={isSelected}>
               {isActive && (
                 <text wrapMode="none" flexShrink={0} fg="#FFFF00">
                   ★{' '}
@@ -312,17 +310,7 @@ export function Dashboard({
               <text flexShrink={1} wrapMode="none">
                 {matchRanges.length > 0 ? buildHighlightedSegments(nameStr, matchRanges) : nameStr}
               </text>
-              {totalCount === 0 && loading && (
-                <text wrapMode="none" flexShrink={0} fg="#555555">
-                  {' ...'}
-                </text>
-              )}
-              {totalCount > 0 && (
-                <text wrapMode="none" flexShrink={0}>
-                  {'  '}
-                </text>
-              )}
-            </box>
+            </SelectableRow>
           )
         })}
       </scrollbox>
