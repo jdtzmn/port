@@ -140,14 +140,16 @@ export async function down(options?: { yes?: boolean }): Promise<void> {
 
     if (!shouldStopSharedStack) {
       output.newline()
-      const { stopSharedStackConfirm } = await inquirer.prompt<{ stopSharedStackConfirm: boolean }>([
-        {
-          type: 'confirm',
-          name: 'stopSharedStackConfirm',
-          message: 'No other port projects running. Stop Traefik?',
-          default: true,
-        },
-      ])
+      const { stopSharedStackConfirm } = await inquirer.prompt<{ stopSharedStackConfirm: boolean }>(
+        [
+          {
+            type: 'confirm',
+            name: 'stopSharedStackConfirm',
+            message: 'No other port projects running. Stop Traefik?',
+            default: true,
+          },
+        ]
+      )
       shouldStopSharedStack = stopSharedStackConfirm
     }
 

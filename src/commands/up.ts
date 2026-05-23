@@ -1,7 +1,15 @@
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import { registerProject } from '../lib/registry.ts'
-import { runCompose, writeOverrideFile, checkComposeVersion, parseComposeFile, getAllPorts, getServicePorts, getProjectName } from '../lib/compose.ts'
+import {
+  runCompose,
+  writeOverrideFile,
+  checkComposeVersion,
+  parseComposeFile,
+  getAllPorts,
+  getServicePorts,
+  getProjectName,
+} from '../lib/compose.ts'
 import { prepareSharedStack } from '../lib/shared-stack.ts'
 import { checkDns } from '../lib/dns.ts'
 import { hookExists, runPostUpHook } from '../lib/hooks.ts'

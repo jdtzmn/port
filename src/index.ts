@@ -111,16 +111,10 @@ program.command('list').alias('ls').description('Print worktree names, one per l
 program.command('status').description('Show service status across all worktrees').action(status)
 
 // port start
-program
-  .command('start')
-  .description('Start the shared Traefik + 404 handler stack')
-  .action(start)
+program.command('start').description('Start the shared Traefik + 404 handler stack').action(start)
 
 // port stop
-program
-  .command('stop')
-  .description('Stop the shared Traefik + 404 handler stack')
-  .action(stop)
+program.command('stop').description('Stop the shared Traefik + 404 handler stack').action(stop)
 
 // port enter <branch>
 program
