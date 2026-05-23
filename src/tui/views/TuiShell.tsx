@@ -5,6 +5,8 @@ import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { Dashboard } from './Dashboard.tsx'
 import { WorktreeView } from './WorktreeView.tsx'
+import { KeyHints, type KeyHint } from '../components/KeyHints.tsx'
+import { StatusIndicator } from '../components/StatusIndicator.tsx'
 import {
   adjustSplitPercent,
   computePaneWidths,
@@ -60,6 +62,8 @@ export function TuiShell({
   const [activePane, setActivePane] = useState<ActivePane>(PANES.worktrees)
   const [splitPercent, setSplitPercent] = useState(0.5)
   const [selectedWorktreeName, setSelectedWorktreeName] = useState(activeWorktreeName)
+  const [worktreeFooterHints, setWorktreeFooterHints] = useState<KeyHint[]>([])
+  const [serviceFooterHints, setServiceFooterHints] = useState<KeyHint[]>([])
   const { width } = useTerminalDimensions()
 
   const currentSelectedWorktree = useMemo(() => {
@@ -107,7 +111,8 @@ export function TuiShell({
   })
 
   return (
-    <box flexDirection="row" width="100%" height="100%">
+    <box flexDirection="column" width="100%" height="100%">
+      <box flexDirection="row" flexGrow={1}>
       <box
         width={split.leftWidth}
         height="100%"
@@ -141,6 +146,7 @@ export function TuiShell({
           statusMessage={statusMessage}
           showStatus={showStatus}
           keyboardEnabled={activePane === PANES.worktrees}
+          onFooterHintsChange={setWorktreeFooterHints}
         />
       </box>
 
@@ -165,7 +171,19 @@ export function TuiShell({
           statusMessage={statusMessage}
           showStatus={showStatus}
           keyboardEnabled={activePane === PANES.services}
+          onFooterHintsChange={setServiceFooterHints}
         />
+      </box>
+      </box>
+
+      <box flexDirection="row" justifyContent="space-between" flexShrink={0} height={1} paddingX={1}>
+        <KeyHints hints={activePane === PANES.worktrees ? worktreeFooterHints : serviceFooterHints} />
+        <box flexDirection="row" gap={1} flexShrink={0}>
+          <StatusIndicator running={traefikRunning} />
+          <text fg="#888888" wrapMode="none">
+            {traefikRunning ? 'Port Running' : 'Port Stopped'}
+          </text>
+        </box>
       </box>
     </box>
   )

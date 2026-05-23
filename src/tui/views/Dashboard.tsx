@@ -5,8 +5,8 @@ import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
-import { KeyHints } from '../components/KeyHints.tsx'
 import { Confirm } from '../components/Confirm.tsx'
+import type { KeyHint } from '../components/KeyHints.tsx'
 import { useFilterNavigation } from '../hooks/useFilterNavigation.ts'
 import { findSubstringMatchRanges, type MatchRange } from '../lib/filtering.ts'
 import { orderWorktreesForDashboard } from '../lib/worktreeOrdering.ts'
@@ -36,6 +36,7 @@ interface DashboardProps {
   statusMessage: { text: string; type: 'success' | 'error' } | null
   showStatus: (text: string, type: 'success' | 'error') => void
   keyboardEnabled?: boolean
+  onFooterHintsChange?: (hints: KeyHint[]) => void
 }
 
 type PendingAction = 'archive' | null
@@ -86,6 +87,7 @@ export function Dashboard({
   keyboardEnabled = true,
   selectedWorktreeName,
   onSelectedWorktreeNameChange,
+  onFooterHintsChange,
 }: DashboardProps) {
   const orderedWorktrees = useMemo(
     () => orderWorktreesForDashboard(worktrees, activeWorktreeName),
@@ -141,6 +143,41 @@ export function Dashboard({
 
   const selectedWorktree = orderedWorktrees[selectedIndex]
   const isRootSelected = selectedWorktree?.path === repoRoot
+
+  const footerHints = useMemo<KeyHint[]>(
+    () =>
+      pendingAction
+        ? []
+        : mode === 'query'
+          ? [
+              { key: 'Type', action: 'filter' },
+              { key: 'Backspace', action: 'delete' },
+              { key: 'Enter', action: 'apply' },
+              { key: 'Esc', action: 'cancel' },
+            ]
+          : mode === 'filtered-nav'
+            ? [
+                { key: 'j/k', action: 'next/prev match' },
+                { key: '/', action: 'edit filter' },
+                { key: 'Esc', action: 'clear filter' },
+                { key: 'Enter', action: 'open in browser' },
+              ]
+            : [
+                { key: 'Enter', action: 'inspect' },
+                { key: 'o', action: 'open' },
+                { key: '/', action: 'filter' },
+                { key: 'u', action: 'up' },
+                { key: 'd', action: 'down' },
+                { key: 'a', action: 'archive' },
+                { key: 'r', action: 'refresh' },
+                { key: 'q', action: 'quit' },
+              ],
+    [mode, pendingAction]
+  )
+
+  useEffect(() => {
+    onFooterHintsChange?.(footerHints)
+  }, [footerHints, onFooterHintsChange])
 
   useKeyboard(event => {
     if (!keyboardEnabled || event.ctrl || event.meta || busy) return
@@ -314,11 +351,6 @@ export function Dashboard({
                   {'  '}
                 </text>
               )}
-              {totalCount > 0 && (
-                <text wrapMode="none" flexShrink={0} fg="#555555">
-                  {'  ' + totalCount + ' total'}
-                </text>
-              )}
             </box>
           )
         })}
@@ -362,38 +394,6 @@ export function Dashboard({
         />
       )}
 
-      {/* Key hints */}
-      {!pendingAction && (
-        <KeyHints
-          hints={
-            mode === 'query'
-              ? [
-                  { key: 'Type', action: 'filter' },
-                  { key: 'Backspace', action: 'delete' },
-                  { key: 'Enter', action: 'apply' },
-                  { key: 'Esc', action: 'cancel' },
-                ]
-              : mode === 'filtered-nav'
-                ? [
-                    { key: 'j/k', action: 'next/prev match' },
-                    { key: '/', action: 'edit filter' },
-                    { key: 'Esc', action: 'clear filter' },
-                    { key: 'Enter', action: 'inspect' },
-                    { key: 'o', action: 'open' },
-                  ]
-                : [
-                    { key: 'Enter', action: 'inspect' },
-                    { key: 'o', action: 'open' },
-                    { key: '/', action: 'filter' },
-                    { key: 'u', action: 'up' },
-                    { key: 'd', action: 'down' },
-                    { key: 'a', action: 'archive' },
-                    { key: 'r', action: 'refresh' },
-                    { key: 'q', action: 'quit' },
-                  ]
-          }
-        />
-      )}
     </box>
   )
 }

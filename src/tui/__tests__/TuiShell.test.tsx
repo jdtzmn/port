@@ -94,4 +94,38 @@ describe('TuiShell', () => {
     frame = captureCharFrame()
     expect(frame).toContain('api:8080')
   })
+
+  test('renders one shared footer row with plain hints and traefik status', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <TuiShell
+        repoRoot="/repo"
+        repoName="myapp"
+        worktrees={mockWorktrees}
+        hostServices={[] as HostService[]}
+        traefikRunning={true}
+        config={mockConfig}
+        activeWorktreeName="myapp"
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+        requestExit={noop}
+      />,
+      { width: 96, height: 24 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+    const footerLine = frame
+      .split('\n')
+      .filter(line => line.trim().length > 0)
+      .at(-1) ?? ''
+
+    expect(frame).not.toContain('[Enter]')
+    expect(frame).not.toContain('[q]')
+    expect(footerLine.startsWith(' ')).toBe(true)
+    expect(footerLine).toContain('Port Running')
+  })
 })

@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useKeyboard } from '@opentui/react'
 import type { ScrollBoxRenderable } from '@opentui/core'
 import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
-import { KeyHints } from '../components/KeyHints.tsx'
+import type { KeyHint } from '../components/KeyHints.tsx'
 import { useFilterNavigation } from '../hooks/useFilterNavigation.ts'
 import { findSubstringMatchRanges, type MatchRange } from '../lib/filtering.ts'
 
@@ -26,6 +26,7 @@ interface WorktreeViewProps {
   statusMessage: { text: string; type: 'success' | 'error' } | null
   showStatus: (text: string, type: 'success' | 'error') => void
   keyboardEnabled?: boolean
+  onFooterHintsChange?: (hints: KeyHint[]) => void
 }
 
 interface ServiceItem {
@@ -134,6 +135,7 @@ export function WorktreeView({
   statusMessage,
   showStatus,
   keyboardEnabled = true,
+  onFooterHintsChange,
 }: WorktreeViewProps) {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -201,6 +203,39 @@ export function WorktreeView({
     setSelectedIndex,
     getSearchText: serviceSearchText,
   })
+
+  const footerHints = useMemo<KeyHint[]>(
+    () =>
+      mode === 'query'
+        ? [
+            { key: 'Type', action: 'filter' },
+            { key: 'Backspace', action: 'delete' },
+            { key: 'Enter', action: 'apply' },
+            { key: 'Esc', action: 'cancel' },
+          ]
+        : mode === 'filtered-nav'
+          ? [
+              { key: 'j/k', action: 'next/prev match' },
+              { key: '/', action: 'edit filter' },
+              { key: 'Esc', action: 'clear filter' },
+              { key: 'Enter', action: 'inspect' },
+              { key: 'o', action: 'open' },
+            ]
+          : [
+              { key: 'Enter', action: 'open in browser' },
+              { key: '/', action: 'filter' },
+              { key: 'd', action: 'down' },
+              { key: 'x', action: 'kill host svc' },
+              { key: 'Esc', action: 'back' },
+              { key: 'r', action: 'refresh' },
+              { key: 'q', action: 'quit' },
+            ],
+    [mode]
+  )
+
+  useEffect(() => {
+    onFooterHintsChange?.(footerHints)
+  }, [footerHints, onFooterHintsChange])
 
   useKeyboard(event => {
     if (!keyboardEnabled || event.ctrl || event.meta || busy) return
@@ -409,34 +444,6 @@ export function WorktreeView({
         </text>
       )}
 
-      {/* Key hints */}
-      <KeyHints
-        hints={
-          mode === 'query'
-            ? [
-                { key: 'Type', action: 'filter' },
-                { key: 'Backspace', action: 'delete' },
-                { key: 'Enter', action: 'apply' },
-                { key: 'Esc', action: 'cancel' },
-              ]
-            : mode === 'filtered-nav'
-              ? [
-                  { key: 'j/k', action: 'next/prev match' },
-                  { key: '/', action: 'edit filter' },
-                  { key: 'Esc', action: 'clear filter' },
-                  { key: 'Enter', action: 'open in browser' },
-                ]
-              : [
-                  { key: 'Enter', action: 'open in browser' },
-                  { key: '/', action: 'filter' },
-                  { key: 'd', action: 'down' },
-                  { key: 'x', action: 'kill host svc' },
-                  { key: 'Esc', action: 'back' },
-                  { key: 'r', action: 'refresh' },
-                  { key: 'q', action: 'quit' },
-                ]
-        }
-      />
     </box>
   )
 }

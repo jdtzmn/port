@@ -175,7 +175,7 @@ describe('Dashboard', () => {
     ])
   })
 
-  test('shows key hints including enter, open, and jump', async () => {
+  test('does not render key hints in the worktree pane', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <Dashboard {...props()} />,
       { width: 80, height: 20 }
@@ -185,19 +185,9 @@ describe('Dashboard', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    // Note: scrollbox has a test-renderer artifact where its internal
-    // structure overwrites some sibling text in captureCharFrame().
-    // Key brackets are reliably captured; some action labels are not.
-    expect(frame).toContain('[Enter]')
-    expect(frame).toContain('[o]')
-    expect(frame).toContain('open')
-    expect(frame).toContain('[/]')
-    expect(frame).toContain('filter')
-    expect(frame).toContain('[u]')
-    expect(frame).toContain('[d]')
-    expect(frame).toContain('[a]')
-    expect(frame).toContain('[r]')
-    expect(frame).toContain('[q]')
+    expect(frame).not.toContain('[Enter]')
+    expect(frame).not.toContain('Enter inspect')
+    expect(frame).not.toContain('open in browser')
   })
 
   test('j/k navigates worktree list', async () => {
@@ -540,14 +530,14 @@ describe('Dashboard', () => {
     const appLine = frame.split('\n').find(l => l.includes('(root)'))!
 
     expect(appLine).toContain('★')
-    expect(appLine).toContain('4 total')
+    expect(appLine).not.toContain(' total')
     expect(appLine).not.toContain('web')
     expect(appLine).not.toContain('api')
     expect(appLine).not.toContain('db')
     expect(appLine).not.toContain('redis')
   })
 
-  test('shows total count for worktrees with services', async () => {
+  test('does not show service totals in the worktree pane', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <Dashboard {...props({ activeWorktreeName: '' })} />,
       { width: 80, height: 20 }
@@ -557,11 +547,10 @@ describe('Dashboard', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    // mockWorktrees first entry has 2 services (web, db)
-    expect(frame).toContain('2 total')
+    expect(frame).not.toContain(' total')
   })
 
-  test('services text truncates at narrow widths and shows total count', async () => {
+  test('rows stay single-line with long names and narrow widths', async () => {
     const manyServicesWorktrees: WorktreeStatus[] = [
       {
         name: 'myapp',
@@ -578,7 +567,7 @@ describe('Dashboard', () => {
       },
     ]
 
-    // 60 cols: enough for name + some services + total, but not all services
+    // 60 cols: enough for names, but the rows should still stay on one line
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <Dashboard {...props({ worktrees: manyServicesWorktrees, activeWorktreeName: '' })} />,
       { width: 60, height: 20 }
@@ -588,11 +577,10 @@ describe('Dashboard', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    // The total count suffix should always be visible
-    expect(frame).toContain('6 total')
+    expect(frame).not.toContain(' total')
   })
 
-  test('rows stay single-line with long names, many services, and narrow widths', async () => {
+  test('rows stay single-line with long names and many services', async () => {
     const stressWorktrees: WorktreeStatus[] = [
       {
         name: 'myapp',
@@ -664,11 +652,7 @@ describe('Dashboard', () => {
       // At minimum, 4 worktree names should each appear on their own line
       expect(worktreeLines.length).toBeGreaterThanOrEqual(4)
 
-      // "N total" suffix should always be visible for every worktree with services
-      expect(frame).toContain('10 total')
-      expect(frame).toContain('7 total')
-      expect(frame).toContain('2 total')
-      expect(frame).toContain('1 total')
+      expect(frame).not.toContain(' total')
 
       // No worktree name should spill onto a second line (check that name fragments
       // like "(root)" don't appear on a line without "myapp")
