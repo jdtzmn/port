@@ -150,7 +150,7 @@ describe('Dashboard', () => {
     expect(frame).toContain('(root)')
   })
 
-  test('shows service status indicators', async () => {
+  test('does not list services in the worktree pane', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <Dashboard {...props()} />,
       { width: 60, height: 20 }
@@ -160,8 +160,10 @@ describe('Dashboard', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    expect(frame).toContain('●')
-    expect(frame).toContain('○')
+    expect(frame).not.toContain('web ●')
+    expect(frame).not.toContain('web ○')
+    expect(frame).not.toContain('db ●')
+    expect(frame).not.toContain('db ○')
   })
 
   test('findSubstringMatchRanges returns all case-insensitive matches', () => {
@@ -512,7 +514,7 @@ describe('Dashboard', () => {
     expect(frame).toContain('refreshing...')
   })
 
-  test('displays running services before stopped services', async () => {
+  test('keeps active marker and total count without listing service names', async () => {
     const mixedWorktrees: WorktreeStatus[] = [
       {
         name: 'myapp',
@@ -528,7 +530,7 @@ describe('Dashboard', () => {
     ]
 
     const { renderer, renderOnce, captureCharFrame } = await testRender(
-      <Dashboard {...props({ worktrees: mixedWorktrees, activeWorktreeName: '' })} />,
+      <Dashboard {...props({ worktrees: mixedWorktrees, activeWorktreeName: 'myapp' })} />,
       { width: 120, height: 20 }
     )
     currentRenderer = renderer
@@ -537,20 +539,12 @@ describe('Dashboard', () => {
     const frame = captureCharFrame()
     const appLine = frame.split('\n').find(l => l.includes('(root)'))!
 
-    // Running services (web, api) should appear before stopped (db, redis)
-    const webPos = appLine.indexOf('web')
-    const apiPos = appLine.indexOf('api')
-    const dbPos = appLine.indexOf('db')
-    const redisPos = appLine.indexOf('redis')
-
-    expect(webPos).toBeGreaterThan(-1)
-    expect(apiPos).toBeGreaterThan(-1)
-    expect(dbPos).toBeGreaterThan(-1)
-    expect(redisPos).toBeGreaterThan(-1)
-    expect(webPos).toBeLessThan(dbPos)
-    expect(apiPos).toBeLessThan(dbPos)
-    expect(webPos).toBeLessThan(redisPos)
-    expect(apiPos).toBeLessThan(redisPos)
+    expect(appLine).toContain('★')
+    expect(appLine).toContain('4 total')
+    expect(appLine).not.toContain('web')
+    expect(appLine).not.toContain('api')
+    expect(appLine).not.toContain('db')
+    expect(appLine).not.toContain('redis')
   })
 
   test('shows total count for worktrees with services', async () => {

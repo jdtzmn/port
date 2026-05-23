@@ -47,4 +47,9 @@ describe('paneLayout', () => {
     expect(resolveShellPaneKey('worktrees', 'H')).toBe('resize-left')
     expect(resolveShellPaneKey('services', 'L')).toBe('resize-right')
   })
+
+  test('routes shifted lowercase keys to split resizing', () => {
+    expect(resolveShellPaneKey('worktrees', 'h', true)).toBe('resize-left')
+    expect(resolveShellPaneKey('services', 'l', true)).toBe('resize-right')
+  })
 })

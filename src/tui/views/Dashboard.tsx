@@ -285,10 +285,6 @@ export function Dashboard({
           const isSelected = index === selectedIndex
           const isRoot = worktree.path === repoRoot
           const isActive = worktree.name === activeWorktreeName
-          const sortedServices = [...worktree.services].sort(
-            (a, b) => Number(b.running) - Number(a.running)
-          )
-          const servicesText = buildServicesText(sortedServices)
           const totalCount = worktree.services.length
           const nameStr = worktree.name + (isRoot ? ' (root)' : '')
           const matchRanges = highlightQuery
@@ -316,11 +312,6 @@ export function Dashboard({
               {totalCount > 0 && (
                 <text wrapMode="none" flexShrink={0}>
                   {'  '}
-                </text>
-              )}
-              {totalCount > 0 && (
-                <text fg="#888888" flexShrink={100} wrapMode="none">
-                  {servicesText}
                 </text>
               )}
               {totalCount > 0 && (

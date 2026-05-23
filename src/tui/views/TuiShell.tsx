@@ -8,7 +8,6 @@ import { WorktreeView } from './WorktreeView.tsx'
 import {
   adjustSplitPercent,
   computePaneWidths,
-  getPaneChrome,
   resolveShellPaneKey,
   type ActivePane,
 } from '../lib/paneLayout.ts'
@@ -75,7 +74,6 @@ export function TuiShell({
   }, [currentSelectedWorktree, selectedWorktreeName])
 
   const split = computePaneWidths(width, splitPercent)
-  const chrome = getPaneChrome(activePane)
   const activeWorktreeHostServices = hostServices.filter(
     s => s.repo === repoRoot && s.branch === currentSelectedWorktree?.name
   )
@@ -92,7 +90,7 @@ export function TuiShell({
       return
     }
 
-    const shellKeyAction = resolveShellPaneKey(activePane, event.name)
+    const shellKeyAction = resolveShellPaneKey(activePane, event.name, event.shift)
     if (shellKeyAction === PANES.worktrees || shellKeyAction === PANES.services) {
       setActivePane(shellKeyAction)
       return

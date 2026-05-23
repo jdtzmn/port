@@ -44,13 +44,19 @@ export function getPaneChrome(activePane: ActivePane) {
     : { leftTone: 'dim' as const, rightTone: 'bright' as const, dividerTone: 'bright' as const }
 }
 
-export function resolveShellPaneKey(activePane: ActivePane, keyName: string): ShellPaneAction {
+export function resolveShellPaneKey(
+  activePane: ActivePane,
+  keyName: string,
+  shiftPressed = false
+): ShellPaneAction {
   switch (keyName) {
     case 'h':
     case 'ArrowLeft':
+      if (shiftPressed) return 'resize-left'
       return 'worktrees'
     case 'l':
     case 'ArrowRight':
+      if (shiftPressed) return 'resize-right'
       return 'services'
     case 'H':
       return 'resize-left'
