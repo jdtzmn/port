@@ -8,10 +8,10 @@ import {
 
 describe('paneLayout', () => {
   test('computes pane widths from the split percentage', () => {
-    expect(computePaneWidths(120, 0.5)).toEqual({
-      leftWidth: 60,
+    expect(computePaneWidths(120, 1 / 3)).toEqual({
+      leftWidth: 40,
       dividerWidth: 0,
-      rightWidth: 60,
+      rightWidth: 80,
     })
   })
 

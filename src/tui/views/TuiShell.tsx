@@ -60,7 +60,7 @@ export function TuiShell({
   requestExit,
 }: TuiShellProps) {
   const [activePane, setActivePane] = useState<ActivePane>(PANES.worktrees)
-  const [splitPercent, setSplitPercent] = useState(0.5)
+  const [splitPercent, setSplitPercent] = useState(1 / 3)
   const [selectedWorktreeName, setSelectedWorktreeName] = useState(activeWorktreeName)
   const [worktreeFooterHints, setWorktreeFooterHints] = useState<KeyHint[]>([])
   const [serviceFooterHints, setServiceFooterHints] = useState<KeyHint[]>([])

@@ -96,6 +96,35 @@ describe('TuiShell', () => {
     expect(frame).toContain('api:8080')
   })
 
+  test('defaults to a one-third worktrees and two-thirds services split', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <TuiShell
+        repoRoot="/repo"
+        repoName="myapp"
+        worktrees={mockWorktrees}
+        hostServices={[] as HostService[]}
+        traefikRunning={true}
+        config={mockConfig}
+        activeWorktreeName="myapp"
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+        requestExit={noop}
+      />,
+      { width: 120, height: 24 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+    const servicesLine = frame.split('\n').find(line => line.includes('web:3000')) ?? ''
+
+    expect(servicesLine.indexOf('web:3000')).toBeGreaterThan(35)
+    expect(servicesLine.indexOf('web:3000')).toBeLessThan(55)
+  })
+
   test('renders one shared footer row with plain hints and traefik status', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <TuiShell
