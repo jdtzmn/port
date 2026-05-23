@@ -128,4 +128,33 @@ describe('TuiShell', () => {
     expect(footerLine.startsWith(' ')).toBe(true)
     expect(footerLine).toContain('Port Running')
   })
+
+  test('shows a yellow port dot while loading', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <TuiShell
+        repoRoot="/repo"
+        repoName="myapp"
+        worktrees={mockWorktrees}
+        hostServices={[] as HostService[]}
+        traefikRunning={false}
+        config={mockConfig}
+        activeWorktreeName="myapp"
+        actions={mockActions}
+        refresh={noop}
+        loading={true}
+        statusMessage={null}
+        showStatus={noop}
+        requestExit={noop}
+      />,
+      { width: 96, height: 24 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+
+    expect(frame).toContain('Port')
+    expect(frame).not.toContain('Port Running')
+    expect(frame).not.toContain('Port Stopped')
+  })
 })

@@ -6,7 +6,7 @@ import type { ActionResult } from '../hooks/useActions.ts'
 import { Dashboard } from './Dashboard.tsx'
 import { WorktreeView } from './WorktreeView.tsx'
 import { KeyHints, type KeyHint } from '../components/KeyHints.tsx'
-import { StatusIndicator } from '../components/StatusIndicator.tsx'
+import { PortStatusDot } from '../components/PortStatusDot.tsx'
 import {
   adjustSplitPercent,
   computePaneWidths,
@@ -81,6 +81,7 @@ export function TuiShell({
   const activeWorktreeHostServices = hostServices.filter(
     s => s.repo === repoRoot && s.branch === currentSelectedWorktree?.name
   )
+  const portStatus = loading ? 'unknown' : traefikRunning ? 'running' : 'stopped'
 
   useKeyboard(event => {
     if (event.ctrl || event.meta) return
@@ -179,10 +180,15 @@ export function TuiShell({
       <box flexDirection="row" justifyContent="space-between" flexShrink={0} height={1} paddingX={1}>
         <KeyHints hints={activePane === PANES.worktrees ? worktreeFooterHints : serviceFooterHints} />
         <box flexDirection="row" gap={1} flexShrink={0}>
-          <StatusIndicator running={traefikRunning} />
+          <PortStatusDot status={portStatus} />
           <text fg="#888888" wrapMode="none">
-            {traefikRunning ? 'Port Running' : 'Port Stopped'}
+            Port
           </text>
+          {!loading && (
+            <text fg="#888888" wrapMode="none">
+              {traefikRunning ? 'Running' : 'Stopped'}
+            </text>
+          )}
         </box>
       </box>
     </box>
