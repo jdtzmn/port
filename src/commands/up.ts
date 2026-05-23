@@ -1,25 +1,8 @@
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import { registerProject } from '../lib/registry.ts'
-import {
-  ensureTraefikPorts,
-  traefikFilesExist,
-  initTraefikFiles,
-  ensure404HandlerImage,
-} from '../lib/traefik.ts'
-import {
-  runCompose,
-  writeOverrideFile,
-  startTraefik,
-  isTraefikRunning,
-  restartTraefik,
-  traefikHasRequiredPorts,
-  checkComposeVersion,
-  parseComposeFile,
-  getAllPorts,
-  getServicePorts,
-  getProjectName,
-} from '../lib/compose.ts'
+import { runCompose, writeOverrideFile, checkComposeVersion, parseComposeFile, getAllPorts, getServicePorts, getProjectName } from '../lib/compose.ts'
+import { prepareSharedStack } from '../lib/shared-stack.ts'
 import { checkDns } from '../lib/dns.ts'
 import { hookExists, runPostUpHook } from '../lib/hooks.ts'
 import * as output from '../lib/output.ts'
@@ -76,48 +59,13 @@ export async function up(): Promise<void> {
 
   const ports = getAllPorts(parsedCompose)
 
-  // Ensure Traefik files exist
-  if (!traefikFilesExist()) {
-    output.info('Initializing Traefik configuration...')
-    await initTraefikFiles(ports)
-    output.success('Traefik configuration created')
-  }
-
-  // Ensure all required ports are configured in Traefik
-  const configUpdated = await ensureTraefikPorts(ports)
-  if (configUpdated) {
+  const sharedStackResult = await prepareSharedStack(ports)
+  if (sharedStackResult.started) {
+    output.success('Traefik started')
+  } else if (sharedStackResult.restarted) {
+    output.success('Traefik restarted')
+  } else if (sharedStackResult.updated) {
     output.info('Updated Traefik configuration')
-  }
-
-  // Ensure the 404 handler image is available (builds locally when running from source)
-  await ensure404HandlerImage(
-    () => output.info('Building 404 handler image from source...'),
-    () => output.success('404 handler image built')
-  )
-
-  // Check if Traefik is running
-  const traefikRunning = await isTraefikRunning()
-
-  if (!traefikRunning) {
-    output.info('Starting Traefik...')
-    try {
-      await startTraefik()
-      output.success('Traefik started')
-    } catch (error) {
-      output.error(`Failed to start Traefik: ${error}`)
-      process.exit(1)
-    }
-  } else if (configUpdated || !(await traefikHasRequiredPorts(ports))) {
-    // Restart Traefik if config was updated or the running container
-    // is missing required port bindings (can happen when a parallel
-    // process recreated the container from a stale compose file).
-    output.info('Restarting Traefik with new configuration...')
-    try {
-      await restartTraefik()
-      output.success('Traefik restarted')
-    } catch (error) {
-      output.warn(`Failed to restart Traefik: ${error}`)
-    }
   }
 
   const projectName = getProjectName(repoRoot, name)

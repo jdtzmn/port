@@ -17,8 +17,8 @@ const mocks = vi.hoisted(() => ({
   unregisterProject: vi.fn(),
   hasRegisteredProjects: vi.fn(),
   runCompose: vi.fn(),
-  stopTraefik: vi.fn(),
-  isTraefikRunning: vi.fn(),
+  stopSharedStack: vi.fn(),
+  isSharedStackRunning: vi.fn(),
   getProjectName: vi.fn(),
   existsSync: vi.fn(),
   exit: vi.fn(),
@@ -67,9 +67,12 @@ vi.mock('../lib/registry.ts', () => ({
 
 vi.mock('../lib/compose.ts', () => ({
   runCompose: mocks.runCompose,
-  stopTraefik: mocks.stopTraefik,
-  isTraefikRunning: mocks.isTraefikRunning,
   getProjectName: mocks.getProjectName,
+}))
+
+vi.mock('../lib/shared-stack.ts', () => ({
+  stopSharedStack: mocks.stopSharedStack,
+  isSharedStackRunning: mocks.isSharedStackRunning,
 }))
 
 vi.mock('fs', () => ({
@@ -129,8 +132,8 @@ describe('remove command', () => {
     mocks.hasRegisteredProjects.mockResolvedValue(false)
 
     mocks.runCompose.mockResolvedValue({ exitCode: 0 })
-    mocks.stopTraefik.mockResolvedValue(undefined)
-    mocks.isTraefikRunning.mockResolvedValue(false)
+    mocks.stopSharedStack.mockResolvedValue(undefined)
+    mocks.isSharedStackRunning.mockResolvedValue(false)
     mocks.getProjectName.mockReturnValue('repo-demo-2')
 
     mocks.existsSync.mockReturnValue(true)

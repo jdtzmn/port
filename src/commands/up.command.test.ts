@@ -7,15 +7,9 @@ const mocks = vi.hoisted(() => ({
   getComposeFile: vi.fn(),
   checkDns: vi.fn(),
   registerProject: vi.fn(),
-  ensureTraefikPorts: vi.fn(),
-  traefikFilesExist: vi.fn(),
-  initTraefikFiles: vi.fn(),
   runCompose: vi.fn(),
   writeOverrideFile: vi.fn(),
-  startTraefik: vi.fn(),
-  isTraefikRunning: vi.fn(),
-  restartTraefik: vi.fn(),
-  traefikHasRequiredPorts: vi.fn(),
+  prepareSharedStack: vi.fn(),
   checkComposeVersion: vi.fn(),
   parseComposeFile: vi.fn(),
   getAllPorts: vi.fn(),
@@ -53,25 +47,18 @@ vi.mock('../lib/registry.ts', () => ({
   registerProject: mocks.registerProject,
 }))
 
-vi.mock('../lib/traefik.ts', () => ({
-  ensureTraefikPorts: mocks.ensureTraefikPorts,
-  traefikFilesExist: mocks.traefikFilesExist,
-  initTraefikFiles: mocks.initTraefikFiles,
-  ensure404HandlerImage: vi.fn().mockResolvedValue(undefined),
-}))
-
 vi.mock('../lib/compose.ts', () => ({
   runCompose: mocks.runCompose,
   writeOverrideFile: mocks.writeOverrideFile,
-  startTraefik: mocks.startTraefik,
-  isTraefikRunning: mocks.isTraefikRunning,
-  restartTraefik: mocks.restartTraefik,
-  traefikHasRequiredPorts: mocks.traefikHasRequiredPorts,
   checkComposeVersion: mocks.checkComposeVersion,
   parseComposeFile: mocks.parseComposeFile,
   getAllPorts: mocks.getAllPorts,
   getServicePorts: mocks.getServicePorts,
   getProjectName: mocks.getProjectName,
+}))
+
+vi.mock('../lib/shared-stack.ts', () => ({
+  prepareSharedStack: mocks.prepareSharedStack,
 }))
 
 vi.mock('../lib/hooks.ts', () => ({
@@ -115,10 +102,7 @@ describe('up DNS preflight', () => {
     mocks.checkComposeVersion.mockResolvedValue({ supported: true, version: '2.24.0' })
     mocks.parseComposeFile.mockResolvedValue({ name: 'repo', services: {} })
     mocks.getAllPorts.mockReturnValue([])
-    mocks.traefikFilesExist.mockReturnValue(true)
-    mocks.ensureTraefikPorts.mockResolvedValue(false)
-    mocks.isTraefikRunning.mockResolvedValue(true)
-    mocks.traefikHasRequiredPorts.mockResolvedValue(true)
+    mocks.prepareSharedStack.mockResolvedValue({ started: false, restarted: false, updated: false })
     mocks.getProjectName.mockReturnValue('repo-main')
     mocks.writeOverrideFile.mockResolvedValue(undefined)
     mocks.runCompose.mockResolvedValue({ exitCode: 0 })
@@ -168,6 +152,7 @@ describe('up DNS preflight', () => {
     expect(mocks.checkDns).toHaveBeenCalledWith('port')
     expect(mocks.parseComposeFile).toHaveBeenCalledWith('/repo', 'docker-compose.yml')
     expect(mocks.runCompose).toHaveBeenCalled()
+    expect(mocks.prepareSharedStack).toHaveBeenCalledWith([])
   })
 
   test('runs post-up hook when configured', async () => {

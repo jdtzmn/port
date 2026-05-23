@@ -4,17 +4,13 @@ import { getComposeFile } from '../../lib/config.ts'
 import {
   runCompose,
   writeOverrideFile,
-  startTraefik,
-  isTraefikRunning,
-  restartTraefik,
-  traefikHasRequiredPorts,
   parseComposeFile,
   getAllPorts,
   getProjectName,
   type ComposeCapturedResult,
 } from '../../lib/compose.ts'
 import { registerProject, unregisterProject } from '../../lib/registry.ts'
-import { ensureTraefikPorts, traefikFilesExist, initTraefikFiles } from '../../lib/traefik.ts'
+import { prepareSharedStack } from '../../lib/shared-stack.ts'
 import { stopHostService } from '../../lib/hostService.ts'
 import { getHostServicesForWorktree } from '../../lib/registry.ts'
 import { removeWorktree } from '../../lib/git.ts'
@@ -39,19 +35,7 @@ export function useActions(repoRoot: string, config: PortConfig, refresh: () => 
         const parsedCompose = await parseComposeFile(worktreePath, composeFile)
         const ports = getAllPorts(parsedCompose)
 
-        // Ensure Traefik files
-        if (!traefikFilesExist()) {
-          await initTraefikFiles(ports)
-        }
-        await ensureTraefikPorts(ports)
-
-        // Ensure Traefik is running
-        const traefikRunning = await isTraefikRunning()
-        if (!traefikRunning) {
-          await startTraefik()
-        } else if (!(await traefikHasRequiredPorts(ports))) {
-          await restartTraefik()
-        }
+        await prepareSharedStack(ports)
 
         const projectName = getProjectName(repoRoot, worktreeName)
 

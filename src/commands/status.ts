@@ -1,6 +1,6 @@
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
-import { isTraefikRunning } from '../lib/compose.ts'
+import { isSharedStackRunning } from '../lib/shared-stack.ts'
 import { getAllHostServices } from '../lib/registry.ts'
 import { isProcessRunning, cleanupStaleHostServices } from '../lib/hostService.ts'
 import { collectWorktreeStatuses, type WorktreeStatus } from '../lib/worktreeStatus.ts'
@@ -71,7 +71,7 @@ export async function status(): Promise<void> {
     output.newline()
   }
 
-  const traefikRunning = await isTraefikRunning()
+  const traefikRunning = await isSharedStackRunning()
   if (traefikRunning) {
     output.success(`Traefik: running (dashboard: ${output.url('http://localhost:1211')})`)
   } else {

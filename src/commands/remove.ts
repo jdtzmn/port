@@ -4,7 +4,8 @@ import type { WorktreeInfo } from '../types.ts'
 import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import { findWorktreeByBranch } from '../lib/git.ts'
 import { hasRegisteredProjects } from '../lib/registry.ts'
-import { stopTraefik, isTraefikRunning, getProjectName } from '../lib/compose.ts'
+import { getProjectName } from '../lib/compose.ts'
+import { isSharedStackRunning, stopSharedStack } from '../lib/shared-stack.ts'
 import { removeWorktreeAndCleanup } from '../lib/removal.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
@@ -210,7 +211,7 @@ export async function remove(
   }
 
   // Check if Traefik should be stopped
-  const traefikRunning = await isTraefikRunning()
+  const traefikRunning = await isSharedStackRunning()
   const hasOtherProjects = await hasRegisteredProjects()
 
   if (traefikRunning && !hasOtherProjects) {
@@ -227,7 +228,7 @@ export async function remove(
     if (stopTraefikConfirm) {
       output.info('Stopping Traefik...')
       try {
-        await stopTraefik()
+        await stopSharedStack()
         output.success('Traefik stopped')
       } catch (error) {
         output.warn(`Failed to stop Traefik: ${error}`)

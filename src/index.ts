@@ -25,6 +25,8 @@ import { shellHook } from './commands/shell-hook.ts'
 import { completion } from './commands/completion.ts'
 import { hook } from './commands/hook.ts'
 import { open } from './commands/open.ts'
+import { start } from './commands/start.ts'
+import { stop } from './commands/stop.ts'
 import {
   isReservedCommand,
   shouldAutoRegisterWorktree,
@@ -107,6 +109,18 @@ program.command('list').alias('ls').description('Print worktree names, one per l
 
 // port status
 program.command('status').description('Show service status across all worktrees').action(status)
+
+// port start
+program
+  .command('start')
+  .description('Start the shared Traefik + 404 handler stack')
+  .action(start)
+
+// port stop
+program
+  .command('stop')
+  .description('Stop the shared Traefik + 404 handler stack')
+  .action(stop)
 
 // port enter <branch>
 program

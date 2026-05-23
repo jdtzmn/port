@@ -4,7 +4,7 @@ import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import { getWorktreeSkeletons, fetchWorktreeServices } from '../../lib/worktreeStatus.ts'
 import { getProjectName } from '../../lib/compose.ts'
 import { getAllHostServices } from '../../lib/registry.ts'
-import { isTraefikRunning } from '../../lib/compose.ts'
+import { isSharedStackRunning } from '../../lib/shared-stack.ts'
 import { getComposeFile } from '../../lib/config.ts'
 import { cleanupStaleHostServices } from '../../lib/hostService.ts'
 
@@ -58,7 +58,7 @@ export function usePortData(repoRoot: string, config: PortConfig): PortData {
       // Fire all service fetches + global queries in parallel
       const globalPromise = Promise.all([
         cleanupStaleHostServices().then(() => getAllHostServices()),
-        isTraefikRunning(),
+        isSharedStackRunning(),
       ])
 
       // Update each worktree as its service data arrives

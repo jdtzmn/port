@@ -3,8 +3,7 @@ import inquirer from 'inquirer'
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, ensurePortRuntimeDir } from '../lib/config.ts'
 import { getHostService } from '../lib/registry.ts'
-import { ensureTraefikPorts, traefikFilesExist, initTraefikFiles } from '../lib/traefik.ts'
-import { startTraefik, isTraefikRunning, restartTraefik } from '../lib/compose.ts'
+import { prepareSharedStack } from '../lib/shared-stack.ts'
 import {
   findAvailablePort,
   writeHostServiceConfig,
@@ -82,37 +81,13 @@ export async function run(logicalPort: number, command: string[]): Promise<void>
   const actualPort = await findAvailablePort()
   output.info(`Allocated port ${actualPort} for internal use`)
 
-  // Ensure Traefik has the entrypoint for the logical port
-  if (!traefikFilesExist()) {
-    output.info('Initializing Traefik configuration...')
-    await initTraefikFiles([logicalPort])
-    output.success('Traefik configuration created')
-  }
-
-  const configUpdated = await ensureTraefikPorts([logicalPort])
-  if (configUpdated) {
+  const sharedStackResult = await prepareSharedStack([logicalPort])
+  if (sharedStackResult.started) {
+    output.success('Traefik started')
+  } else if (sharedStackResult.restarted) {
+    output.success('Traefik restarted')
+  } else if (sharedStackResult.updated) {
     output.info('Updated Traefik configuration')
-  }
-
-  // Start or restart Traefik if needed
-  const traefikRunning = await isTraefikRunning()
-  if (!traefikRunning) {
-    output.info('Starting Traefik...')
-    try {
-      await startTraefik()
-      output.success('Traefik started')
-    } catch (error) {
-      output.error(`Failed to start Traefik: ${error}`)
-      process.exit(1)
-    }
-  } else if (configUpdated) {
-    output.info('Restarting Traefik with new configuration...')
-    try {
-      await restartTraefik()
-      output.success('Traefik restarted')
-    } catch (error) {
-      output.warn(`Failed to restart Traefik: ${error}`)
-    }
   }
 
   // Write Traefik dynamic config

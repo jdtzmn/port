@@ -7,22 +7,23 @@ import {
   getHostServicesForWorktree,
   getProjectCount,
 } from '../lib/registry.ts'
-import { runCompose, stopTraefik, isTraefikRunning, getProjectName } from '../lib/compose.ts'
+import { runCompose, getProjectName } from '../lib/compose.ts'
+import { isSharedStackRunning, stopSharedStack } from '../lib/shared-stack.ts'
 import { stopHostService } from '../lib/hostService.ts'
 import * as output from '../lib/output.ts'
 
-async function stopTraefikGlobally(options?: { yes?: boolean }): Promise<void> {
-  const traefikRunning = await isTraefikRunning()
+async function stopSharedStackGlobally(options?: { yes?: boolean }): Promise<void> {
+  const sharedStackRunning = await isSharedStackRunning()
 
-  if (!traefikRunning) {
-    output.info('Traefik is not running.')
+  if (!sharedStackRunning) {
+    output.info('Shared stack is not running.')
     return
   }
 
   const projectCount = await getProjectCount()
-  let shouldStopTraefik = options?.yes ?? false
+  let shouldStopSharedStack = options?.yes ?? false
 
-  if (!shouldStopTraefik) {
+  if (!shouldStopSharedStack) {
     output.newline()
 
     const promptMessage =
@@ -30,22 +31,22 @@ async function stopTraefikGlobally(options?: { yes?: boolean }): Promise<void> {
         ? `${projectCount} port project(s) still registered. Stop Traefik anyway?`
         : 'Stop Traefik?'
 
-    const { stopTraefikConfirm } = await inquirer.prompt<{ stopTraefikConfirm: boolean }>([
+    const { stopSharedStackConfirm } = await inquirer.prompt<{ stopSharedStackConfirm: boolean }>([
       {
         type: 'confirm',
-        name: 'stopTraefikConfirm',
+        name: 'stopSharedStackConfirm',
         message: promptMessage,
         default: true,
       },
     ])
 
-    shouldStopTraefik = stopTraefikConfirm
+    shouldStopSharedStack = stopSharedStackConfirm
   }
 
-  if (shouldStopTraefik) {
+  if (shouldStopSharedStack) {
     output.info('Stopping Traefik...')
     try {
-      await stopTraefik()
+      await stopSharedStack()
       output.success('Traefik stopped')
     } catch (error) {
       output.warn(`Failed to stop Traefik: ${error}`)
@@ -59,14 +60,13 @@ async function stopTraefikGlobally(options?: { yes?: boolean }): Promise<void> {
  * @param options - Down options (yes to skip confirmation)
  */
 export async function down(options?: { yes?: boolean }): Promise<void> {
-  // Detect worktree info
   let worktreeInfo
   try {
     worktreeInfo = detectWorktree()
   } catch (error) {
     output.dim(`${error}`)
     output.info('Not in a port-managed worktree. Attempting global Traefik shutdown...')
-    await stopTraefikGlobally(options)
+    await stopSharedStackGlobally(options)
     return
   }
 
@@ -74,11 +74,9 @@ export async function down(options?: { yes?: boolean }): Promise<void> {
 
   await ensurePortRuntimeDir(repoRoot)
 
-  // Load config (defaults when config file is absent)
   const config = await loadConfigOrDefault(repoRoot)
   const composeFile = getComposeFile(config)
 
-  // Stop docker-compose services
   const projectName = getProjectName(repoRoot, name)
   output.info(`Stopping services in ${output.branch(name)}...`)
   let composeExitCode = 0
@@ -96,15 +94,12 @@ export async function down(options?: { yes?: boolean }): Promise<void> {
 
   if (composeExitCode !== 0) {
     output.error('Failed to stop services')
-    // Continue to unregister even if stop fails
   } else {
     output.success('Services stopped')
   }
 
-  // Unregister project from global registry
   await unregisterProject(repoRoot, name)
 
-  // Check for running host services
   const hostServices = await getHostServicesForWorktree(repoRoot, name)
 
   if (hostServices.length > 0) {
@@ -137,30 +132,29 @@ export async function down(options?: { yes?: boolean }): Promise<void> {
     }
   }
 
-  // Check if Traefik should be stopped
-  const traefikRunning = await isTraefikRunning()
+  const sharedStackRunning = await isSharedStackRunning()
   const hasOtherProjects = await hasRegisteredProjects()
 
-  if (traefikRunning && !hasOtherProjects) {
-    let shouldStopTraefik = options?.yes ?? false
+  if (sharedStackRunning && !hasOtherProjects) {
+    let shouldStopSharedStack = options?.yes ?? false
 
-    if (!shouldStopTraefik) {
+    if (!shouldStopSharedStack) {
       output.newline()
-      const { stopTraefikConfirm } = await inquirer.prompt<{ stopTraefikConfirm: boolean }>([
+      const { stopSharedStackConfirm } = await inquirer.prompt<{ stopSharedStackConfirm: boolean }>([
         {
           type: 'confirm',
-          name: 'stopTraefikConfirm',
+          name: 'stopSharedStackConfirm',
           message: 'No other port projects running. Stop Traefik?',
           default: true,
         },
       ])
-      shouldStopTraefik = stopTraefikConfirm
+      shouldStopSharedStack = stopSharedStackConfirm
     }
 
-    if (shouldStopTraefik) {
+    if (shouldStopSharedStack) {
       output.info('Stopping Traefik...')
       try {
-        await stopTraefik()
+        await stopSharedStack()
         output.success('Traefik stopped')
       } catch (error) {
         output.warn(`Failed to stop Traefik: ${error}`)

@@ -3,7 +3,7 @@ import { join } from 'path'
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import * as composeLib from '../lib/compose.ts'
-import * as traefikLib from '../lib/traefik.ts'
+import { prepareSharedStack } from '../lib/shared-stack.ts'
 import * as output from '../lib/output.ts'
 
 /**
@@ -72,16 +72,7 @@ export async function compose(args: string[]): Promise<void> {
     process.exit(1)
   }
 
-  try {
-    if (!(await composeLib.isTraefikRunning())) {
-      await traefikLib.ensureTraefikPorts(composeLib.getAllPorts(parsedCompose))
-      output.info('Starting Traefik...')
-      await composeLib.startTraefik()
-    }
-  } catch (error) {
-    output.error(`Failed to start Traefik: ${error}`)
-    process.exit(1)
-  }
+  await prepareSharedStack(composeLib.getAllPorts(parsedCompose))
 
   // Run the compose command with automatic -p and -f flags
   const { exitCode } = await composeLib.runCompose(worktreePath, composeFile, projectName, args, {

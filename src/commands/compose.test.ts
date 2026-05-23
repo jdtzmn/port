@@ -3,7 +3,7 @@ import { compose } from './compose.ts'
 import * as worktreeModule from '../lib/worktree.ts'
 import * as configModule from '../lib/config.ts'
 import * as composeModule from '../lib/compose.ts'
-import * as traefikModule from '../lib/traefik.ts'
+import * as sharedStackModule from '../lib/shared-stack.ts'
 import * as output from '../lib/output.ts'
 
 /**
@@ -66,9 +66,11 @@ describe('port compose pre-sync behavior', () => {
     )
     vi.spyOn(composeModule, 'writeOverrideFile').mockResolvedValue()
     vi.spyOn(composeModule, 'getProjectName').mockReturnValue('repo-feature-1')
-    vi.spyOn(traefikModule, 'ensureTraefikPorts').mockResolvedValue(true)
-    vi.spyOn(composeModule, 'isTraefikRunning').mockResolvedValue(true)
-    vi.spyOn(composeModule, 'startTraefik').mockResolvedValue()
+    vi.spyOn(sharedStackModule, 'prepareSharedStack').mockResolvedValue({
+      started: false,
+      restarted: false,
+      updated: true,
+    })
     vi.spyOn(composeModule, 'runCompose').mockResolvedValue({ exitCode: 0 } as unknown as Awaited<
       ReturnType<typeof composeModule.runCompose>
     >)
@@ -200,14 +202,8 @@ describe('port compose pre-sync behavior', () => {
       )
     })
 
-    test('starts Traefik first when it is not running', async () => {
-      const isTraefikRunningSpy = vi
-        .spyOn(composeModule, 'isTraefikRunning')
-        .mockResolvedValue(false)
-      const ensureTraefikPortsSpy = vi
-        .spyOn(traefikModule, 'ensureTraefikPorts')
-        .mockResolvedValue(true)
-      const startTraefikSpy = vi.spyOn(composeModule, 'startTraefik').mockResolvedValue()
+    test('prepares the shared stack before running compose', async () => {
+      const prepareSharedStackSpy = vi.spyOn(sharedStackModule, 'prepareSharedStack')
       const runComposeSpy = vi.spyOn(composeModule, 'runCompose')
       const infoSpy = vi.spyOn(output, 'info').mockImplementation(() => {})
 
@@ -217,10 +213,7 @@ describe('port compose pre-sync behavior', () => {
         // Expected - process.exit throws in our mock
       }
 
-      expect(isTraefikRunningSpy).toHaveBeenCalled()
-      expect(ensureTraefikPortsSpy).toHaveBeenCalledWith([3000])
-      expect(startTraefikSpy).toHaveBeenCalled()
-      expect(infoSpy).toHaveBeenCalledWith('Starting Traefik...')
+      expect(prepareSharedStackSpy).toHaveBeenCalledWith([3000])
       expect(runComposeSpy).toHaveBeenCalled()
     })
 

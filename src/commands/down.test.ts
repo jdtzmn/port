@@ -11,8 +11,8 @@ const mocks = vi.hoisted(() => ({
   getHostServicesForWorktree: vi.fn(),
   getProjectCount: vi.fn(),
   runCompose: vi.fn(),
-  stopTraefik: vi.fn(),
-  isTraefikRunning: vi.fn(),
+  stopSharedStack: vi.fn(),
+  isSharedStackRunning: vi.fn(),
   getProjectName: vi.fn(),
   stopHostService: vi.fn(),
   success: vi.fn(),
@@ -49,9 +49,12 @@ vi.mock('../lib/registry.ts', () => ({
 
 vi.mock('../lib/compose.ts', () => ({
   runCompose: mocks.runCompose,
-  stopTraefik: mocks.stopTraefik,
-  isTraefikRunning: mocks.isTraefikRunning,
   getProjectName: mocks.getProjectName,
+}))
+
+vi.mock('../lib/shared-stack.ts', () => ({
+  stopSharedStack: mocks.stopSharedStack,
+  isSharedStackRunning: mocks.isSharedStackRunning,
 }))
 
 vi.mock('../lib/hostService.ts', () => ({
@@ -88,19 +91,19 @@ describe('down fallback behavior', () => {
     mocks.getProjectCount.mockResolvedValue(0)
 
     mocks.runCompose.mockResolvedValue({ exitCode: 0 })
-    mocks.stopTraefik.mockResolvedValue(undefined)
-    mocks.isTraefikRunning.mockResolvedValue(true)
+    mocks.stopSharedStack.mockResolvedValue(undefined)
+    mocks.isSharedStackRunning.mockResolvedValue(true)
     mocks.getProjectName.mockReturnValue('demo-main')
     mocks.stopHostService.mockResolvedValue(undefined)
 
-    mocks.prompt.mockResolvedValue({ stopTraefikConfirm: true })
+    mocks.prompt.mockResolvedValue({ stopSharedStackConfirm: true })
     mocks.branch.mockImplementation((name: string) => name)
   })
 
   test('stops Traefik from outside a worktree with --yes', async () => {
     await down({ yes: true })
 
-    expect(mocks.stopTraefik).toHaveBeenCalledTimes(1)
+    expect(mocks.stopSharedStack).toHaveBeenCalledTimes(1)
     expect(mocks.runCompose).not.toHaveBeenCalled()
     expect(mocks.error).not.toHaveBeenCalled()
   })
@@ -115,7 +118,7 @@ describe('down fallback behavior', () => {
         message: '2 port project(s) still registered. Stop Traefik anyway?',
       }),
     ])
-    expect(mocks.stopTraefik).toHaveBeenCalledTimes(1)
+    expect(mocks.stopSharedStack).toHaveBeenCalledTimes(1)
   })
 
   test('uses defaults and runs compose down when repo has no config file', async () => {
@@ -134,12 +137,12 @@ describe('down fallback behavior', () => {
   })
 
   test('exits cleanly when Traefik is not running', async () => {
-    mocks.isTraefikRunning.mockResolvedValue(false)
+    mocks.isSharedStackRunning.mockResolvedValue(false)
 
     await down({ yes: true })
 
-    expect(mocks.stopTraefik).not.toHaveBeenCalled()
-    expect(mocks.info).toHaveBeenCalledWith('Traefik is not running.')
+    expect(mocks.stopSharedStack).not.toHaveBeenCalled()
+    expect(mocks.info).toHaveBeenCalledWith('Shared stack is not running.')
   })
 
   test('still reaches Traefik shutdown when compose down throws', async () => {
@@ -151,12 +154,12 @@ describe('down fallback behavior', () => {
     })
     mocks.runCompose.mockRejectedValue(new Error('open .port/override.yml: no such file'))
     mocks.hasRegisteredProjects.mockResolvedValue(false)
-    mocks.isTraefikRunning.mockResolvedValue(true)
+    mocks.isSharedStackRunning.mockResolvedValue(true)
 
     await down({ yes: true })
 
     expect(mocks.error).toHaveBeenCalledWith('Failed to stop services')
     expect(mocks.unregisterProject).toHaveBeenCalledWith('/repo', 'main')
-    expect(mocks.stopTraefik).toHaveBeenCalledTimes(1)
+    expect(mocks.stopSharedStack).toHaveBeenCalledTimes(1)
   })
 })

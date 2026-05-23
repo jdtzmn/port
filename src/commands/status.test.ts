@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   cleanupStaleHostServices: vi.fn(),
   getAllHostServices: vi.fn(),
   isProcessRunning: vi.fn(),
-  isTraefikRunning: vi.fn(),
+  isSharedStackRunning: vi.fn(),
   getStaleWorktreeCandidates: vi.fn(),
   STALE_WORKTREE_WARNING_THRESHOLD: 10,
   formatStaleWorktreeWarning: vi.fn(),
@@ -47,8 +47,8 @@ vi.mock('../lib/registry.ts', () => ({
   getAllHostServices: mocks.getAllHostServices,
 }))
 
-vi.mock('../lib/compose.ts', () => ({
-  isTraefikRunning: mocks.isTraefikRunning,
+vi.mock('../lib/shared-stack.ts', () => ({
+  isSharedStackRunning: mocks.isSharedStackRunning,
 }))
 
 vi.mock('../lib/staleWorktrees.ts', () => ({
@@ -82,7 +82,7 @@ describe('status command', () => {
     mocks.cleanupStaleHostServices.mockResolvedValue(undefined)
     mocks.getAllHostServices.mockResolvedValue([])
     mocks.isProcessRunning.mockReturnValue(true)
-    mocks.isTraefikRunning.mockResolvedValue(false)
+    mocks.isSharedStackRunning.mockResolvedValue(false)
     mocks.getStaleWorktreeCandidates.mockResolvedValue([])
     mocks.formatStaleWorktreeWarning.mockImplementation(
       (count: number) => `You have ${count} stale port worktrees. Consider running port prune.`
