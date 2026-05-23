@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useKeyboard } from '@opentui/react'
 import type { ScrollBoxRenderable } from '@opentui/core'
 import type { PortConfig, HostService } from '../../types.ts'
@@ -9,6 +9,7 @@ import { KeyHints } from '../components/KeyHints.tsx'
 import { Confirm } from '../components/Confirm.tsx'
 import { useFilterNavigation } from '../hooks/useFilterNavigation.ts'
 import { findSubstringMatchRanges, type MatchRange } from '../lib/filtering.ts'
+import { orderWorktreesForDashboard } from '../lib/worktreeOrdering.ts'
 
 interface Actions {
   upWorktree: (worktreePath: string, worktreeName: string) => Promise<ActionResult>
@@ -27,11 +28,14 @@ interface DashboardProps {
   onOpenWorktree: (name: string) => void
   activeWorktreeName: string
   initialSelectedName: string | null
+  selectedWorktreeName?: string | null
+  onSelectedWorktreeNameChange?: (name: string) => void
   actions: Actions
   refresh: () => void
   loading: boolean
   statusMessage: { text: string; type: 'success' | 'error' } | null
   showStatus: (text: string, type: 'success' | 'error') => void
+  keyboardEnabled?: boolean
 }
 
 type PendingAction = 'archive' | null
@@ -67,6 +71,7 @@ function buildHighlightedSegments(text: string, ranges: MatchRange[]): React.Rea
 }
 
 export function Dashboard({
+  repoRoot,
   repoName,
   worktrees,
   traefikRunning,
@@ -78,15 +83,23 @@ export function Dashboard({
   loading,
   statusMessage,
   showStatus,
+  keyboardEnabled = true,
+  selectedWorktreeName,
+  onSelectedWorktreeNameChange,
 }: DashboardProps) {
+  const orderedWorktrees = useMemo(
+    () => orderWorktreesForDashboard(worktrees, activeWorktreeName),
+    [worktrees, activeWorktreeName]
+  )
+
   const [selectedIndex, setSelectedIndex] = useState(() => {
-    if (!initialSelectedName) return 0
-    const idx = worktrees.findIndex(w => w.name === initialSelectedName)
+    const initialName = selectedWorktreeName ?? initialSelectedName
+    if (!initialName) return 0
+    const idx = orderedWorktrees.findIndex(w => w.name === initialName)
     return idx >= 0 ? idx : 0
   })
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
   const [busy, setBusy] = useState(false)
-  const initialSelectionAppliedRef = useRef(false)
   const scrollRef = useRef<ScrollBoxRenderable>(null)
   const {
     mode,
@@ -94,7 +107,7 @@ export function Dashboard({
     highlightMatches,
     handleKey: handleFilterKey,
   } = useFilterNavigation({
-    items: worktrees,
+    items: orderedWorktrees,
     setSelectedIndex,
     getSearchText: worktree => worktree.name,
   })
@@ -113,33 +126,27 @@ export function Dashboard({
   }, [selectedIndex])
 
   useEffect(() => {
-    if (initialSelectionAppliedRef.current) return
-
-    if (!initialSelectedName) {
-      initialSelectionAppliedRef.current = true
+    if (orderedWorktrees.length === 0) {
       return
     }
 
-    if (worktrees.length === 0) {
-      return
-    }
+    const targetName = selectedWorktreeName ?? initialSelectedName
+    if (!targetName) return
 
-    const idx = worktrees.findIndex(w => w.name === initialSelectedName)
+    const idx = orderedWorktrees.findIndex(w => w.name === targetName)
     if (idx >= 0) {
       setSelectedIndex(idx)
     }
+  }, [initialSelectedName, orderedWorktrees, selectedWorktreeName])
 
-    initialSelectionAppliedRef.current = true
-  }, [initialSelectedName, worktrees])
-
-  const selectedWorktree = worktrees[selectedIndex]
-  const isRootSelected = selectedIndex === 0
+  const selectedWorktree = orderedWorktrees[selectedIndex]
+  const isRootSelected = selectedWorktree?.path === repoRoot
 
   useKeyboard(event => {
-    if (event.ctrl || event.meta || busy) return
+    if (!keyboardEnabled || event.ctrl || event.meta || busy) return
 
     const keySequence = (event as { sequence?: string }).sequence
-    const maxIndex = worktrees.length - 1
+    const maxIndex = orderedWorktrees.length - 1
 
     // If we're in a confirm dialog, don't handle navigation
     if (pendingAction) return
@@ -151,11 +158,25 @@ export function Dashboard({
     switch (event.name) {
       case 'j':
       case 'down':
-        setSelectedIndex(i => Math.min(i + 1, maxIndex))
+        setSelectedIndex(i => {
+          const nextIndex = Math.min(i + 1, maxIndex)
+          const nextName = orderedWorktrees[nextIndex]?.name
+          if (nextName && nextName !== selectedWorktreeName) {
+            onSelectedWorktreeNameChange?.(nextName)
+          }
+          return nextIndex
+        })
         break
       case 'k':
       case 'up':
-        setSelectedIndex(i => Math.max(i - 1, 0))
+        setSelectedIndex(i => {
+          const nextIndex = Math.max(i - 1, 0)
+          const nextName = orderedWorktrees[nextIndex]?.name
+          if (nextName && nextName !== selectedWorktreeName) {
+            onSelectedWorktreeNameChange?.(nextName)
+          }
+          return nextIndex
+        })
         break
       case 'return':
         if (selectedWorktree) {
@@ -206,8 +227,13 @@ export function Dashboard({
       .then(result => {
         showStatus(result.message, result.success ? 'success' : 'error')
         // Adjust selection if needed
-        if (selectedIndex >= worktrees.length - 1) {
-          setSelectedIndex(Math.max(0, worktrees.length - 2))
+        if (selectedIndex >= orderedWorktrees.length - 1) {
+          const nextIndex = Math.max(0, orderedWorktrees.length - 2)
+          setSelectedIndex(nextIndex)
+          const nextName = orderedWorktrees[nextIndex]?.name
+          if (nextName && nextName !== selectedWorktreeName) {
+            onSelectedWorktreeNameChange?.(nextName)
+          }
         }
       })
       .finally(() => setBusy(false))
@@ -253,11 +279,11 @@ export function Dashboard({
         scrollX={false}
         contentOptions={{ flexDirection: 'column', width: '100%' }}
       >
-        {worktrees.length === 0 && !loading && <text fg="#888888">No worktrees found</text>}
+        {orderedWorktrees.length === 0 && !loading && <text fg="#888888">No worktrees found</text>}
 
-        {worktrees.map((worktree, index) => {
+        {orderedWorktrees.map((worktree, index) => {
           const isSelected = index === selectedIndex
-          const isRoot = index === 0
+          const isRoot = worktree.path === repoRoot
           const isActive = worktree.name === activeWorktreeName
           const sortedServices = [...worktree.services].sort(
             (a, b) => Number(b.running) - Number(a.running)

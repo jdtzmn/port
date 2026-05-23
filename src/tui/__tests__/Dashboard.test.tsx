@@ -217,6 +217,26 @@ describe('Dashboard', () => {
     expect(frame2).toContain('feature-auth')
   })
 
+  test('ignores navigation keys when keyboard is disabled', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props()} {...({ keyboardEnabled: false } as any)} />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const before = captureCharFrame()
+    expect(frameLine(before, 'myapp (root)')).toContain('>')
+
+    mockInput.pressKey('j')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const after = captureCharFrame()
+    expect(frameLine(after, 'myapp (root)')).toContain('>')
+    expect(frameLine(after, 'feature-auth')).not.toContain('>')
+  })
+
   test('Enter calls onSelectWorktree', async () => {
     let selectedName = ''
     const onSelect = (name: string) => {

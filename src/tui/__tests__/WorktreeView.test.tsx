@@ -166,6 +166,38 @@ describe('WorktreeView', () => {
     expect(backed).toBe(true)
   })
 
+  test('ignores navigation keys when keyboard is disabled', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+        {...({ keyboardEnabled: false } as any)}
+      />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const before = captureCharFrame()
+    expect(frameLine(before, 'web:3000')).toContain('>')
+
+    mockInput.pressKey('j')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const after = captureCharFrame()
+    expect(frameLine(after, 'web:3000')).toContain('>')
+    expect(frameLine(after, 'api:8080')).not.toContain('>')
+  })
+
   test('shows key hints', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <WorktreeView

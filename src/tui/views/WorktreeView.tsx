@@ -25,6 +25,7 @@ interface WorktreeViewProps {
   loading: boolean
   statusMessage: { text: string; type: 'success' | 'error' } | null
   showStatus: (text: string, type: 'success' | 'error') => void
+  keyboardEnabled?: boolean
 }
 
 interface ServiceItem {
@@ -132,6 +133,7 @@ export function WorktreeView({
   loading,
   statusMessage,
   showStatus,
+  keyboardEnabled = true,
 }: WorktreeViewProps) {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -201,7 +203,7 @@ export function WorktreeView({
   })
 
   useKeyboard(event => {
-    if (event.ctrl || event.meta || busy) return
+    if (!keyboardEnabled || event.ctrl || event.meta || busy) return
     const keySequence = (event as { sequence?: string }).sequence
 
     if (handleFilterKey({ eventName: event.name, keySequence })) {
