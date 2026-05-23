@@ -187,8 +187,9 @@ describe('up DNS preflight', () => {
     })
     mocks.getAllPorts.mockReturnValue([3000, 5432])
     mocks.resolveComposeServices.mockReturnValue(['app', 'postgres'])
-    mocks.getServicePorts.mockImplementation((service: { ports?: Array<{ published: number }> }) =>
-      service.ports?.map(port => port.published) ?? []
+    mocks.getServicePorts.mockImplementation(
+      (service: { ports?: Array<{ published: number }> }) =>
+        service.ports?.map(port => port.published) ?? []
     )
 
     await up(['app'])

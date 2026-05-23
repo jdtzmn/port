@@ -146,11 +146,17 @@ export async function up(requestedServices: string[] = []): Promise<void> {
 
   // Start docker-compose services
   output.info(`Starting services in ${output.branch(name)}...`)
-  const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['up', '-d', ...requestedServices], {
-    repoRoot,
-    branch: name,
-    domain: config.domain,
-  })
+  const { exitCode } = await runCompose(
+    worktreePath,
+    composeFile,
+    projectName,
+    ['up', '-d', ...requestedServices],
+    {
+      repoRoot,
+      branch: name,
+      domain: config.domain,
+    }
+  )
   if (exitCode !== 0) {
     output.error('Failed to start services')
     process.exit(1)
