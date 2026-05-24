@@ -115,7 +115,7 @@ describe('down fallback behavior', () => {
 
     expect(mocks.prompt).toHaveBeenCalledWith([
       expect.objectContaining({
-        message: '2 port project(s) still registered. Stop port anyway?',
+        message: '2 port project(s) still registered. Stop port proxy anyway?',
       }),
     ])
     expect(mocks.stopSharedStack).toHaveBeenCalledTimes(1)
@@ -142,7 +142,7 @@ describe('down fallback behavior', () => {
     await down({ yes: true })
 
     expect(mocks.stopSharedStack).not.toHaveBeenCalled()
-    expect(mocks.info).toHaveBeenCalledWith('port is not running.')
+    expect(mocks.info).toHaveBeenCalledWith('port proxy is not running.')
   })
 
   test('still reaches Traefik shutdown when compose down throws', async () => {

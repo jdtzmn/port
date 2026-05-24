@@ -69,11 +69,11 @@ export async function up(): Promise<void> {
 
   const sharedStackResult = await prepareSharedStack(ports)
   if (sharedStackResult.started) {
-    output.success('port started')
+    output.success('port proxy started')
   } else if (sharedStackResult.restarted) {
-    output.success('port restarted')
+    output.success('port proxy restarted')
   } else if (sharedStackResult.updated) {
-    output.info('Updated port configuration')
+    output.info('Updated port proxy configuration')
   }
 
   const projectName = getProjectName(repoRoot, name)

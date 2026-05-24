@@ -796,7 +796,7 @@ export async function stopTraefik(): Promise<void> {
       timeout: 60000,
     })
   } catch (error) {
-    throw new ComposeError(`Failed to stop port: ${error}`)
+    throw new ComposeError(`Failed to stop port proxy: ${error}`)
   }
 }
 

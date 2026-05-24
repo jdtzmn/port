@@ -113,11 +113,11 @@ program.command('status').description('Show service status across all worktrees'
 // port start
 program
   .command('start')
-  .description("Start port's shared Traefik + 404 handler stack")
+  .description("Start port proxy's shared Traefik + 404 handler stack")
   .action(start)
 
 // port stop
-program.command('stop').description("Stop port's shared Traefik + 404 handler stack").action(stop)
+program.command('stop').description("Stop port proxy's shared Traefik + 404 handler stack").action(stop)
 
 // port enter <branch>
 program

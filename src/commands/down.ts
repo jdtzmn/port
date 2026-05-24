@@ -16,7 +16,7 @@ async function stopSharedStackGlobally(options?: { yes?: boolean }): Promise<voi
   const sharedStackRunning = await isSharedStackRunning()
 
   if (!sharedStackRunning) {
-    output.info('port is not running.')
+    output.info('port proxy is not running.')
     return
   }
 
@@ -28,8 +28,8 @@ async function stopSharedStackGlobally(options?: { yes?: boolean }): Promise<voi
 
     const promptMessage =
       projectCount > 0
-        ? `${projectCount} port project(s) still registered. Stop port anyway?`
-        : 'Stop port?'
+        ? `${projectCount} port project(s) still registered. Stop port proxy anyway?`
+        : 'Stop port proxy?'
 
     const { stopSharedStackConfirm } = await inquirer.prompt<{ stopSharedStackConfirm: boolean }>([
       {
@@ -44,12 +44,12 @@ async function stopSharedStackGlobally(options?: { yes?: boolean }): Promise<voi
   }
 
   if (shouldStopSharedStack) {
-    output.info('Stopping port...')
+    output.info('Stopping port proxy...')
     try {
       await stopSharedStack()
-      output.success('port stopped')
+      output.success('port proxy stopped')
     } catch (error) {
-      output.warn(`Failed to stop port: ${error}`)
+      output.warn(`Failed to stop port proxy: ${error}`)
     }
   }
 }
@@ -145,7 +145,7 @@ export async function down(options?: { yes?: boolean }): Promise<void> {
           {
             type: 'confirm',
             name: 'stopSharedStackConfirm',
-            message: 'No other port projects running. Stop port?',
+            message: 'No other port projects running. Stop port proxy?',
             default: true,
           },
         ]
@@ -154,12 +154,12 @@ export async function down(options?: { yes?: boolean }): Promise<void> {
     }
 
     if (shouldStopSharedStack) {
-      output.info('Stopping port...')
+      output.info('Stopping port proxy...')
       try {
         await stopSharedStack()
-        output.success('port stopped')
+        output.success('port proxy stopped')
       } catch (error) {
-        output.warn(`Failed to stop port: ${error}`)
+        output.warn(`Failed to stop port proxy: ${error}`)
       }
     }
   }

@@ -75,7 +75,7 @@ export async function status(): Promise<void> {
   if (traefikRunning) {
     output.success(`port is running (dashboard: ${output.url('http://localhost:1211')})`)
   } else {
-    output.dim('port is not running')
+    output.dim('port proxy is not running')
   }
 
   if (repoRoot && configExists(repoRoot)) {

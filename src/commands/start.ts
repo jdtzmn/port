@@ -5,10 +5,10 @@ export async function start(): Promise<void> {
   const result = await prepareSharedStack([])
 
   if (result.started) {
-    output.success('port started')
+    output.success('port proxy started')
   } else if (result.restarted) {
-    output.success('port restarted')
+    output.success('port proxy restarted')
   } else {
-    output.success('port already running')
+    output.success('port proxy already running')
   }
 }
