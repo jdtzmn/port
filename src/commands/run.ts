@@ -83,16 +83,16 @@ export async function run(logicalPort: number, command: string[]): Promise<void>
 
   const sharedStackResult = await prepareSharedStack([logicalPort])
   if (sharedStackResult.started) {
-    output.success('Traefik started')
+    output.success('port started')
   } else if (sharedStackResult.restarted) {
-    output.success('Traefik restarted')
+    output.success('port restarted')
   } else if (sharedStackResult.updated) {
-    output.info('Updated Traefik configuration')
+    output.info('Updated port configuration')
   }
 
   // Write Traefik dynamic config
   const configFile = await writeHostServiceConfig(branch, logicalPort, actualPort, domain)
-  output.dim(`Created Traefik config: ${configFile}`)
+  output.dim(`Created port config: ${configFile}`)
 
   // Register with placeholder PID (will be updated)
   const service: HostService = {

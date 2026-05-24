@@ -27,6 +27,6 @@ describe('start command', () => {
     await start()
 
     expect(mocks.prepareSharedStack).toHaveBeenCalledWith([])
-    expect(mocks.success).toHaveBeenCalledWith('Shared stack started')
+    expect(mocks.success).toHaveBeenCalledWith('port started')
   })
 })

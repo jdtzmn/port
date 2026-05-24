@@ -73,9 +73,9 @@ export async function status(): Promise<void> {
 
   const traefikRunning = await isSharedStackRunning()
   if (traefikRunning) {
-    output.success(`Traefik: running (dashboard: ${output.url('http://localhost:1211')})`)
+    output.success(`port is running (dashboard: ${output.url('http://localhost:1211')})`)
   } else {
-    output.dim('Traefik: not running')
+    output.dim('port is not running')
   }
 
   if (repoRoot && configExists(repoRoot)) {

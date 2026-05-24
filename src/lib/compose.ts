@@ -778,7 +778,7 @@ export async function startTraefik(): Promise<void> {
       throw new ComposeError('Traefik startup timed out waiting for concurrent start')
     }
 
-    throw new ComposeError(`Failed to start Traefik: ${error}`)
+    throw new ComposeError(`Failed to start port: ${error}`)
   }
 
   await waitForTraefikReady()
@@ -796,7 +796,7 @@ export async function stopTraefik(): Promise<void> {
       timeout: 60000,
     })
   } catch (error) {
-    throw new ComposeError(`Failed to stop Traefik: ${error}`)
+    throw new ComposeError(`Failed to stop port: ${error}`)
   }
 }
 
@@ -869,7 +869,7 @@ export async function restartTraefik(): Promise<void> {
       timeout: 60000,
     })
   } catch (error) {
-    throw new ComposeError(`Failed to restart Traefik: ${error}`)
+    throw new ComposeError(`Failed to restart port: ${error}`)
   }
 
   await waitForTraefikReady()

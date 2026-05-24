@@ -25,6 +25,6 @@ describe('stop command', () => {
     await stop()
 
     expect(mocks.stopSharedStack).toHaveBeenCalled()
-    expect(mocks.success).toHaveBeenCalledWith('Shared stack stopped')
+    expect(mocks.success).toHaveBeenCalledWith('port stopped')
   })
 })

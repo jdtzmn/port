@@ -69,11 +69,11 @@ export async function up(): Promise<void> {
 
   const sharedStackResult = await prepareSharedStack(ports)
   if (sharedStackResult.started) {
-    output.success('Traefik started')
+    output.success('port started')
   } else if (sharedStackResult.restarted) {
-    output.success('Traefik restarted')
+    output.success('port restarted')
   } else if (sharedStackResult.updated) {
-    output.info('Updated Traefik configuration')
+    output.info('Updated port configuration')
   }
 
   const projectName = getProjectName(repoRoot, name)

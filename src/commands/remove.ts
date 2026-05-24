@@ -220,18 +220,18 @@ export async function remove(
       {
         type: 'confirm',
         name: 'stopTraefikConfirm',
-        message: 'No other port projects running. Stop Traefik?',
+        message: 'No other port projects running. Stop port?',
         default: true,
       },
     ])
 
     if (stopTraefikConfirm) {
-      output.info('Stopping Traefik...')
+      output.info('Stopping port...')
       try {
         await stopSharedStack()
-        output.success('Traefik stopped')
+        output.success('port stopped')
       } catch (error) {
-        output.warn(`Failed to stop Traefik: ${error}`)
+        output.warn(`Failed to stop port: ${error}`)
       }
     }
   }

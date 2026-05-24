@@ -16,7 +16,7 @@ async function stopSharedStackGlobally(options?: { yes?: boolean }): Promise<voi
   const sharedStackRunning = await isSharedStackRunning()
 
   if (!sharedStackRunning) {
-    output.info('Shared stack is not running.')
+    output.info('port is not running.')
     return
   }
 
@@ -28,8 +28,8 @@ async function stopSharedStackGlobally(options?: { yes?: boolean }): Promise<voi
 
     const promptMessage =
       projectCount > 0
-        ? `${projectCount} port project(s) still registered. Stop Traefik anyway?`
-        : 'Stop Traefik?'
+        ? `${projectCount} port project(s) still registered. Stop port anyway?`
+        : 'Stop port?'
 
     const { stopSharedStackConfirm } = await inquirer.prompt<{ stopSharedStackConfirm: boolean }>([
       {
@@ -44,12 +44,12 @@ async function stopSharedStackGlobally(options?: { yes?: boolean }): Promise<voi
   }
 
   if (shouldStopSharedStack) {
-    output.info('Stopping Traefik...')
+    output.info('Stopping port...')
     try {
       await stopSharedStack()
-      output.success('Traefik stopped')
+      output.success('port stopped')
     } catch (error) {
-      output.warn(`Failed to stop Traefik: ${error}`)
+      output.warn(`Failed to stop port: ${error}`)
     }
   }
 }
@@ -145,7 +145,7 @@ export async function down(options?: { yes?: boolean }): Promise<void> {
           {
             type: 'confirm',
             name: 'stopSharedStackConfirm',
-            message: 'No other port projects running. Stop Traefik?',
+            message: 'No other port projects running. Stop port?',
             default: true,
           },
         ]
@@ -154,12 +154,12 @@ export async function down(options?: { yes?: boolean }): Promise<void> {
     }
 
     if (shouldStopSharedStack) {
-      output.info('Stopping Traefik...')
+      output.info('Stopping port...')
       try {
         await stopSharedStack()
-        output.success('Traefik stopped')
+        output.success('port stopped')
       } catch (error) {
-        output.warn(`Failed to stop Traefik: ${error}`)
+        output.warn(`Failed to stop port: ${error}`)
       }
     }
   }
