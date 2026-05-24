@@ -6,6 +6,7 @@ import { Dashboard } from './views/Dashboard.tsx'
 import { WorktreeView } from './views/WorktreeView.tsx'
 import { usePortData } from './hooks/usePortData.ts'
 import { useActions } from './hooks/useActions.ts'
+import type { WorktreeRowState } from './components/WorktreeRowStateIndicator.tsx'
 
 interface AppProps {
   startView: StartView
@@ -17,6 +18,7 @@ interface AppProps {
 export function App({ startView, context, config, requestExit }: AppProps) {
   const [currentView, setCurrentView] = useState<'dashboard' | 'worktree'>(startView)
   const [selectedWorktree, setSelectedWorktree] = useState<string | null>(context.name)
+  const [worktreeRowStates, setWorktreeRowStates] = useState<Record<string, WorktreeRowState>>({})
   const [statusMessage, setStatusMessage] = useState<{
     text: string
     type: 'success' | 'error'
@@ -36,6 +38,18 @@ export function App({ startView, context, config, requestExit }: AppProps) {
   }
 
   const actions = useActions(context.repoRoot, config, refresh)
+
+  const setWorktreeRowState = useCallback((name: string, state: WorktreeRowState) => {
+    setWorktreeRowStates(prev => ({
+      ...prev,
+      [name]: state,
+    }))
+  }, [])
+
+  const handleRefresh = useCallback(() => {
+    setWorktreeRowStates({})
+    refresh()
+  }, [refresh])
 
   const showStatus = useCallback((text: string, type: 'success' | 'error') => {
     setStatusMessage({ text, type })
@@ -84,7 +98,7 @@ export function App({ startView, context, config, requestExit }: AppProps) {
       handleExit()
     }
     if (event.name === 'r' && !event.ctrl && !event.meta) {
-      refresh()
+      handleRefresh()
     }
   })
 
@@ -111,22 +125,24 @@ export function App({ startView, context, config, requestExit }: AppProps) {
   }
 
   return (
-    <Dashboard
-      repoRoot={context.repoRoot}
-      repoName={context.name}
-      worktrees={worktrees}
-      hostServices={hostServices}
-      traefikRunning={traefikRunning}
-      config={config}
-      onSelectWorktree={handleSelectWorktree}
-      onOpenWorktree={handleOpenWorktree}
-      activeWorktreeName={activeWorktreeName}
-      initialSelectedName={selectedWorktree}
-      actions={actions}
-      refresh={refresh}
-      loading={loading}
-      statusMessage={statusMessage}
-      showStatus={showStatus}
-    />
+      <Dashboard
+        repoRoot={context.repoRoot}
+        repoName={context.name}
+        worktrees={worktrees}
+        hostServices={hostServices}
+        traefikRunning={traefikRunning}
+        config={config}
+        rowStates={worktreeRowStates}
+        setWorktreeRowState={setWorktreeRowState}
+        onSelectWorktree={handleSelectWorktree}
+        onOpenWorktree={handleOpenWorktree}
+        activeWorktreeName={activeWorktreeName}
+        initialSelectedName={selectedWorktree}
+        actions={actions}
+        refresh={handleRefresh}
+        loading={loading}
+        statusMessage={statusMessage}
+        showStatus={showStatus}
+      />
   )
 }

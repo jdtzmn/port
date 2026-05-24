@@ -5,6 +5,10 @@ import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
+import {
+  WorktreeRowStateIndicator,
+  type WorktreeRowState,
+} from '../components/WorktreeRowStateIndicator.tsx'
 import { KeyHints } from '../components/KeyHints.tsx'
 import { Confirm } from '../components/Confirm.tsx'
 import { useFilterNavigation } from '../hooks/useFilterNavigation.ts'
@@ -23,6 +27,8 @@ interface DashboardProps {
   hostServices: HostService[]
   traefikRunning: boolean
   config: PortConfig
+  rowStates: Record<string, WorktreeRowState>
+  setWorktreeRowState: (name: string, state: WorktreeRowState) => void
   onSelectWorktree: (name: string) => void
   onOpenWorktree: (name: string) => void
   activeWorktreeName: string
@@ -70,6 +76,8 @@ export function Dashboard({
   repoName,
   worktrees,
   traefikRunning,
+  rowStates,
+  setWorktreeRowState,
   onSelectWorktree,
   onOpenWorktree,
   activeWorktreeName,
@@ -135,6 +143,29 @@ export function Dashboard({
   const selectedWorktree = worktrees[selectedIndex]
   const isRootSelected = selectedIndex === 0
 
+  const runSelectedWorktreeAction = async (
+    action: (worktreePath: string, worktreeName: string) => Promise<ActionResult>
+  ): Promise<ActionResult | null> => {
+    if (!selectedWorktree) return null
+
+    setBusy(true)
+    setWorktreeRowState(selectedWorktree.name, 'running')
+
+    try {
+      const result = await action(selectedWorktree.path, selectedWorktree.name)
+      setWorktreeRowState(selectedWorktree.name, result.success ? 'success' : 'error')
+      showStatus(result.message, result.success ? 'success' : 'error')
+      return result
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setWorktreeRowState(selectedWorktree.name, 'error')
+      showStatus(message, 'error')
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }
+
   useKeyboard(event => {
     if (event.ctrl || event.meta || busy) return
 
@@ -164,24 +195,12 @@ export function Dashboard({
         break
       case 'u':
         if (selectedWorktree) {
-          setBusy(true)
-          actions
-            .upWorktree(selectedWorktree.path, selectedWorktree.name)
-            .then(result => {
-              showStatus(result.message, result.success ? 'success' : 'error')
-            })
-            .finally(() => setBusy(false))
+          void runSelectedWorktreeAction(actions.upWorktree)
         }
         break
       case 'd':
         if (selectedWorktree) {
-          setBusy(true)
-          actions
-            .downWorktree(selectedWorktree.path, selectedWorktree.name)
-            .then(result => {
-              showStatus(result.message, result.success ? 'success' : 'error')
-            })
-            .finally(() => setBusy(false))
+          void runSelectedWorktreeAction(actions.downWorktree)
         }
         break
       case 'o':
@@ -198,19 +217,17 @@ export function Dashboard({
   })
 
   const handleConfirmArchive = () => {
-    if (!selectedWorktree) return
     setPendingAction(null)
-    setBusy(true)
-    actions
-      .archiveWorktree(selectedWorktree.path, selectedWorktree.name)
-      .then(result => {
-        showStatus(result.message, result.success ? 'success' : 'error')
-        // Adjust selection if needed
-        if (selectedIndex >= worktrees.length - 1) {
-          setSelectedIndex(Math.max(0, worktrees.length - 2))
-        }
-      })
-      .finally(() => setBusy(false))
+    if (!selectedWorktree) return
+
+    void runSelectedWorktreeAction(actions.archiveWorktree).then(result => {
+      if (!result?.success) return
+
+      // Adjust selection if needed
+      if (selectedIndex >= worktrees.length - 1) {
+        setSelectedIndex(Math.max(0, worktrees.length - 2))
+      }
+    })
   }
 
   const handleCancelAction = () => {
@@ -259,6 +276,7 @@ export function Dashboard({
           const isSelected = index === selectedIndex
           const isRoot = index === 0
           const isActive = worktree.name === activeWorktreeName
+          const rowState = rowStates[worktree.name] ?? 'idle'
           const sortedServices = [...worktree.services].sort(
             (a, b) => Number(b.running) - Number(a.running)
           )
@@ -279,6 +297,10 @@ export function Dashboard({
                   ★{' '}
                 </text>
               )}
+              <WorktreeRowStateIndicator state={rowState} />
+              <text wrapMode="none" flexShrink={0}>
+                {' '}
+              </text>
               <text flexShrink={1} wrapMode="none">
                 {matchRanges.length > 0 ? buildHighlightedSegments(nameStr, matchRanges) : nameStr}
               </text>

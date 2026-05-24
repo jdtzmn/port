@@ -1,12 +1,14 @@
 import { test, expect, afterEach, describe } from 'bun:test'
 import { testRender } from '@opentui/react/test-utils'
 import type { TestRenderer } from '@opentui/core/testing'
+import { RGBA } from '@opentui/core'
 import { useEffect, useState } from 'react'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { HostService, PortConfig } from '../../types.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { findSubstringMatchRanges } from '../lib/filtering.ts'
 import { Dashboard, buildServicesText } from '../views/Dashboard.tsx'
+import type { WorktreeRowState } from '../components/WorktreeRowStateIndicator.tsx'
 
 const mockConfig: PortConfig = { domain: 'port' }
 
@@ -64,6 +66,21 @@ const filterWorktrees: WorktreeStatus[] = [
   },
 ]
 
+const rowStateWorktrees: WorktreeStatus[] = [
+  {
+    name: 'myapp',
+    path: '/repo',
+    services: [],
+    running: false,
+  },
+  {
+    name: 'feature-auth',
+    path: '/repo/.port/trees/feature-auth',
+    services: [],
+    running: false,
+  },
+]
+
 const noop = () => {}
 const noopAsync = async (): Promise<ActionResult> => ({ success: true, message: '' })
 const mockActions = {
@@ -81,6 +98,8 @@ function props(overrides: Record<string, unknown> = {}) {
     hostServices: [] as HostService[],
     traefikRunning: true,
     config: mockConfig,
+    rowStates: {} as Record<string, WorktreeRowState>,
+    setWorktreeRowState: noop,
     onSelectWorktree: noop,
     onOpenWorktree: noop,
     activeWorktreeName: 'myapp',
@@ -164,6 +183,41 @@ describe('Dashboard', () => {
     expect(frame).toContain('○')
   })
 
+  test('renders worktree row state indicators from props', async () => {
+    const { renderer, renderOnce, captureSpans } = await testRender(
+      <Dashboard
+        {...props({
+          worktrees: rowStateWorktrees,
+          rowStates: {
+            myapp: 'running',
+            'feature-auth': 'error',
+          },
+        })}
+      />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const spans = captureSpans().lines
+
+    const myappLine = spans.find(line =>
+      line.spans.map(span => span.text).join('').includes('myapp (root)')
+    )
+    const authLine = spans.find(line =>
+      line.spans.map(span => span.text).join('').includes('feature-auth')
+    )
+
+    expect(myappLine).toBeDefined()
+    expect(authLine).toBeDefined()
+
+    const myappIndicator = myappLine!.spans.find(span => span.text === '●')
+    const authIndicator = authLine!.spans.find(span => span.text === '●')
+
+    expect(myappIndicator?.fg.equals(RGBA.fromHex('#FFD966'))).toBe(true)
+    expect(authIndicator?.fg.equals(RGBA.fromHex('#FF4444'))).toBe(true)
+  })
+
   test('findSubstringMatchRanges returns all case-insensitive matches', () => {
     const ranges = findSubstringMatchRanges('bug-auth-auth', 'AUTH')
 
@@ -196,6 +250,66 @@ describe('Dashboard', () => {
     expect(frame).toContain('[a]')
     expect(frame).toContain('[r]')
     expect(frame).toContain('[q]')
+  })
+
+  test('u updates the selected row state through running to success', async () => {
+    let resolveUp: ((result: ActionResult) => void) | null = null
+    const upWorktree = () =>
+      new Promise<ActionResult>(resolve => {
+        resolveUp = resolve
+      })
+
+    function ActionDashboard() {
+      const [rowStates, setRowStates] = useState<Record<string, WorktreeRowState>>({})
+
+      return (
+        <Dashboard
+          {...props({
+            worktrees: rowStateWorktrees,
+            actions: {
+              ...mockActions,
+              upWorktree,
+            },
+            rowStates,
+            setWorktreeRowState: (name: string, state: WorktreeRowState) => {
+              setRowStates(prev => ({
+                ...prev,
+                [name]: state,
+              }))
+            },
+          })}
+        />
+      )
+    }
+
+    const { renderer, mockInput, renderOnce, captureSpans } = await testRender(
+      <ActionDashboard />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('u')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    let myappLine = captureSpans().lines.find(line =>
+      line.spans.map(span => span.text).join('').includes('myapp (root)')
+    )
+    let runningIndicator = myappLine?.spans.find(span => span.text === '●')
+
+    expect(runningIndicator?.fg.equals(RGBA.fromHex('#FFD966'))).toBe(true)
+
+    resolveUp?.({ success: true, message: 'started' })
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    myappLine = captureSpans().lines.find(line =>
+      line.spans.map(span => span.text).join('').includes('myapp (root)')
+    )
+    const successIndicator = myappLine?.spans.find(span => span.text === '●')
+
+    expect(successIndicator?.fg.equals(RGBA.fromHex('#00FF00'))).toBe(true)
   })
 
   test('j/k navigates worktree list', async () => {
