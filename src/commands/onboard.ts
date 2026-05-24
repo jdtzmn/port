@@ -51,9 +51,9 @@ const STEPS: OnboardStep[] = [
     why: 'Shows running/stopped services across all worktrees.',
   },
   {
-    command: 'port down',
-    how: 'Run in a worktree when you are done testing.',
-    why: 'Stops project services and offers Traefik shutdown when appropriate.',
+    command: 'port down [services...]',
+    how: 'Run in a worktree when you want to stop everything or selectively remove a subset of services while leaving the rest running.',
+    why: 'Stops services and removes the selected containers without tearing down the whole worktree.',
   },
   {
     command: 'port exit',

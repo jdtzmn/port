@@ -305,10 +305,33 @@ export function getServiceDependencies(service: ParsedComposeService): string[] 
  */
 export function resolveComposeServices(
   composeFile: ParsedComposeFile,
-  requestedServices: string[]
+  requestedServices: string[],
+  options: { includeDependencies?: boolean } = {}
 ): string[] {
   if (requestedServices.length === 0) {
     return Object.keys(composeFile.services)
+  }
+
+  const includeDependencies = options.includeDependencies ?? true
+
+  if (!includeDependencies) {
+    const resolved: string[] = []
+    const seen = new Set<string>()
+
+    for (const serviceName of requestedServices) {
+      if (seen.has(serviceName)) {
+        continue
+      }
+
+      if (!composeFile.services[serviceName]) {
+        throw new Error(`Service "${serviceName}" not found in compose file`)
+      }
+
+      seen.add(serviceName)
+      resolved.push(serviceName)
+    }
+
+    return resolved
   }
 
   const resolved: string[] = []

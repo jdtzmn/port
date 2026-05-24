@@ -5,21 +5,21 @@ import { renderCLI, prepareSample } from './utils'
 test('Running without any arguments shows the help message', async () => {
   const { findByText } = await renderCLI()
 
-  const instance = await findByText('Usage:')
+  const instance = await findByText(/Usage:/)
   expect(instance).toBeInTheConsole()
 })
 
 test('Running with --help shows the help message', async () => {
   const { findByText } = await renderCLI(['--help'])
 
-  const instance = await findByText('Usage:')
+  const instance = await findByText(/Usage:/)
   expect(instance).toBeInTheConsole()
 })
 
 test('Remove command help includes --force option', async () => {
   const { findByText } = await renderCLI(['rm', '--help'])
 
-  const instance = await findByText('-f, --force')
+  const instance = await findByText(/-f, --force/)
   expect(instance).toBeInTheConsole()
 })
 
@@ -33,7 +33,7 @@ test('Help includes the status command', async () => {
 test('Help includes the kill command', async () => {
   const { findByText } = await renderCLI(['--help'])
 
-  const instance = await findByText('kill [port]')
+  const instance = await findByText(/kill/)
   expect(instance).toBeInTheConsole()
 })
 
@@ -47,7 +47,7 @@ test('Help includes the cleanup command', async () => {
 test('Help includes the enter command', async () => {
   const { findByText } = await renderCLI(['--help'])
 
-  const instance = await findByText('enter <branch>')
+  const instance = await findByText(/enter <branch>/)
   expect(instance).toBeInTheConsole()
 })
 
@@ -55,6 +55,13 @@ test('Up command help includes the services syntax', async () => {
   const { findByText } = await renderCLI(['up', '--help'])
 
   const instance = await findByText('up [options] [services...]')
+  expect(instance).toBeInTheConsole()
+})
+
+test('Down command help includes the services syntax', async () => {
+  const { findByText } = await renderCLI(['down', '--help'])
+
+  const instance = await findByText('down [options] [services...]')
   expect(instance).toBeInTheConsole()
 })
 

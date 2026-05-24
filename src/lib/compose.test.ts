@@ -238,6 +238,25 @@ describe('resolveComposeServices', () => {
     expect(resolveComposeServices(parsedCompose, ['app'])).toEqual(['app', 'postgres'])
   })
 
+  test('returns only requested services when dependency expansion is disabled', () => {
+    const parsedCompose: ParsedComposeFile = {
+      name: 'demo',
+      services: {
+        app: {
+          depends_on: {
+            postgres: { condition: 'service_healthy' },
+          },
+        },
+        postgres: {},
+        redis: {},
+      },
+    }
+
+    expect(resolveComposeServices(parsedCompose, ['app'], { includeDependencies: false })).toEqual([
+      'app',
+    ])
+  })
+
   test('returns every service when none are requested', () => {
     const parsedCompose: ParsedComposeFile = {
       name: 'demo',

@@ -183,10 +183,10 @@ port open
 ### 9. Stop Services
 
 ```bash
-port down
+port down [services...]
 ```
 
-Stops services and optionally shuts down Traefik if no other projects are running.
+Stops all services by default, or a selected subset when service names are provided. The selected containers are removed without tearing down the whole worktree.
 
 ### 10. Run Host Processes (Non-Docker)
 
@@ -272,7 +272,7 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port exit`                                                         | Exit the current worktree and return to repo root               |
 | `port up [services...]`                                             | Start docker-compose services in current worktree               |
 | `port open`                                                         | Re-run the `post-up` hook in the current repo/worktree context  |
-| `port down`                                                         | Stop docker-compose services and host processes                 |
+| `port down [services...]`                                           | Stop docker-compose services and host processes selectively     |
 | `port run <port> -- <command...>`                                   | Run a host process with Traefik routing                         |
 | `port kill [port]`                                                  | Stop host services (optionally by logical port)                 |
 | `port remove <branch> [--force] [--keep-branch] [--cleanup-images]` | Remove worktree, archive branch, clean up Docker resources      |

@@ -6,7 +6,12 @@ const mocks = vi.hoisted(() => ({
   ensurePortRuntimeDir: vi.fn(),
   loadConfigOrDefault: vi.fn(),
   getComposeFile: vi.fn(),
+  parseComposeFile: vi.fn(),
+  resolveComposeServices: vi.fn(),
+  getServicePorts: vi.fn(),
+  getProject: vi.fn(),
   unregisterProject: vi.fn(),
+  registerProject: vi.fn(),
   hasRegisteredProjects: vi.fn(),
   getHostServicesForWorktree: vi.fn(),
   getProjectCount: vi.fn(),
@@ -15,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   isTraefikRunning: vi.fn(),
   getProjectName: vi.fn(),
   stopHostService: vi.fn(),
+  execAsync: vi.fn(),
   success: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -42,6 +48,8 @@ vi.mock('../lib/config.ts', () => ({
 
 vi.mock('../lib/registry.ts', () => ({
   unregisterProject: mocks.unregisterProject,
+  registerProject: mocks.registerProject,
+  getProject: mocks.getProject,
   hasRegisteredProjects: mocks.hasRegisteredProjects,
   getHostServicesForWorktree: mocks.getHostServicesForWorktree,
   getProjectCount: mocks.getProjectCount,
@@ -52,10 +60,17 @@ vi.mock('../lib/compose.ts', () => ({
   stopTraefik: mocks.stopTraefik,
   isTraefikRunning: mocks.isTraefikRunning,
   getProjectName: mocks.getProjectName,
+  parseComposeFile: mocks.parseComposeFile,
+  resolveComposeServices: mocks.resolveComposeServices,
+  getServicePorts: mocks.getServicePorts,
 }))
 
 vi.mock('../lib/hostService.ts', () => ({
   stopHostService: mocks.stopHostService,
+}))
+
+vi.mock('../lib/exec.ts', () => ({
+  execAsync: mocks.execAsync,
 }))
 
 vi.mock('../lib/output.ts', () => ({
@@ -83,6 +98,8 @@ describe('down fallback behavior', () => {
     mocks.getComposeFile.mockReturnValue('docker-compose.yml')
 
     mocks.unregisterProject.mockResolvedValue(undefined)
+    mocks.registerProject.mockResolvedValue(undefined)
+    mocks.getProject.mockResolvedValue({ repo: '/repo', branch: 'main', ports: [3000, 5432] })
     mocks.hasRegisteredProjects.mockResolvedValue(false)
     mocks.getHostServicesForWorktree.mockResolvedValue([])
     mocks.getProjectCount.mockResolvedValue(0)
@@ -92,9 +109,56 @@ describe('down fallback behavior', () => {
     mocks.isTraefikRunning.mockResolvedValue(true)
     mocks.getProjectName.mockReturnValue('demo-main')
     mocks.stopHostService.mockResolvedValue(undefined)
+    mocks.execAsync.mockResolvedValue({ stdout: '', stderr: '' })
+    mocks.resolveComposeServices.mockReturnValue(['app'])
+    mocks.parseComposeFile.mockResolvedValue({
+      name: 'demo',
+      services: {
+        app: { ports: [{ published: 3000, target: 3000 }] },
+        postgres: { ports: [{ published: 5432, target: 5432 }] },
+      },
+    })
+    mocks.getServicePorts.mockImplementation(
+      (service: { ports?: Array<{ published: number }> }) =>
+        service.ports?.map(port => port.published) ?? []
+    )
 
     mocks.prompt.mockResolvedValue({ stopTraefikConfirm: true })
     mocks.branch.mockImplementation((name: string) => name)
+  })
+
+  test('stops only requested services and keeps the worktree registered while others remain', async () => {
+    mocks.detectWorktree.mockReturnValue({
+      repoRoot: '/repo',
+      worktreePath: '/repo',
+      name: 'main',
+      isMainRepo: true,
+    })
+    mocks.hasRegisteredProjects.mockResolvedValue(true)
+    mocks.runCompose.mockResolvedValueOnce({ exitCode: 0, stdout: 'container-1\n', stderr: '' })
+
+    await down(['app'])
+
+    expect(mocks.runCompose).toHaveBeenNthCalledWith(
+      1,
+      '/repo',
+      'docker-compose.yml',
+      'demo-main',
+      ['ps', '-q', 'app'],
+      {
+        repoRoot: '/repo',
+        branch: 'main',
+        domain: 'port',
+      },
+      {
+        stdio: 'capture',
+      }
+    )
+    expect(mocks.execAsync).toHaveBeenCalledWith('docker rm -f container-1')
+    expect(mocks.registerProject).toHaveBeenCalledWith('/repo', 'main', [5432])
+    expect(mocks.unregisterProject).not.toHaveBeenCalled()
+    expect(mocks.getHostServicesForWorktree).toHaveBeenCalledWith('/repo', 'main')
+    expect(mocks.stopTraefik).not.toHaveBeenCalled()
   })
 
   test('stops Traefik from outside a worktree with --yes', async () => {

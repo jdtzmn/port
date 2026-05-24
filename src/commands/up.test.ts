@@ -104,6 +104,28 @@ describe('samples start', () => {
   )
 
   test(
+    'stops only the requested service and leaves dependencies running',
+    async () => {
+      const sample = await prepareSample('db-and-server', {
+        initWithConfig: true,
+      })
+
+      try {
+        await execPortAsync(['up', 'app'], sample.dir)
+
+        await execPortAsync(['down', 'app'], sample.dir)
+
+        const postgresHost = new URL(sample.urlWithPort(5432)).hostname
+        const sslResponse = await probePostgresSslResponse(postgresHost, 5432)
+        expect(['S', 'N']).toContain(sslResponse)
+      } finally {
+        await sample.cleanup()
+      }
+    },
+    SAMPLES_TIMEOUT + 1000
+  )
+
+  test(
     'start the db-and-server sample with a custom domain',
     async ctx => {
       const dnsConfigured = await checkDns('test')

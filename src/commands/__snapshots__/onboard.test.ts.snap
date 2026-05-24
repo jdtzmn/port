@@ -49,10 +49,10 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 - **How**: Run anytime when you need service-level visibility.
 - **Why**: Shows running/stopped services across all worktrees.
 
-### 9. \`port down\`
+### 9. \`port down [services...]\`
 
-- **How**: Run in a worktree when you are done testing.
-- **Why**: Stops project services and offers Traefik shutdown when appropriate.
+- **How**: Run in a worktree when you want to stop everything or selectively remove a subset of services while leaving the rest running.
+- **Why**: Stops services and removes the selected containers without tearing down the whole worktree.
 
 ### 10. \`port exit\`
 
@@ -128,10 +128,10 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 - **How**: Run anytime when you need service-level visibility.
 - **Why**: Shows running/stopped services across all worktrees.
 
-### 9. \`port down\`
+### 9. \`port down [services...]\`
 
-- **How**: Run in a worktree when you are done testing.
-- **Why**: Stops project services and offers Traefik shutdown when appropriate.
+- **How**: Run in a worktree when you want to stop everything or selectively remove a subset of services while leaving the rest running.
+- **Why**: Stops services and removes the selected containers without tearing down the whole worktree.
 
 ### 10. \`port exit\`
 
