@@ -1,5 +1,6 @@
 import { test, expect, afterEach, describe } from 'bun:test'
 import { testRender } from '@opentui/react/test-utils'
+import { RGBA } from '@opentui/core'
 import type { TestRenderer } from '@opentui/core/testing'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { HostService, PortConfig } from '../../types.ts'
@@ -131,6 +132,50 @@ describe('WorktreeView', () => {
     expect(frame).toContain('port 5173')
     expect(frame).toContain('49821')
     expect(frame).toContain('PID 12345')
+  })
+
+  test('shows worktree and service status badges on the left', async () => {
+    const { renderer, renderOnce, captureSpans } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={mockHostServices}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const lines = captureSpans().lines
+
+    const worktreeLine = lines.find(line =>
+      line.spans.map(span => span.text).join('').includes('feature-auth')
+    )
+    const webLine = lines.find(line =>
+      line.spans.map(span => span.text).join('').includes('web:3000')
+    )
+    const dbLine = lines.find(line =>
+      line.spans.map(span => span.text).join('').includes('db:5432')
+    )
+
+    expect(worktreeLine).toBeDefined()
+    expect(webLine).toBeDefined()
+    expect(dbLine).toBeDefined()
+
+    const worktreeBadge = worktreeLine!.spans.find(span => span.text === '●')
+    const webBadge = webLine!.spans.find(span => span.text === '●')
+    const dbBadge = dbLine!.spans.find(span => span.text === '○')
+
+    expect(worktreeBadge?.fg.equals(RGBA.fromHex('#FFD966'))).toBe(true)
+    expect(webBadge?.fg.equals(RGBA.fromHex('#FFD966'))).toBe(true)
+    expect(dbBadge?.fg.equals(RGBA.fromHex('#666666'))).toBe(true)
   })
 
   test('Esc calls onBack', async () => {

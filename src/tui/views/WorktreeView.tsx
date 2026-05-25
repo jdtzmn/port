@@ -4,7 +4,7 @@ import type { ScrollBoxRenderable } from '@opentui/core'
 import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
-import { StatusIndicator } from '../components/StatusIndicator.tsx'
+import { WorktreeRowStateIndicator } from '../components/WorktreeRowStateIndicator.tsx'
 import { KeyHints } from '../components/KeyHints.tsx'
 import { useFilterNavigation } from '../hooks/useFilterNavigation.ts'
 import { findSubstringMatchRanges, type MatchRange } from '../lib/filtering.ts'
@@ -189,6 +189,7 @@ export function WorktreeView({
   const worktreeName = worktree?.name ?? 'unknown'
   const baseUrl = `http://${worktreeName}.${config.domain}`
   const services = buildServiceItems(worktree, hostServices, config, worktreeName)
+  const worktreeState = worktree?.running ? 'running' : 'idle'
   const {
     mode,
     highlightQuery,
@@ -268,6 +269,7 @@ export function WorktreeView({
     <box flexDirection="column" width="100%" height="100%">
       {/* Header */}
       <box flexDirection="row" gap={1} flexShrink={0}>
+        <WorktreeRowStateIndicator state={worktreeState} />
         <text>
           <b>{worktreeName}</b>
         </text>
@@ -314,6 +316,7 @@ export function WorktreeView({
                 return (
                   <box key={`${service.name}-${service.port}-${i}`} flexDirection="row" gap={1}>
                     <text>{isSelected ? '>' : ' '}</text>
+                    <WorktreeRowStateIndicator state={service.running ? 'running' : 'idle'} />
                     <text>
                       {isSelected ? (
                         <b>
@@ -327,8 +330,6 @@ export function WorktreeView({
                         labelText
                       )}
                     </text>
-                    <StatusIndicator running={service.running} />
-                    <text fg="#888888">{service.running ? 'running' : 'stopped'}</text>
                   </box>
                 )
               })}
@@ -356,6 +357,7 @@ export function WorktreeView({
                 return (
                   <box key={`host-${service.port}`} flexDirection="row" gap={1}>
                     <text>{isSelected ? '>' : ' '}</text>
+                    <WorktreeRowStateIndicator state={service.running ? 'running' : 'idle'} />
                     <text>
                       {isSelected ? (
                         <b>
@@ -369,7 +371,6 @@ export function WorktreeView({
                         labelText
                       )}
                     </text>
-                    <StatusIndicator running={service.running} />
                   </box>
                 )
               })}
