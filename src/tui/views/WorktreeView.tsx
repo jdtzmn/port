@@ -193,6 +193,7 @@ export function WorktreeView({
 
   const worktreeName = worktree?.name ?? 'unknown'
   const services = buildServiceItems(worktree, hostServices, config, worktreeName)
+  const worktreeRunning = worktree?.running ?? false
   const {
     mode,
     highlightQuery,
@@ -303,6 +304,15 @@ export function WorktreeView({
 
   return (
     <box flexDirection="column" width="100%" height="100%">
+      <box flexDirection="row" gap={1} flexShrink={0}>
+        <StatusIndicator running={worktreeRunning} />
+        <text>
+          <b>{worktreeName}</b>
+        </text>
+        {loading && <text fg="#888888"> refreshing...</text>}
+        {busy && <text fg="#FFFF00"> working...</text>}
+      </box>
+
       <scrollbox
         ref={scrollRef}
         flexGrow={1}
@@ -325,6 +335,7 @@ export function WorktreeView({
 
                 return (
                   <SelectableRow key={`${service.name}-${service.port}-${i}`} selected={isSelected}>
+                    <StatusIndicator running={service.running} />
                     <text>
                       {isSelected ? (
                         <b>
@@ -338,8 +349,6 @@ export function WorktreeView({
                         labelText
                       )}
                     </text>
-                    <StatusIndicator running={service.running} />
-                    <text fg="#888888">{service.running ? 'running' : 'stopped'}</text>
                   </SelectableRow>
                 )
               })}
@@ -360,6 +369,7 @@ export function WorktreeView({
 
                 return (
                   <SelectableRow key={`host-${service.port}`} selected={isSelected}>
+                    <StatusIndicator running={service.running} />
                     <text>
                       {isSelected ? (
                         <b>
@@ -373,7 +383,6 @@ export function WorktreeView({
                         labelText
                       )}
                     </text>
-                    <StatusIndicator running={service.running} />
                   </SelectableRow>
                 )
               })}
