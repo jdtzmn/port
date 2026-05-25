@@ -157,7 +157,7 @@ describe('Dashboard', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    expect(frame).toContain('★')
+    expect(frame).toContain('▣')
     expect(frame).toContain('(root)')
   })
 
@@ -173,6 +173,40 @@ describe('Dashboard', () => {
 
     expect(rootLine).toMatch(/^●/)
     expect(rootLine).toContain('myapp (root)')
+    expect(rootLine).toMatch(/▣█$/)
+  })
+
+  test('keeps the active marker pinned when the worktree name truncates', async () => {
+    const longWorktreeName = 'this-is-a-very-long-worktree-name-that-should-truncate'
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard
+        {...props({
+          worktrees: [
+            {
+              name: longWorktreeName,
+              path: '/repo',
+              services: [],
+              running: true,
+            },
+            {
+              name: 'feature-auth',
+              path: '/repo/.port/trees/feature-auth',
+              services: [],
+              running: false,
+            },
+          ],
+          activeWorktreeName: longWorktreeName,
+        })}
+      />,
+      { width: 28, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const longLine = captureCharFrame().split('\n')[0] ?? ''
+
+    expect(longLine).toContain('...')
+    expect(longLine).toMatch(/▣█$/)
   })
 
   test('does not list services in the worktree pane', async () => {
@@ -458,13 +492,13 @@ describe('Dashboard', () => {
     const rootLine = lines.find(l => l.includes('(root)'))
     const authLine = lines.find(l => l.includes('feature-auth'))
 
-    // Root should NOT have star
+    // Root should NOT have active marker
     expect(rootLine).toBeDefined()
-    expect(rootLine!).not.toContain('★')
+    expect(rootLine!).not.toContain('▣')
 
-    // feature-auth SHOULD have star
+    // feature-auth SHOULD have active marker
     expect(authLine).toBeDefined()
-    expect(authLine!).toContain('★')
+    expect(authLine!).toContain('▣')
   })
 
   test('initialSelectedName places caret on current worktree', async () => {
@@ -486,7 +520,7 @@ describe('Dashboard', () => {
 
     expect(authLine).toBeDefined()
     expect(authLine!).not.toContain('>')
-    expect(authLine!).toContain('★')
+    expect(authLine!).toContain('▣')
   })
 
   test('applies initialSelectedName after async worktree load', async () => {
@@ -524,7 +558,7 @@ describe('Dashboard', () => {
 
     expect(authLine).toBeDefined()
     expect(authLine!).not.toContain('>')
-    expect(authLine!).toContain('★')
+    expect(authLine!).toContain('▣')
   })
 
   test('shows loading state', async () => {
@@ -565,7 +599,7 @@ describe('Dashboard', () => {
     const frame = captureCharFrame()
     const appLine = frame.split('\n').find(l => l.includes('(root)'))!
 
-    expect(appLine).toContain('★')
+    expect(appLine).toContain('▣')
     expect(appLine).not.toContain(' total')
     expect(appLine).not.toContain('web')
     expect(appLine).not.toContain('api')

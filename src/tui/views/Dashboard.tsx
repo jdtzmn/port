@@ -304,14 +304,22 @@ export function Dashboard({
           return (
             <SelectableRow key={worktree.name} selected={isSelected}>
               <StatusIndicator running={worktree.running} />
+              <text flexGrow={1} flexShrink={1} wrapMode="none" truncate>
+                {isActive ? (
+                  <b>
+                    {matchRanges.length > 0 ? buildHighlightedSegments(nameStr, matchRanges) : nameStr}
+                  </b>
+                ) : matchRanges.length > 0 ? (
+                  buildHighlightedSegments(nameStr, matchRanges)
+                ) : (
+                  nameStr
+                )}
+              </text>
               {isActive && (
                 <text wrapMode="none" flexShrink={0} fg="#FFFF00">
-                  ★{' '}
+                  ▣
                 </text>
               )}
-              <text flexShrink={1} wrapMode="none">
-                {matchRanges.length > 0 ? buildHighlightedSegments(nameStr, matchRanges) : nameStr}
-              </text>
             </SelectableRow>
           )
         })}

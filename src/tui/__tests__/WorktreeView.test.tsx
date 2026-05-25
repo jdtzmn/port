@@ -83,8 +83,7 @@ describe('WorktreeView', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    expect(frame).toContain('feature-auth')
-    expect(frame).toContain('● feature-auth')
+    expect(frame).not.toContain('feature-auth')
     expect(frame).not.toContain('http://feature-auth.port')
     expect(frame).not.toContain('Docker Services')
     expect(frame).toContain('web:3000')
@@ -134,8 +133,7 @@ describe('WorktreeView', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    expect(frame).toContain('feature-auth')
-    expect(frame).toContain('● feature-auth')
+    expect(frame).not.toContain('feature-auth')
     expect(frame).not.toContain('http://feature-auth.port')
     expect(frame).not.toContain('Docker Services')
   })
@@ -197,7 +195,7 @@ describe('WorktreeView', () => {
     expect(frame).toContain('PID 12345')
   })
 
-  test('shows the worktree and service status badges before the labels', async () => {
+  test('shows service status badges before the labels', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <WorktreeView
         worktree={mockWorktree}
@@ -217,13 +215,13 @@ describe('WorktreeView', () => {
 
     await renderOnce()
     const frame = captureCharFrame()
-    const featureLine = frame.split('\n').find(line => line.includes('feature-auth')) ?? ''
     const webLine = frame.split('\n').find(line => line.includes('web:3000')) ?? ''
+    const dbLine = frame.split('\n').find(line => line.includes('db:5432')) ?? ''
 
-    expect(featureLine).toMatch(/●\s+feature-auth/)
-    expect(webLine).toMatch(/●\s+web:3000/)
-    expect(featureLine).not.toMatch(/feature-auth.*●/)
+    expect(webLine).toMatch(/^●/)
+    expect(dbLine).toMatch(/^○/)
     expect(webLine).not.toMatch(/web:3000.*●/)
+    expect(dbLine).not.toMatch(/db:5432.*○/)
   })
 
   test('Esc calls onBack', async () => {
@@ -384,8 +382,7 @@ describe('WorktreeView', () => {
     const frame = captureCharFrame()
     const lines = frame.split('\n')
 
-    expect(frame).toContain('big-app')
-    expect(frame).toContain('● big-app')
+    expect(frame).not.toContain('big-app')
     expect(frame).not.toContain('http://big-app.port')
 
     // Not all 20 services should be visible (some must be clipped/scrolled)
