@@ -161,6 +161,20 @@ describe('Dashboard', () => {
     expect(frame).toContain('(root)')
   })
 
+  test('renders a status badge before the worktree label', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props({ activeWorktreeName: 'myapp' })} />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const rootLine = frameLine(captureCharFrame(), 'myapp (root)')
+
+    expect(rootLine).toMatch(/^●/)
+    expect(rootLine).toContain('myapp (root)')
+  })
+
   test('does not list services in the worktree pane', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <Dashboard {...props()} />,

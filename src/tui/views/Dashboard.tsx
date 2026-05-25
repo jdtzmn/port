@@ -4,6 +4,7 @@ import type { ScrollBoxRenderable } from '@opentui/core'
 import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
+import { StatusIndicator } from '../components/StatusIndicator.tsx'
 import { Confirm } from '../components/Confirm.tsx'
 import type { KeyHint } from '../components/KeyHints.tsx'
 import { useFilterNavigation } from '../hooks/useFilterNavigation.ts'
@@ -302,6 +303,7 @@ export function Dashboard({
 
           return (
             <SelectableRow key={worktree.name} selected={isSelected}>
+              <StatusIndicator running={worktree.running} />
               {isActive && (
                 <text wrapMode="none" flexShrink={0} fg="#FFFF00">
                   ★{' '}
