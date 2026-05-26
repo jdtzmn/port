@@ -128,6 +128,47 @@ describe('samples start', () => {
   )
 
   test(
+    'starts only the requested service when no other service depends on it',
+    async () => {
+      // db-and-server has `app` depending on `postgres`. Asking for just
+      // `postgres` exercises the "independent sibling" path: postgres has
+      // no dependents, so `app` must not start.
+      const sample = await prepareSample('db-and-server', {
+        initWithConfig: true,
+      })
+
+      try {
+        const upResult = await execPortAsync(['up', 'postgres'], sample.dir)
+
+        // Postgres URL is surfaced; the app URL is not.
+        expect(upResult.stderr).toContain(sample.urlWithPort(5432))
+        expect(upResult.stderr).not.toContain(sample.urlWithPort(3000))
+
+        // Postgres is actually reachable.
+        const postgresHost = new URL(sample.urlWithPort(5432)).hostname
+        const sslResponse = await probePostgresSslResponse(postgresHost, 5432)
+        expect(['S', 'N']).toContain(sslResponse)
+
+        // No `app` container is running for this project. Use `port compose`
+        // so docker compose uses the project's -p/-f flags automatically.
+        const psResult = await execPortAsync(
+          ['compose', 'ps', '--services', '--filter', 'status=running'],
+          sample.dir
+        )
+        const runningServices = psResult.stdout
+          .split('\n')
+          .map(line => line.trim())
+          .filter(Boolean)
+        expect(runningServices).toContain('postgres')
+        expect(runningServices).not.toContain('app')
+      } finally {
+        await sample.cleanup()
+      }
+    },
+    SAMPLES_TIMEOUT + 1000
+  )
+
+  test(
     'start the db-and-server sample with a custom domain',
     async ctx => {
       const dnsConfigured = await checkDns('test')

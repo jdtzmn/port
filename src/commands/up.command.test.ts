@@ -228,6 +228,51 @@ describe('up DNS preflight', () => {
     expect(mocks.runCompose).not.toHaveBeenCalled()
   })
 
+  test('does not start independent sibling services when one is requested', async () => {
+    // Three siblings with no `depends_on` between them. Requesting `app`
+    // must only forward `app` to docker compose and only surface the `app`
+    // URL — `postgres` and `redis` must not be referenced anywhere.
+    mocks.parseComposeFile.mockResolvedValue({
+      name: 'repo',
+      services: {
+        app: {
+          ports: [{ published: 3000, target: 3000 }],
+        },
+        postgres: {
+          ports: [{ published: 5432, target: 5432 }],
+        },
+        redis: {
+          ports: [{ published: 6379, target: 6379 }],
+        },
+      },
+    })
+    mocks.getAllPorts.mockReturnValue([3000, 5432, 6379])
+    mocks.resolveComposeServices.mockReturnValue(['app'])
+    mocks.getServicePorts.mockImplementation(
+      (service: { ports?: Array<{ published: number }> }) =>
+        service.ports?.map(port => port.published) ?? []
+    )
+
+    await up(['app'])
+
+    // Compose is invoked exactly once, and the args carry only `app` —
+    // never `postgres`/`redis` as trailing positionals.
+    expect(mocks.runCompose).toHaveBeenCalledTimes(1)
+    const composeCall = mocks.runCompose.mock.calls[0]!
+    expect(composeCall[3]).toEqual(['up', '-d', 'app'])
+
+    // URL surface is restricted to the resolved set. Asserting the exact
+    // argument array (rather than `toContainEqual`) guards against any
+    // future regression that would silently add sibling URLs.
+    expect(mocks.serviceUrls).toHaveBeenCalledTimes(1)
+    expect(mocks.serviceUrls).toHaveBeenCalledWith([
+      {
+        name: 'app',
+        urls: ['http://main.port:3000'],
+      },
+    ])
+  })
+
   test('runs post-up hook when configured', async () => {
     mocks.hookExists.mockResolvedValue(true)
 
