@@ -48,8 +48,8 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 
 ### 9. `port down [services...]`
 
-- **How**: Run in a worktree when you are done testing. Omit services to stop everything, or pass service names to stop a subset and leave the rest running.
-- **Why**: Stops selected services and keeps the worktree registered until the last one is gone.
+- **How**: Run in a worktree when you want to stop everything or selectively remove a subset of services while leaving the rest running.
+- **Why**: Stops services and removes the selected containers without tearing down the whole worktree.
 
 ### 10. `port exit`
 
