@@ -138,16 +138,18 @@ program
 
 // port up
 program
-  .command('up')
+  .command('up [services...]')
   .description('Start docker-compose services in the current worktree')
   .action(up)
 
 // port down
 program
-  .command('down')
+  .command('down [services...]')
   .description('Stop docker-compose services in the current worktree')
   .option('-y, --yes', 'Skip confirmation prompt for stopping Traefik')
-  .action(down)
+  .action((services: string[] | undefined, options: { yes?: boolean }) =>
+    down(services ?? [], options)
+  )
 
 // port remove [branch]
 program

@@ -171,6 +171,11 @@ export async function runHook(
   branch: string
 ): Promise<HookResult> {
   const hookPath = getHookPath(repoRoot, hookName)
+  const pendingLogWrites: Promise<void>[] = []
+
+  const queueLog = (message: string): void => {
+    pendingLogWrites.push(appendLog(repoRoot, branch, hookName, message))
+  }
 
   // Log start
   await appendLog(repoRoot, branch, hookName, 'Running hook...')
@@ -190,7 +195,7 @@ export async function runHook(
       const lines = data.toString().trim().split('\n')
       for (const line of lines) {
         process.stdout.write(`  ${line}\n`)
-        await appendLog(repoRoot, branch, hookName, line)
+        queueLog(line)
       }
     })
 
@@ -199,13 +204,15 @@ export async function runHook(
       const lines = data.toString().trim().split('\n')
       for (const line of lines) {
         process.stderr.write(`  ${line}\n`)
-        await appendLog(repoRoot, branch, hookName, line)
+        queueLog(line)
       }
     })
 
     child.on('close', async code => {
       const exitCode = code ?? 1
       const success = exitCode === 0
+
+      await Promise.allSettled(pendingLogWrites)
 
       if (success) {
         await appendLog(repoRoot, branch, hookName, `Hook completed (exit code ${exitCode})`)
@@ -217,6 +224,7 @@ export async function runHook(
     })
 
     child.on('error', async error => {
+      await Promise.allSettled(pendingLogWrites)
       await appendLog(repoRoot, branch, hookName, `Hook error: ${error.message}`)
       resolve({ success: false, exitCode: 1 })
     })

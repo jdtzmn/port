@@ -32,6 +32,8 @@ export interface ParsedComposeService {
   build?: object
   /** Port mappings */
   ports?: ParsedPort[]
+  /** Dependencies on other services */
+  depends_on?: Record<string, object | null>
   /** Networks */
   networks?: Record<string, object | null>
   /** Labels */

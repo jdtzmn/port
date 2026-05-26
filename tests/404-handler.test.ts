@@ -1,7 +1,8 @@
-import { execPortAsync, prepareSample, safeDown } from './utils'
+import { execPortAsync, prepareSample } from './utils'
 import { describe, test, expect, afterAll } from 'vitest'
 
 const TIMEOUT = 300000 // Image build + container start can take a while
+const CLEANUP_TIMEOUT = 60000 // Compose teardown + network prune can exceed Vitest's 10s default
 
 /** Poll until the 404 handler responds or we time out */
 async function fetchUntilReady(url: string, maxWaitMs = 120000): Promise<Response> {
@@ -27,20 +28,22 @@ async function fetchUntilReady(url: string, maxWaitMs = 120000): Promise<Respons
 }
 
 describe('404 handler', () => {
-  let sampleDir: string
-  let cleanup: () => Promise<void>
+  let cleanup: (() => Promise<void>) | undefined
 
+  // `cleanup()` already runs `docker compose down` for the sample (and any
+  // worktrees) before removing the temp dir, so there is no need to also
+  // call `safeDown` here. Doing both was duplicating the compose teardown
+  // and the network prune, which pushed the hook past Vitest's default
+  // 10s `hookTimeout` on slow CI shards.
   afterAll(async () => {
-    if (sampleDir) await safeDown(sampleDir)
     if (cleanup) await cleanup()
-  })
+  }, CLEANUP_TIMEOUT)
 
   test(
     'serves Port Directory page for unmatched hosts',
     async () => {
       // Bring up any worktree — we just need Traefik + the 404 handler running
       const sample = await prepareSample('nextjs-app', { initWithConfig: true })
-      sampleDir = sample.dir
       cleanup = sample.cleanup
 
       await execPortAsync(['up'], sample.dir)

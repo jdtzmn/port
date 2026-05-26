@@ -7,6 +7,7 @@ import {
   generateOverrideContent,
   getComposeFileStack,
   getServicePorts,
+  resolveComposeServices,
   renderPortVariables,
   renderUserOverrideFile,
 } from './compose.ts'
@@ -214,6 +215,72 @@ describe('getComposeFileStack', () => {
       join('.port', 'override.yml'),
       join('.port', 'override.user.yml'),
     ])
+  })
+})
+
+describe('resolveComposeServices', () => {
+  test('includes requested services and their dependencies once', () => {
+    const parsedCompose: ParsedComposeFile = {
+      name: 'demo',
+      services: {
+        app: {
+          depends_on: {
+            postgres: { condition: 'service_healthy' },
+          },
+        },
+        postgres: {
+          ports: [{ published: 5432, target: 5432 }],
+        },
+        redis: {},
+      },
+    }
+
+    expect(resolveComposeServices(parsedCompose, ['app'])).toEqual(['app', 'postgres'])
+  })
+
+  test('returns only requested services when dependency expansion is disabled', () => {
+    const parsedCompose: ParsedComposeFile = {
+      name: 'demo',
+      services: {
+        app: {
+          depends_on: {
+            postgres: { condition: 'service_healthy' },
+          },
+        },
+        postgres: {},
+        redis: {},
+      },
+    }
+
+    expect(resolveComposeServices(parsedCompose, ['app'], { includeDependencies: false })).toEqual([
+      'app',
+    ])
+  })
+
+  test('returns every service when none are requested', () => {
+    const parsedCompose: ParsedComposeFile = {
+      name: 'demo',
+      services: {
+        app: {},
+        postgres: {},
+        redis: {},
+      },
+    }
+
+    expect(resolveComposeServices(parsedCompose, [])).toEqual(['app', 'postgres', 'redis'])
+  })
+
+  test('throws when a requested service does not exist', () => {
+    const parsedCompose: ParsedComposeFile = {
+      name: 'demo',
+      services: {
+        app: {},
+      },
+    }
+
+    expect(() => resolveComposeServices(parsedCompose, ['missing'])).toThrow(
+      'Service "missing" not found in compose file'
+    )
   })
 })
 

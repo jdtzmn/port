@@ -31,13 +31,13 @@ const STEPS: OnboardStep[] = [
     why: 'Creates or enters the branch worktree and changes into it, reusing an existing checked-out worktree when needed.',
   },
   {
-    command: 'port up',
-    how: 'Run inside a worktree after entering it.',
+    command: 'port up [services...]',
+    how: 'Run inside a worktree after entering it. Omit services to start everything, or pass specific service names to start a subset and their dependencies.',
     why: 'Starts services and wires routing through Traefik.',
   },
   {
     command: 'port open',
-    how: 'Run after port up if you want to trigger your post-up workflow manually.',
+    how: 'Run after port up [services...] if you want to trigger your post-up workflow manually.',
     why: 'Re-runs the post-up hook (for example, open the browser to your branch URL).',
   },
   {
@@ -51,9 +51,9 @@ const STEPS: OnboardStep[] = [
     why: 'Shows running/stopped services across all worktrees.',
   },
   {
-    command: 'port down',
-    how: 'Run in a worktree when you are done testing.',
-    why: 'Stops project services and offers Traefik shutdown when appropriate.',
+    command: 'port down [services...]',
+    how: 'Run in a worktree when you want to stop everything or selectively remove a subset of services while leaving the rest running.',
+    why: 'Stops services and removes the selected containers without tearing down the whole worktree.',
   },
   {
     command: 'port exit',

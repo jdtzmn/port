@@ -166,10 +166,11 @@ Returns to the repository root and clears the `PORT_WORKTREE` environment variab
 ### 8. Start Services
 
 ```bash
-port up
+port up [services...]
 ```
 
 Starts docker-compose services and makes them available at `feature-1.port:PORT`.
+Omit `services...` to start everything, or pass specific service names to start a subset and their dependencies.
 For services with published ports, the first one is also reachable at `service.feature-1.port`.
 
 If `.port/hooks/post-up.sh` is executable, Port runs it after services are up. You can manually
@@ -182,10 +183,10 @@ port open
 ### 9. Stop Services
 
 ```bash
-port down
+port down [services...]
 ```
 
-Stops services and optionally shuts down Traefik if no other projects are running.
+Stops all services by default, or a selected subset when service names are provided. The selected containers are removed without tearing down the whole worktree.
 
 ### 10. Run Host Processes (Non-Docker)
 
@@ -269,9 +270,9 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port enter <branch>`                                               | Enter a worktree explicitly (including command names)           |
 | `port <branch>`                                                     | Enter a worktree (creates if doesn't exist)                     |
 | `port exit`                                                         | Exit the current worktree and return to repo root               |
-| `port up`                                                           | Start docker-compose services in current worktree               |
+| `port up [services...]`                                             | Start docker-compose services in current worktree               |
 | `port open`                                                         | Re-run the `post-up` hook in the current repo/worktree context  |
-| `port down`                                                         | Stop docker-compose services and host processes                 |
+| `port down [services...]`                                           | Stop docker-compose services and host processes selectively     |
 | `port run <port> -- <command...>`                                   | Run a host process with Traefik routing                         |
 | `port kill [port]`                                                  | Stop host services (optionally by logical port)                 |
 | `port remove <branch> [--force] [--keep-branch] [--cleanup-images]` | Remove worktree, archive branch, clean up Docker resources      |
@@ -297,7 +298,7 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 Port supports executable shell hooks in `.port/hooks/`:
 
 - `post-create.sh`: runs after a new worktree is created by `port enter <branch>`
-- `post-up.sh`: runs after `port up` successfully starts services
+- `post-up.sh`: runs after `port up [services...]` successfully starts services
 
 Both hooks receive these environment variables:
 

@@ -290,6 +290,79 @@ export function getServicePorts(service: ParsedComposeService): number[] {
 }
 
 /**
+ * Get service names this service depends on.
+ */
+export function getServiceDependencies(service: ParsedComposeService): string[] {
+  return service.depends_on ? Object.keys(service.depends_on) : []
+}
+
+/**
+ * Resolve the services that docker compose will bring up for a given request.
+ *
+ * When no services are requested, docker compose starts everything in the
+ * compose file. When services are requested, the returned list includes each
+ * requested service plus its dependency closure, in request order.
+ */
+export function resolveComposeServices(
+  composeFile: ParsedComposeFile,
+  requestedServices: string[],
+  options: { includeDependencies?: boolean } = {}
+): string[] {
+  if (requestedServices.length === 0) {
+    return Object.keys(composeFile.services)
+  }
+
+  const includeDependencies = options.includeDependencies ?? true
+
+  if (!includeDependencies) {
+    const resolved: string[] = []
+    const seen = new Set<string>()
+
+    for (const serviceName of requestedServices) {
+      if (seen.has(serviceName)) {
+        continue
+      }
+
+      if (!composeFile.services[serviceName]) {
+        throw new Error(`Service "${serviceName}" not found in compose file`)
+      }
+
+      seen.add(serviceName)
+      resolved.push(serviceName)
+    }
+
+    return resolved
+  }
+
+  const resolved: string[] = []
+  const seen = new Set<string>()
+
+  const visit = (serviceName: string): void => {
+    if (seen.has(serviceName)) {
+      return
+    }
+
+    const service = composeFile.services[serviceName]
+    if (!service) {
+      throw new Error(`Service "${serviceName}" not found in compose file`)
+    }
+
+    seen.add(serviceName)
+    resolved.push(serviceName)
+
+    for (const dependencyName of getServiceDependencies(service)) {
+      visit(dependencyName)
+    }
+  }
+
+  for (const serviceName of requestedServices) {
+    visit(serviceName)
+  }
+
+  return resolved
+}
+
+/**
  * Get all unique published ports from a parsed compose file
  *
  * @param composeFile - Parsed compose file

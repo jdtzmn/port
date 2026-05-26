@@ -2,7 +2,7 @@ import { waitFor } from 'cli-testing-library'
 import { createConnection } from 'net'
 import { describe, test, expect } from 'vitest'
 import { checkDns } from '../lib/dns'
-import { prepareSample, renderCLI } from '../../tests/utils'
+import { execPortAsync, prepareSample, renderCLI } from '../../tests/utils'
 
 const SAMPLES_TIMEOUT = 60_000
 
@@ -66,13 +66,15 @@ describe('samples start', () => {
       expect(instance).toBeInTheConsole()
 
       // Confirm that the domain is reachable
-      const res = await fetch(sample.urlWithPort(3000))
-      setInterval(() => {
-        // Keep checking until the status is 200
-        if (res.status === 200) {
-          clearInterval()
+      await waitFor(
+        async () => {
+          const res = await fetch(sample.urlWithPort(3000))
+          expect(res.status).toBe(200)
+        },
+        {
+          timeout: SAMPLES_TIMEOUT,
         }
-      }, 1000)
+      )
 
       // End the sample (use -y to skip Traefik confirmation prompt)
       const downInstance = await renderCLI(['down', '-y'], sample.dir)
@@ -80,6 +82,88 @@ describe('samples start', () => {
         timeout: SAMPLES_TIMEOUT,
       })
       await sample.cleanup()
+    },
+    SAMPLES_TIMEOUT + 1000
+  )
+
+  test(
+    'starts a requested service and its dependency',
+    async () => {
+      const sample = await prepareSample('db-and-server', {
+        initWithConfig: true,
+      })
+
+      try {
+        const upResult = await execPortAsync(['up', 'app'], sample.dir)
+
+        expect(upResult.stderr).toContain(sample.urlWithPort(3000))
+        expect(upResult.stderr).toContain(sample.urlWithPort(5432))
+      } finally {
+        await sample.cleanup()
+      }
+    },
+    SAMPLES_TIMEOUT + 1000
+  )
+
+  test(
+    'stops only the requested service and leaves dependencies running',
+    async () => {
+      const sample = await prepareSample('db-and-server', {
+        initWithConfig: true,
+      })
+
+      try {
+        await execPortAsync(['up', 'app'], sample.dir)
+
+        await execPortAsync(['down', 'app'], sample.dir)
+
+        const postgresHost = new URL(sample.urlWithPort(5432)).hostname
+        const sslResponse = await probePostgresSslResponse(postgresHost, 5432)
+        expect(['S', 'N']).toContain(sslResponse)
+      } finally {
+        await sample.cleanup()
+      }
+    },
+    SAMPLES_TIMEOUT + 1000
+  )
+
+  test(
+    'starts only the requested service when no other service depends on it',
+    async () => {
+      // db-and-server has `app` depending on `postgres`. Asking for just
+      // `postgres` exercises the "independent sibling" path: postgres has
+      // no dependents, so `app` must not start.
+      const sample = await prepareSample('db-and-server', {
+        initWithConfig: true,
+      })
+
+      try {
+        const upResult = await execPortAsync(['up', 'postgres'], sample.dir)
+
+        // Postgres URL is surfaced; the app URL is not.
+        expect(upResult.stderr).toContain(sample.urlWithPort(5432))
+        expect(upResult.stderr).not.toContain(sample.urlWithPort(3000))
+
+        // Postgres is actually reachable.
+        const postgresHost = new URL(sample.urlWithPort(5432)).hostname
+        const sslResponse = await probePostgresSslResponse(postgresHost, 5432)
+        expect(['S', 'N']).toContain(sslResponse)
+
+        // No `app` container is running for this project. Use `port compose`
+        // so docker compose uses the project's -p/-f flags automatically.
+        const psResult = await execPortAsync(
+          ['compose', 'ps', '--services', '--filter', 'status=running'],
+          sample.dir
+        )
+        const runningServices = psResult.stdout
+          .split('\n')
+          .map(line => line.trim())
+          .filter(Boolean)
+        expect(runningServices).toContain('postgres')
+        expect(runningServices).not.toContain('app')
+      } finally {
+        await sample.cleanup()
+      }
     },
     SAMPLES_TIMEOUT + 1000
   )

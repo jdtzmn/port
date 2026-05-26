@@ -2,14 +2,29 @@ import inquirer from 'inquirer'
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import {
+  getProject,
+  registerProject,
   unregisterProject,
   hasRegisteredProjects,
   getHostServicesForWorktree,
   getProjectCount,
 } from '../lib/registry.ts'
-import { runCompose, stopTraefik, isTraefikRunning, getProjectName } from '../lib/compose.ts'
+import {
+  runCompose,
+  stopTraefik,
+  isTraefikRunning,
+  getProjectName,
+  parseComposeFile,
+  getServicePorts,
+  resolveComposeServices,
+} from '../lib/compose.ts'
+import { execAsync } from '../lib/exec.ts'
 import { stopHostService } from '../lib/hostService.ts'
 import * as output from '../lib/output.ts'
+
+function uniqueNumbers(values: number[]): number[] {
+  return Array.from(new Set(values)).sort((a, b) => a - b)
+}
 
 async function stopTraefikGlobally(options?: { yes?: boolean }): Promise<void> {
   const traefikRunning = await isTraefikRunning()
@@ -58,7 +73,17 @@ async function stopTraefikGlobally(options?: { yes?: boolean }): Promise<void> {
  *
  * @param options - Down options (yes to skip confirmation)
  */
-export async function down(options?: { yes?: boolean }): Promise<void> {
+export async function down(
+  requestedServicesOrOptions: string[] | { yes?: boolean } = [],
+  maybeOptions?: { yes?: boolean }
+): Promise<void> {
+  const requestedServices = Array.isArray(requestedServicesOrOptions)
+    ? requestedServicesOrOptions
+    : []
+  const options = Array.isArray(requestedServicesOrOptions)
+    ? maybeOptions
+    : requestedServicesOrOptions
+
   // Detect worktree info
   let worktreeInfo
   try {
@@ -77,18 +102,64 @@ export async function down(options?: { yes?: boolean }): Promise<void> {
   // Load config (defaults when config file is absent)
   const config = await loadConfigOrDefault(repoRoot)
   const composeFile = getComposeFile(config)
+  const selectiveDown = requestedServices.length > 0
+
+  let selectedServices: string[] = []
+  let selectedPorts: number[] = []
+
+  if (selectiveDown) {
+    try {
+      const parsedCompose = await parseComposeFile(worktreePath, composeFile)
+      selectedServices = resolveComposeServices(parsedCompose, requestedServices, {
+        includeDependencies: false,
+      })
+      selectedPorts = uniqueNumbers(
+        selectedServices.flatMap(serviceName =>
+          getServicePorts(parsedCompose.services[serviceName]!)
+        )
+      )
+    } catch (error) {
+      output.error(`${error instanceof Error ? error.message : error}`)
+      process.exit(1)
+    }
+  }
 
   // Stop docker-compose services
   const projectName = getProjectName(repoRoot, name)
   output.info(`Stopping services in ${output.branch(name)}...`)
   let composeExitCode = 0
   try {
-    const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['down'], {
-      repoRoot,
-      branch: name,
-      domain: config.domain,
-    })
-    composeExitCode = exitCode
+    if (selectiveDown) {
+      const containerResult = (await runCompose(
+        worktreePath,
+        composeFile,
+        projectName,
+        ['ps', '-q', ...selectedServices],
+        {
+          repoRoot,
+          branch: name,
+          domain: config.domain,
+        },
+        {
+          stdio: 'capture',
+        }
+      )) as { exitCode: number; stdout: string; stderr: string }
+
+      const containerIds = (containerResult.stdout ?? '').trim().split(/\s+/).filter(Boolean)
+
+      if (containerIds.length > 0) {
+        await execAsync(`docker rm -f ${containerIds.join(' ')}`)
+      }
+
+      composeExitCode = containerResult.exitCode
+    } else {
+      const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['down'], {
+        repoRoot,
+        branch: name,
+        domain: config.domain,
+      })
+      composeExitCode = exitCode
+    }
   } catch (error) {
     composeExitCode = 1
     output.warn(`Compose down encountered an error: ${error}`)
@@ -101,13 +172,29 @@ export async function down(options?: { yes?: boolean }): Promise<void> {
     output.success('Services stopped')
   }
 
-  // Unregister project from global registry
-  await unregisterProject(repoRoot, name)
-
-  // Check for running host services
   const hostServices = await getHostServicesForWorktree(repoRoot, name)
 
-  if (hostServices.length > 0) {
+  if (selectiveDown) {
+    const project = await getProject(repoRoot, name)
+
+    if (project) {
+      const remainingPorts = project.ports.filter(port => !selectedPorts.includes(port))
+
+      if (remainingPorts.length > 0) {
+        await registerProject(repoRoot, name, uniqueNumbers(remainingPorts))
+      } else if (hostServices.length > 0) {
+        await registerProject(repoRoot, name, [])
+      } else {
+        await unregisterProject(repoRoot, name)
+      }
+    }
+  } else {
+    // Unregister project from global registry
+    await unregisterProject(repoRoot, name)
+  }
+
+  // Check for running host services
+  if (!selectiveDown && hostServices.length > 0) {
     let shouldStopHostServices = options?.yes ?? false
 
     if (!shouldStopHostServices) {
