@@ -66,13 +66,15 @@ describe('samples start', () => {
       expect(instance).toBeInTheConsole()
 
       // Confirm that the domain is reachable
-      const res = await fetch(sample.urlWithPort(3000))
-      setInterval(() => {
-        // Keep checking until the status is 200
-        if (res.status === 200) {
-          clearInterval()
+      await waitFor(
+        async () => {
+          const res = await fetch(sample.urlWithPort(3000))
+          expect(res.status).toBe(200)
+        },
+        {
+          timeout: SAMPLES_TIMEOUT,
         }
-      }, 1000)
+      )
 
       // End the sample (use -y to skip Traefik confirmation prompt)
       const downInstance = await renderCLI(['down', '-y'], sample.dir)

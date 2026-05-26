@@ -1,12 +1,9 @@
 import { render } from 'cli-testing-library'
-import { basename, resolve } from 'path'
-import { mkdtempSync } from 'fs'
-import { cp, readdir, rm } from 'fs/promises'
-import { join } from 'path'
+import { basename, join, resolve } from 'path'
+import { cp, mkdtemp, readdir, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import type { PortConfig } from '../src/types'
 import { execAsync } from '../src/lib/exec'
-import { writeFile } from 'fs/promises'
 import { CONFIG_FILE, PORT_DIR, TREES_DIR } from '../src/lib/config'
 import { sanitizeFolderName } from '../src/lib/sanitize'
 
@@ -36,6 +33,14 @@ export async function execPortAsync(args: string[] = [], cwd?: string) {
   })
 }
 
+async function pruneUnusedDockerNetworks(): Promise<void> {
+  try {
+    await execAsync('docker network prune -f')
+  } catch {
+    // Ignore when Docker is unavailable or pruning fails.
+  }
+}
+
 interface SampleConfig {
   /**
    * Whether dir should have git initialized. Forced to true if initWithConfig is true.
@@ -58,26 +63,20 @@ interface SampleConfig {
  * You can also manually call the cleanup function to remove the directory immediately.
  */
 export async function prepareSample(sampleName: string, config?: SampleConfig) {
-  // Create temp directory
-  const tempDir = mkdtempSync(join(tmpdir(), 'port-test-'))
+  const tempDir = await mkdtemp(join(tmpdir(), 'port-test-'))
 
-  // Register temp directory for automatic cleanup
   tempDirRegistry.add(tempDir)
 
-  // Copy sample to temp directory
   const samplePath = resolve(__dirname, 'samples', sampleName)
   await cp(samplePath, tempDir, { recursive: true })
 
-  // Handle side effects
   if (config?.gitInit || config?.initWithConfig) {
-    // Initialize the git repository
     await execAsync('git init', { cwd: tempDir })
-
-    // Create initial commit
     await execAsync('git add .', { cwd: tempDir })
     await execAsync('git commit -m "Initial commit"', { cwd: tempDir })
     await execAsync('git branch -M main', { cwd: tempDir })
   }
+
   if (config?.initWithConfig === true) {
     await execPortAsync(['init'], tempDir)
   } else if (config?.initWithConfig) {
@@ -86,11 +85,9 @@ export async function prepareSample(sampleName: string, config?: SampleConfig) {
     await writeFile(join(tempDir, PORT_DIR, CONFIG_FILE), fileContents)
   }
 
-  // `urlWithPort` helper function
   const domain = (config?.initWithConfig !== true && config?.initWithConfig?.domain) || 'port'
   const urlWithPort = (port: number) => `http://${projectNameFromDir(tempDir)}.${domain}:${port}`
 
-  // Return dir and cleanup function
   return {
     dir: tempDir,
     urlWithPort,
@@ -128,13 +125,14 @@ async function bringDownComposeDirectory(dir: string) {
   } catch {
     // Ignore errors - compose might not have been started for this directory
   }
+
+  await pruneUnusedDockerNetworks()
 }
 
 /**
  * Bring down a compose project within this directory and all the worktrees
  */
 async function bringDownComposeProject(projectDir: string) {
-  // If worktrees in `.port/trees`, bring those down
   try {
     const worktrees = await readdir(join(projectDir, PORT_DIR, TREES_DIR))
     await Promise.all(
@@ -146,7 +144,6 @@ async function bringDownComposeProject(projectDir: string) {
     // Ignore errors - worktrees might not exist
   }
 
-  // Bring down the project itself
   await bringDownComposeDirectory(projectDir)
 }
 
@@ -155,6 +152,7 @@ async function bringDownComposeProject(projectDir: string) {
  */
 export async function bringDownAllComposeProjects() {
   await Promise.all(Array.from(tempDirRegistry).map(dir => bringDownComposeProject(dir)))
+  await pruneUnusedDockerNetworks()
 }
 
 /**
@@ -168,8 +166,10 @@ export async function safeDown(worktreePath: string): Promise<void> {
   try {
     await execAsync(`docker compose --project-directory "${worktreePath}" down`)
   } catch {
-    // Best-effort cleanup – compose may not have been started.
+    // Best-effort cleanup - compose may not have been started.
   }
+
+  await pruneUnusedDockerNetworks()
 }
 
 /**
