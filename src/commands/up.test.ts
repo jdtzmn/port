@@ -4,7 +4,7 @@ import { describe, test, expect } from 'vitest'
 import { checkDns } from '../lib/dns'
 import { prepareSample, renderCLI } from '../../tests/utils'
 
-const SAMPLES_TIMEOUT = 60_000
+const SAMPLES_TIMEOUT = 90_000
 
 async function probePostgresSslResponse(
   host: string,

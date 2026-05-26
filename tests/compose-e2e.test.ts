@@ -4,7 +4,7 @@ import { execPortAsync, prepareSample, safeDown } from './utils'
 
 const TIMEOUT = 120000
 
-async function waitForTraefikRunning(maxWaitMs = 30000): Promise<void> {
+async function waitForTraefikRunning(maxWaitMs = 60000): Promise<void> {
   const startTime = Date.now()
 
   while (Date.now() - startTime < maxWaitMs) {

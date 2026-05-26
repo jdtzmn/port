@@ -9,6 +9,7 @@ export default defineConfig({
     globalSetup: ['./tests/globalSetup.ts'],
     setupFiles: ['./tests/setup.ts'],
     exclude: ['**/node_modules/**', '**/.port/**', '**/src/tui/__tests__/**'],
+    fileParallelism: false,
     maxWorkers: Math.max(1, Math.floor(availableParallelism() / 2)),
   },
   resolve: {

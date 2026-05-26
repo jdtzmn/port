@@ -24,24 +24,21 @@ test('Remove command help includes --force option', async () => {
 })
 
 test('Help includes the status command', async () => {
-  const { findByText } = await renderCLI(['--help'])
+  const { stdout } = await execAsync('bun src/index.ts --help')
 
-  const instance = await findByText('status')
-  expect(instance).toBeInTheConsole()
+  expect(stdout).toContain('status')
 })
 
 test('Help includes the kill command', async () => {
-  const { findByText } = await renderCLI(['--help'])
+  const { stdout } = await execAsync('bun src/index.ts --help')
 
-  const instance = await findByText('kill [port]')
-  expect(instance).toBeInTheConsole()
+  expect(stdout).toContain('kill [port]')
 })
 
 test('Help includes the cleanup command', async () => {
-  const { findByText } = await renderCLI(['--help'])
+  const { stdout } = await execAsync('bun src/index.ts --help')
 
-  const instance = await findByText('cleanup')
-  expect(instance).toBeInTheConsole()
+  expect(stdout).toContain('cleanup')
 })
 
 test('Help includes the enter command', async () => {

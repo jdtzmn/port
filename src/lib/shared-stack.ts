@@ -4,13 +4,8 @@ import {
   initTraefikFiles,
   traefikFilesExist,
 } from './traefik.ts'
-import {
-  isTraefikRunning,
-  restartTraefik,
-  startTraefik,
-  stopTraefik,
-  traefikHasRequiredPorts,
-} from './compose.ts'
+import { isTraefikRunning, restartTraefik, startTraefik, stopTraefik } from './compose.ts'
+import * as output from './output.ts'
 
 export interface SharedStackResult {
   started: boolean
@@ -31,11 +26,12 @@ export async function prepareSharedStack(requiredPorts: number[]): Promise<Share
   const running = await isTraefikRunning()
 
   if (!running) {
+    output.info('Starting Traefik...')
     await startTraefik()
     return { started: true, restarted: false, updated: updated || configUpdated }
   }
 
-  if (configUpdated || !(await traefikHasRequiredPorts(requiredPorts))) {
+  if (configUpdated) {
     await restartTraefik()
     return { started: false, restarted: true, updated: true }
   }
