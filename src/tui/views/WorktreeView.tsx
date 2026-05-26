@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useKeyboard } from '@opentui/react'
 import type { ScrollBoxRenderable } from '@opentui/core'
 import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
-import type { KeyHint } from '../components/KeyHints.tsx'
 import { SelectableRow } from '../components/SelectableRow.tsx'
 import { useFilterNavigation } from '../hooks/useFilterNavigation.ts'
 import { findSubstringMatchRanges, type MatchRange } from '../lib/filtering.ts'
+import { isQuestionMarkKey, useTuiInteraction } from '../lib/interaction.tsx'
 
 interface Actions {
   downWorktree: (worktreePath: string, worktreeName: string) => Promise<ActionResult>
@@ -27,7 +27,6 @@ interface WorktreeViewProps {
   statusMessage: { text: string; type: 'success' | 'error' } | null
   showStatus: (text: string, type: 'success' | 'error') => void
   keyboardEnabled?: boolean
-  onFooterHintsChange?: (hints: KeyHint[]) => void
 }
 
 interface ServiceItem {
@@ -136,8 +135,8 @@ export function WorktreeView({
   statusMessage,
   showStatus,
   keyboardEnabled = true,
-  onFooterHintsChange,
 }: WorktreeViewProps) {
+  const { dispatch } = useTuiInteraction()
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [busy, setBusy] = useState(false)
   const scrollRef = useRef<ScrollBoxRenderable>(null)
@@ -204,42 +203,14 @@ export function WorktreeView({
     getSearchText: serviceSearchText,
   })
 
-  const footerHints = useMemo<KeyHint[]>(
-    () =>
-      mode === 'query'
-        ? [
-            { key: 'Type', action: 'filter' },
-            { key: 'Backspace', action: 'delete' },
-            { key: 'Enter', action: 'apply' },
-            { key: 'Esc', action: 'cancel' },
-          ]
-        : mode === 'filtered-nav'
-          ? [
-              { key: 'j/k', action: 'next/prev match' },
-              { key: '/', action: 'edit filter' },
-              { key: 'Esc', action: 'clear filter' },
-              { key: 'Enter', action: 'inspect' },
-              { key: 'o', action: 'open' },
-            ]
-          : [
-              { key: 'Enter', action: 'open in browser' },
-              { key: '/', action: 'filter' },
-              { key: 'd', action: 'down' },
-              { key: 'x', action: 'kill host svc' },
-              { key: 'Esc', action: 'back' },
-              { key: 'r', action: 'refresh' },
-              { key: 'q', action: 'quit' },
-            ],
-    [mode]
-  )
-
   useEffect(() => {
-    onFooterHintsChange?.(footerHints)
-  }, [footerHints, onFooterHintsChange])
+    dispatch({ type: 'set-pane-mode', pane: 'services', mode })
+  }, [dispatch, mode])
 
   useKeyboard(event => {
     if (!keyboardEnabled || event.ctrl || event.meta || busy) return
     const keySequence = (event as { sequence?: string }).sequence
+    if (isQuestionMarkKey(event.name, keySequence, event.shift)) return
 
     if (handleFilterKey({ eventName: event.name, keySequence })) {
       return

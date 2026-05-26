@@ -173,7 +173,7 @@ describe('Dashboard', () => {
 
     expect(rootLine).toMatch(/^●/)
     expect(rootLine).toContain('myapp (root)')
-    expect(rootLine).toMatch(/▣█$/)
+    expect(rootLine).toMatch(/▣\s█$/)
   })
 
   test('keeps the active marker pinned when the worktree name truncates', async () => {
@@ -206,7 +206,7 @@ describe('Dashboard', () => {
     const longLine = captureCharFrame().split('\n')[0] ?? ''
 
     expect(longLine).toContain('...')
-    expect(longLine).toMatch(/▣█$/)
+    expect(longLine).toMatch(/▣\s█$/)
   })
 
   test('does not list services in the worktree pane', async () => {

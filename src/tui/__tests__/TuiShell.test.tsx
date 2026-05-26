@@ -47,6 +47,7 @@ afterEach(() => {
 
 describe('TuiShell', () => {
   test('renders both panes and updates the services pane as selection changes', async () => {
+    let exitRequested = false
     const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
       <TuiShell
         repoRoot="/repo"
@@ -61,7 +62,9 @@ describe('TuiShell', () => {
         loading={false}
         statusMessage={null}
         showStatus={noop}
-        requestExit={noop}
+        requestExit={() => {
+          exitRequested = true
+        }}
       />,
       { width: 96, height: 24 }
     )
@@ -75,6 +78,11 @@ describe('TuiShell', () => {
     expect(frame).toContain('myapp')
     expect(frame).not.toContain('http://myapp.port')
     expect(frame).toContain('web:3000')
+
+    mockInput.pressEscape()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+    expect(exitRequested).toBe(false)
 
     mockInput.pressKey('j')
     await new Promise(resolve => setTimeout(resolve, 50))
@@ -153,10 +161,109 @@ describe('TuiShell', () => {
       .filter(line => line.trim().length > 0)
       .at(-1) ?? ''
 
-    expect(frame).not.toContain('[Enter]')
-    expect(frame).not.toContain('[q]')
+    expect(frame).not.toContain('Esc cancel')
+    expect(frame).toContain('q quit')
     expect(footerLine.startsWith(' ')).toBe(true)
     expect(footerLine).toContain('Port Running')
+  })
+
+  test('footer hints change for filter and confirm states', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <TuiShell
+        repoRoot="/repo"
+        repoName="myapp"
+        worktrees={mockWorktrees}
+        hostServices={[] as HostService[]}
+        traefikRunning={true}
+        config={mockConfig}
+        activeWorktreeName="myapp"
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+        requestExit={noop}
+      />,
+      { width: 96, height: 24 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    let footerLine = captureCharFrame()
+      .split('\n')
+      .filter(line => line.trim().length > 0)
+      .at(-1) ?? ''
+
+    expect(footerLine).toContain('Type filter')
+    expect(footerLine).toContain('Esc cancel')
+
+    mockInput.pressEscape()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    mockInput.pressKey('j')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+    mockInput.pressKey('a')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    footerLine = captureCharFrame()
+      .split('\n')
+      .filter(line => line.trim().length > 0)
+      .at(-1) ?? ''
+
+    expect(footerLine).toContain('y confirm')
+    expect(footerLine).toContain('n cancel')
+  })
+
+  test('question mark opens and closes the help dialog without quitting', async () => {
+    let exitRequested = false
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <TuiShell
+        repoRoot="/repo"
+        repoName="myapp"
+        worktrees={mockWorktrees}
+        hostServices={[] as HostService[]}
+        traefikRunning={true}
+        config={mockConfig}
+        activeWorktreeName="myapp"
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+        requestExit={() => {
+          exitRequested = true
+        }}
+      />,
+      { width: 96, height: 24 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('?')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    let frame = captureCharFrame()
+    expect(frame).toContain('Help')
+    expect(frame).toContain('Worktrees')
+    expect(frame).toContain('Services')
+    expect(frame).toContain('Esc close help')
+    expect(exitRequested).toBe(false)
+
+    mockInput.pressEscape()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    frame = captureCharFrame()
+    expect(frame).not.toContain('Help')
+    expect(exitRequested).toBe(false)
   })
 
   test('shows a yellow port dot while loading', async () => {

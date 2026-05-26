@@ -1,12 +1,20 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useReducer, useState } from 'react'
 import { useKeyboard, useTerminalDimensions } from '@opentui/react'
 import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { Dashboard } from './Dashboard.tsx'
+import { HelpDialog } from '../components/HelpDialog.tsx'
 import { WorktreeView } from './WorktreeView.tsx'
 import { KeyHints, type KeyHint } from '../components/KeyHints.tsx'
 import { PortStatusDot } from '../components/PortStatusDot.tsx'
+import {
+  DEFAULT_TUI_INTERACTION_STATE,
+  TuiInteractionContext,
+  getFooterHints,
+  isQuestionMarkKey,
+  tuiInteractionReducer,
+} from '../lib/interaction.tsx'
 import {
   adjustSplitPercent,
   computePaneWidths,
@@ -59,11 +67,9 @@ export function TuiShell({
   showStatus,
   requestExit,
 }: TuiShellProps) {
-  const [activePane, setActivePane] = useState<ActivePane>(PANES.worktrees)
+  const [interaction, dispatch] = useReducer(tuiInteractionReducer, DEFAULT_TUI_INTERACTION_STATE)
   const [splitPercent, setSplitPercent] = useState(1 / 3)
   const [selectedWorktreeName, setSelectedWorktreeName] = useState(activeWorktreeName)
-  const [worktreeFooterHints, setWorktreeFooterHints] = useState<KeyHint[]>([])
-  const [serviceFooterHints, setServiceFooterHints] = useState<KeyHint[]>([])
   const { width } = useTerminalDimensions()
 
   const currentSelectedWorktree = useMemo(() => {
@@ -82,11 +88,15 @@ export function TuiShell({
     s => s.repo === repoRoot && s.branch === currentSelectedWorktree?.name
   )
   const portStatus = loading ? 'unknown' : traefikRunning ? 'running' : 'stopped'
+  const activePane = interaction.activePane
+  const footerHints = useMemo<KeyHint[]>(() => getFooterHints(interaction), [interaction])
 
   useKeyboard(event => {
     if (event.ctrl || event.meta) return
+    const keySequence = (event as { sequence?: string }).sequence
+    const isQuestionMark = isQuestionMarkKey(event.name, keySequence, event.shift)
 
-    if (event.name === 'q' || event.name === 'escape') {
+    if (event.name === 'q') {
       requestExit({
         activeWorktreeName,
         worktreePath: activeWorktreePath,
@@ -95,9 +105,25 @@ export function TuiShell({
       return
     }
 
+    if (interaction.helpOpen) {
+      if (event.name === 'escape' || event.name === 'esc' || isQuestionMark) {
+        dispatch({ type: 'close-help' })
+      }
+      return
+    }
+
+    if (interaction.pendingAction || interaction.palette.open) {
+      return
+    }
+
+    if (isQuestionMark) {
+      dispatch({ type: 'toggle-help' })
+      return
+    }
+
     const shellKeyAction = resolveShellPaneKey(activePane, event.name, event.shift)
     if (shellKeyAction === PANES.worktrees || shellKeyAction === PANES.services) {
-      setActivePane(shellKeyAction)
+      dispatch({ type: 'set-active-pane', pane: shellKeyAction })
       return
     }
 
@@ -114,71 +140,94 @@ export function TuiShell({
   return (
     <box flexDirection="column" width="100%" height="100%">
       <box flexDirection="row" flexGrow={1}>
-      <box
-        width={split.leftWidth}
-        height="100%"
-        borderStyle="rounded"
-        borderColor={activePane === PANES.worktrees ? '#00AAFF' : '#555555'}
-        title="Worktrees"
-        padding={0}
-      >
-        <Dashboard
-          repoRoot={repoRoot}
-          repoName={repoName}
-          worktrees={worktrees}
-          hostServices={hostServices}
-          traefikRunning={traefikRunning}
-          config={config}
-          onSelectWorktree={name => {
-            setActivePane(PANES.services)
-            setSelectedWorktreeName(name)
-          }}
-          onOpenWorktree={name => {
-            setSelectedWorktreeName(name)
-            setActivePane(PANES.services)
-          }}
-          activeWorktreeName={activeWorktreeName}
-          initialSelectedName={selectedWorktreeName}
-          selectedWorktreeName={selectedWorktreeName}
-          onSelectedWorktreeNameChange={setSelectedWorktreeName}
-          actions={actions}
-          refresh={refresh}
-          loading={loading}
-          statusMessage={statusMessage}
-          showStatus={showStatus}
-          keyboardEnabled={activePane === PANES.worktrees}
-          onFooterHintsChange={setWorktreeFooterHints}
-        />
+        <box
+          width={split.leftWidth}
+          height="100%"
+          borderStyle="rounded"
+          borderColor={activePane === PANES.worktrees ? '#00AAFF' : '#555555'}
+          title="Worktrees"
+          padding={0}
+        >
+          <TuiInteractionContext.Provider value={{ state: interaction, dispatch }}>
+            <Dashboard
+              repoRoot={repoRoot}
+              repoName={repoName}
+              worktrees={worktrees}
+              hostServices={hostServices}
+              traefikRunning={traefikRunning}
+              config={config}
+              onSelectWorktree={name => {
+                setSelectedWorktreeName(name)
+                dispatch({ type: 'set-active-pane', pane: PANES.services })
+                dispatch({ type: 'set-pane-mode', pane: PANES.services, mode: 'normal' })
+              }}
+              onOpenWorktree={name => {
+                setSelectedWorktreeName(name)
+                dispatch({ type: 'set-active-pane', pane: PANES.services })
+                dispatch({ type: 'set-pane-mode', pane: PANES.services, mode: 'normal' })
+              }}
+              activeWorktreeName={activeWorktreeName}
+              initialSelectedName={selectedWorktreeName}
+              selectedWorktreeName={selectedWorktreeName}
+              onSelectedWorktreeNameChange={setSelectedWorktreeName}
+              actions={actions}
+              refresh={refresh}
+              loading={loading}
+              statusMessage={statusMessage}
+              showStatus={showStatus}
+              keyboardEnabled={activePane === PANES.worktrees && !interaction.helpOpen}
+            />
+          </TuiInteractionContext.Provider>
+        </box>
+
+        <box
+          width={split.rightWidth}
+          height="100%"
+          borderStyle="rounded"
+          borderColor={activePane === PANES.services ? '#00AAFF' : '#555555'}
+          title="Services"
+          padding={0}
+        >
+          <TuiInteractionContext.Provider value={{ state: interaction, dispatch }}>
+            <WorktreeView
+              key={currentSelectedWorktree?.name ?? 'empty'}
+              worktree={currentSelectedWorktree}
+              hostServices={activeWorktreeHostServices}
+              config={config}
+              repoRoot={repoRoot}
+              onBack={() => {
+                dispatch({ type: 'set-active-pane', pane: PANES.worktrees })
+                dispatch({ type: 'set-pane-mode', pane: PANES.services, mode: 'normal' })
+              }}
+              actions={actions}
+              refresh={refresh}
+              loading={loading}
+              statusMessage={statusMessage}
+              showStatus={showStatus}
+              keyboardEnabled={activePane === PANES.services && !interaction.helpOpen}
+            />
+          </TuiInteractionContext.Provider>
+        </box>
       </box>
 
-      <box
-        width={split.rightWidth}
-        height="100%"
-        borderStyle="rounded"
-        borderColor={activePane === PANES.services ? '#00AAFF' : '#555555'}
-        title="Services"
-        padding={0}
-      >
-        <WorktreeView
-          key={currentSelectedWorktree?.name ?? 'empty'}
-          worktree={currentSelectedWorktree}
-          hostServices={activeWorktreeHostServices}
-          config={config}
-          repoRoot={repoRoot}
-          onBack={() => setActivePane(PANES.worktrees)}
-          actions={actions}
-          refresh={refresh}
-          loading={loading}
-          statusMessage={statusMessage}
-          showStatus={showStatus}
-          keyboardEnabled={activePane === PANES.services}
-          onFooterHintsChange={setServiceFooterHints}
-        />
-      </box>
-      </box>
+      {interaction.helpOpen && (
+        <box
+          position="absolute"
+          left={0}
+          top={0}
+          right={0}
+          bottom={1}
+          alignItems="center"
+          justifyContent="center"
+        >
+          <TuiInteractionContext.Provider value={{ state: interaction, dispatch }}>
+            <HelpDialog hints={footerHints} />
+          </TuiInteractionContext.Provider>
+        </box>
+      )}
 
       <box flexDirection="row" justifyContent="space-between" flexShrink={0} height={1} paddingX={1}>
-        <KeyHints hints={activePane === PANES.worktrees ? worktreeFooterHints : serviceFooterHints} />
+        <KeyHints hints={footerHints} />
         <box flexDirection="row" gap={1} flexShrink={0}>
           <PortStatusDot status={portStatus} />
           <text fg="#888888" wrapMode="none">

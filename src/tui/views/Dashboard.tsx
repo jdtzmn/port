@@ -6,11 +6,11 @@ import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
 import { Confirm } from '../components/Confirm.tsx'
-import type { KeyHint } from '../components/KeyHints.tsx'
 import { useFilterNavigation } from '../hooks/useFilterNavigation.ts'
 import { SelectableRow } from '../components/SelectableRow.tsx'
 import { findSubstringMatchRanges, type MatchRange } from '../lib/filtering.ts'
 import { orderWorktreesForDashboard } from '../lib/worktreeOrdering.ts'
+import { isQuestionMarkKey, useTuiInteraction } from '../lib/interaction.tsx'
 
 interface Actions {
   upWorktree: (worktreePath: string, worktreeName: string) => Promise<ActionResult>
@@ -37,7 +37,6 @@ interface DashboardProps {
   statusMessage: { text: string; type: 'success' | 'error' } | null
   showStatus: (text: string, type: 'success' | 'error') => void
   keyboardEnabled?: boolean
-  onFooterHintsChange?: (hints: KeyHint[]) => void
 }
 
 type PendingAction = 'archive' | null
@@ -86,8 +85,8 @@ export function Dashboard({
   keyboardEnabled = true,
   selectedWorktreeName,
   onSelectedWorktreeNameChange,
-  onFooterHintsChange,
 }: DashboardProps) {
+  const { dispatch } = useTuiInteraction()
   const orderedWorktrees = useMemo(
     () => orderWorktreesForDashboard(worktrees, activeWorktreeName),
     [worktrees, activeWorktreeName]
@@ -112,6 +111,18 @@ export function Dashboard({
     setSelectedIndex,
     getSearchText: worktree => worktree.name,
   })
+
+  useEffect(() => {
+    dispatch({ type: 'set-pane-mode', pane: 'worktrees', mode })
+  }, [dispatch, mode])
+
+  useEffect(() => {
+    if (pendingAction) {
+      dispatch({ type: 'begin-confirm', action: pendingAction })
+    } else {
+      dispatch({ type: 'end-confirm' })
+    }
+  }, [dispatch, pendingAction])
 
   // Keep selected row visible inside the scrollbox
   useEffect(() => {
@@ -143,45 +154,11 @@ export function Dashboard({
   const selectedWorktree = orderedWorktrees[selectedIndex]
   const isRootSelected = selectedWorktree?.path === repoRoot
 
-  const footerHints = useMemo<KeyHint[]>(
-    () =>
-      pendingAction
-        ? []
-        : mode === 'query'
-          ? [
-              { key: 'Type', action: 'filter' },
-              { key: 'Backspace', action: 'delete' },
-              { key: 'Enter', action: 'apply' },
-              { key: 'Esc', action: 'cancel' },
-            ]
-          : mode === 'filtered-nav'
-            ? [
-                { key: 'j/k', action: 'next/prev match' },
-                { key: '/', action: 'edit filter' },
-                { key: 'Esc', action: 'clear filter' },
-                { key: 'Enter', action: 'open in browser' },
-              ]
-            : [
-                { key: 'Enter', action: 'inspect' },
-                { key: 'o', action: 'open' },
-                { key: '/', action: 'filter' },
-                { key: 'u', action: 'up' },
-                { key: 'd', action: 'down' },
-                { key: 'a', action: 'archive' },
-                { key: 'r', action: 'refresh' },
-                { key: 'q', action: 'quit' },
-              ],
-    [mode, pendingAction]
-  )
-
-  useEffect(() => {
-    onFooterHintsChange?.(footerHints)
-  }, [footerHints, onFooterHintsChange])
-
   useKeyboard(event => {
     if (!keyboardEnabled || event.ctrl || event.meta || busy) return
 
     const keySequence = (event as { sequence?: string }).sequence
+    if (isQuestionMarkKey(event.name, keySequence, event.shift)) return
     const maxIndex = orderedWorktrees.length - 1
 
     // If we're in a confirm dialog, don't handle navigation
@@ -317,7 +294,7 @@ export function Dashboard({
               </text>
               {isActive && (
                 <text wrapMode="none" flexShrink={0} fg="#FFFF00">
-                  ▣
+                  ▣{' '}
                 </text>
               )}
             </SelectableRow>
