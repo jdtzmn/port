@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { Dispatch, ReactNode } from 'react'
 import type { KeyHint } from '../components/KeyHints.tsx'
+import { getFooterHintsForState, getHelpSectionsForState } from './commands.ts'
 
 export type TuiPane = 'worktrees' | 'services'
 
@@ -142,73 +143,9 @@ export function isQuestionMarkKey(eventName: string, keySequence?: string, shift
 }
 
 export function getFooterHints(state: TuiInteractionState): KeyHint[] {
-  if (state.pendingAction) {
-    return [
-      { key: 'y', action: 'confirm' },
-      { key: 'n', action: 'cancel' },
-      { key: 'Esc', action: 'cancel' },
-    ]
-  }
+  return getFooterHintsForState(state)
+}
 
-  if (state.palette.open) {
-    return [
-      { key: 'Type', action: 'search commands' },
-      { key: 'Enter', action: 'run' },
-      { key: 'Esc', action: 'close palette' },
-    ]
-  }
-
-  const mode = state.panes[state.activePane].mode
-
-  if (state.activePane === 'worktrees') {
-    return mode === 'query'
-      ? [
-          { key: 'Type', action: 'filter' },
-          { key: 'Backspace', action: 'delete' },
-          { key: 'Enter', action: 'apply' },
-          { key: 'Esc', action: 'cancel' },
-        ]
-      : mode === 'filtered-nav'
-        ? [
-            { key: 'j/k', action: 'next/prev match' },
-            { key: '/', action: 'edit filter' },
-            { key: 'Esc', action: 'clear filter' },
-            { key: 'Enter', action: 'open in browser' },
-          ]
-        : [
-            { key: 'Enter', action: 'inspect' },
-            { key: 'o', action: 'open' },
-            { key: '/', action: 'filter' },
-            { key: 'u', action: 'up' },
-            { key: 'd', action: 'down' },
-            { key: 'a', action: 'archive' },
-            { key: 'r', action: 'refresh' },
-            { key: 'q', action: 'quit' },
-          ]
-  }
-
-  return mode === 'query'
-    ? [
-        { key: 'Type', action: 'filter' },
-        { key: 'Backspace', action: 'delete' },
-        { key: 'Enter', action: 'apply' },
-        { key: 'Esc', action: 'cancel' },
-      ]
-    : mode === 'filtered-nav'
-      ? [
-          { key: 'j/k', action: 'next/prev match' },
-          { key: '/', action: 'edit filter' },
-          { key: 'Esc', action: 'clear filter' },
-          { key: 'Enter', action: 'inspect' },
-          { key: 'o', action: 'open' },
-        ]
-      : [
-          { key: 'Enter', action: 'open in browser' },
-          { key: '/', action: 'filter' },
-          { key: 'd', action: 'down' },
-          { key: 'x', action: 'kill host svc' },
-          { key: 'Esc', action: 'back' },
-          { key: 'r', action: 'refresh' },
-          { key: 'q', action: 'quit' },
-        ]
+export function getHelpSections(state: TuiInteractionState) {
+  return getHelpSectionsForState(state)
 }

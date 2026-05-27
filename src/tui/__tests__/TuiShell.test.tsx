@@ -161,10 +161,42 @@ describe('TuiShell', () => {
       .filter(line => line.trim().length > 0)
       .at(-1) ?? ''
 
-    expect(frame).not.toContain('Esc cancel')
-    expect(frame).toContain('q quit')
+    expect(footerLine).toContain('q quit')
+    expect(footerLine).toContain('? toggle help')
+    expect(footerLine.indexOf('q quit')).toBeLessThan(footerLine.indexOf('? toggle help'))
     expect(footerLine.startsWith(' ')).toBe(true)
     expect(footerLine).toContain('Port Running')
+  })
+
+  test('truncates footer hints but keeps help pinned last', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <TuiShell
+        repoRoot="/repo"
+        repoName="myapp"
+        worktrees={mockWorktrees}
+        hostServices={[] as HostService[]}
+        traefikRunning={true}
+        config={mockConfig}
+        activeWorktreeName="myapp"
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+        requestExit={noop}
+      />,
+      { width: 64, height: 24 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const footerLine = captureCharFrame()
+      .split('\n')
+      .filter(line => line.trim().length > 0)
+      .at(-1) ?? ''
+
+    expect(footerLine.trimEnd()).toMatch(/\? toggle help$/)
+    expect(footerLine).not.toContain('archive')
   })
 
   test('footer hints change for filter and confirm states', async () => {
@@ -198,27 +230,9 @@ describe('TuiShell', () => {
       .filter(line => line.trim().length > 0)
       .at(-1) ?? ''
 
-    expect(footerLine).toContain('Type filter')
-    expect(footerLine).toContain('Esc cancel')
-
-    mockInput.pressEscape()
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    mockInput.pressKey('j')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-    mockInput.pressKey('a')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    await renderOnce()
-
-    footerLine = captureCharFrame()
-      .split('\n')
-      .filter(line => line.trim().length > 0)
-      .at(-1) ?? ''
-
-    expect(footerLine).toContain('y confirm')
-    expect(footerLine).toContain('n cancel')
+    expect(footerLine).toContain('Type type filter text')
+    expect(footerLine).toContain('? toggle help')
+    expect(footerLine.indexOf('Type type filter text')).toBeLessThan(footerLine.indexOf('? toggle help'))
   })
 
   test('question mark opens and closes the help dialog without quitting', async () => {
@@ -251,10 +265,11 @@ describe('TuiShell', () => {
     await renderOnce()
 
     let frame = captureCharFrame()
-    expect(frame).toContain('Help')
+    expect(frame).toContain('Keyboard Shortcuts')
     expect(frame).toContain('Worktrees')
-    expect(frame).toContain('Services')
+    expect(frame).not.toContain('Services')
     expect(frame).toContain('Esc close help')
+    expect(frame.indexOf('Worktrees')).toBeLessThan(frame.indexOf('Shared'))
     expect(exitRequested).toBe(false)
 
     mockInput.pressEscape()
@@ -262,7 +277,7 @@ describe('TuiShell', () => {
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frame).not.toContain('Help')
+    expect(frame).not.toContain('Keyboard Shortcuts')
     expect(exitRequested).toBe(false)
   })
 

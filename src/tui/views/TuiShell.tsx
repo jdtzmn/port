@@ -11,10 +11,12 @@ import { PortStatusDot } from '../components/PortStatusDot.tsx'
 import {
   DEFAULT_TUI_INTERACTION_STATE,
   TuiInteractionContext,
+  getHelpSections,
   getFooterHints,
   isQuestionMarkKey,
   tuiInteractionReducer,
 } from '../lib/interaction.tsx'
+import { fitKeyHintsToWidth, estimateHintWidth } from '../lib/commands.ts'
 import {
   adjustSplitPercent,
   computePaneWidths,
@@ -90,6 +92,19 @@ export function TuiShell({
   const portStatus = loading ? 'unknown' : traefikRunning ? 'running' : 'stopped'
   const activePane = interaction.activePane
   const footerHints = useMemo<KeyHint[]>(() => getFooterHints(interaction), [interaction])
+  const footerHelpHint = footerHints.find(hint => hint.key === '?') ?? {
+    key: '?',
+    action: 'toggle help',
+  }
+  const portStatusLabel = !loading ? (traefikRunning ? 'Running' : 'Stopped') : null
+  const footerPortWidth = portStatusLabel ? 14 : 6
+  const footerLeftHints = useMemo<KeyHint[]>(() => {
+    const leftHints = footerHints.filter(hint => hint.key !== '?')
+    const helpWidth = estimateHintWidth(footerHelpHint)
+    return fitKeyHintsToWidth(leftHints, Math.max(0, width - helpWidth - footerPortWidth - 4))
+  }, [footerHints, footerHelpHint, width])
+  const helpSections = useMemo(() => getHelpSections(interaction), [interaction])
+  const helpWidth = Math.max(60, Math.min(width - 6, 86))
 
   useKeyboard(event => {
     if (event.ctrl || event.meta) return
@@ -217,27 +232,32 @@ export function TuiShell({
           top={0}
           right={0}
           bottom={1}
-          alignItems="center"
-          justifyContent="center"
         >
+          <box flexDirection="row" width="100%" height="100%" alignItems="center" justifyContent="center">
           <TuiInteractionContext.Provider value={{ state: interaction, dispatch }}>
-            <HelpDialog hints={footerHints} />
+            <HelpDialog title="Keyboard Shortcuts" sections={helpSections} width={helpWidth} />
           </TuiInteractionContext.Provider>
+          </box>
         </box>
       )}
 
-      <box flexDirection="row" justifyContent="space-between" flexShrink={0} height={1} paddingX={1}>
-        <KeyHints hints={footerHints} />
-        <box flexDirection="row" gap={1} flexShrink={0}>
+      <box flexDirection="row" flexShrink={0} height={1} paddingX={1} gap={1}>
+        <box flexDirection="row" width={Math.max(0, width - footerPortWidth - estimateHintWidth(footerHelpHint) - 4)} flexShrink={0} overflow="hidden">
+          <KeyHints hints={footerLeftHints} />
+        </box>
+        <box flexDirection="row" gap={1} flexShrink={0} width={footerPortWidth}>
           <PortStatusDot status={portStatus} />
           <text fg="#888888" wrapMode="none">
             Port
           </text>
-          {!loading && (
+          {portStatusLabel && (
             <text fg="#888888" wrapMode="none">
-              {traefikRunning ? 'Running' : 'Stopped'}
+              {portStatusLabel}
             </text>
           )}
+        </box>
+        <box flexDirection="row" flexShrink={0} width={estimateHintWidth(footerHelpHint) + 1}>
+          <KeyHints hints={[footerHelpHint]} />
         </box>
       </box>
     </box>
