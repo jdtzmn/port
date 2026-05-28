@@ -2,16 +2,24 @@ import { mkdtempSync } from 'fs'
 import { mkdir, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   generateOverrideContent,
   getComposeFileStack,
   getServicePorts,
+  startTraefik,
   resolveComposeServices,
   renderPortVariables,
   renderUserOverrideFile,
 } from './compose.ts'
+import * as execModule from './exec.ts'
 import type { ParsedComposeFile } from '../types.ts'
+
+const netMock = vi.hoisted(() => ({
+  createConnection: vi.fn(),
+}))
+
+vi.mock('net', () => netMock)
 
 function createTempDir(): string {
   return mkdtempSync(join(tmpdir(), 'port-compose-test-'))
@@ -356,5 +364,35 @@ describe('renderUserOverrideFile', () => {
     })
 
     expect(renderedRelativePath).toBeNull()
+  })
+})
+
+describe('startTraefik', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    netMock.createConnection.mockReset()
+  })
+
+  test('unrefs readiness probe sockets before waiting for close', async () => {
+    vi.spyOn(execModule, 'execAsync').mockResolvedValue({ stdout: '', stderr: '' } as never)
+
+    const socket = {
+      destroy: vi.fn(),
+      unref: vi.fn(),
+      once(event: string, handler: () => void) {
+        if (event === 'connect') {
+          setImmediate(handler)
+        }
+
+        return this
+      },
+    }
+
+    netMock.createConnection.mockReturnValue(socket)
+
+    await startTraefik()
+
+    expect(socket.unref).toHaveBeenCalled()
+    expect(socket.destroy).toHaveBeenCalled()
   })
 })
