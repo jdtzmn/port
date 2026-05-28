@@ -1,3 +1,4 @@
+import { StyledText, bold, fg, stringToStyledText, type TextChunk } from '@opentui/core'
 import { useEffect, useRef, useState } from 'react'
 import { useKeyboard } from '@opentui/react'
 import type { ScrollBoxRenderable } from '@opentui/core'
@@ -57,24 +58,29 @@ function serviceLabelText(service: ServiceItem): string {
   return `${service.name} :${service.port} -> :${service.actualPort} PID ${service.pid}`
 }
 
-function buildHighlightedSegments(text: string, ranges: MatchRange[]): React.ReactNode[] {
-  const segments: React.ReactNode[] = []
+function buildHighlightedContent(text: string, ranges: MatchRange[], isBold: boolean): StyledText {
+  const chunks: TextChunk[] = []
   let cursor = 0
+
+  const pushChunk = (chunk: TextChunk) => {
+    chunks.push(isBold ? bold(chunk) : chunk)
+  }
+
   for (const range of ranges) {
     if (range.start > cursor) {
-      segments.push(text.slice(cursor, range.start))
+      for (const chunk of stringToStyledText(text.slice(cursor, range.start)).chunks) {
+        pushChunk(chunk)
+      }
     }
-    segments.push(
-      <span key={range.start} fg="#00AAFF">
-        {text.slice(range.start, range.end)}
-      </span>
-    )
+    pushChunk(isBold ? bold(fg('#00AAFF')(text.slice(range.start, range.end))) : fg('#00AAFF')(text.slice(range.start, range.end)))
     cursor = range.end
   }
   if (cursor < text.length) {
-    segments.push(text.slice(cursor))
+    for (const chunk of stringToStyledText(text.slice(cursor)).chunks) {
+      pushChunk(chunk)
+    }
   }
-  return segments
+  return new StyledText(chunks)
 }
 
 function buildServiceItems(
@@ -297,19 +303,15 @@ export function WorktreeView({
                 return (
                   <SelectableRow key={`${service.name}-${service.port}-${i}`} selected={isSelected}>
                     <StatusIndicator running={service.running} />
-                    <text>
-                      {isSelected ? (
-                        <b>
-                          {matchRanges.length > 0
-                            ? buildHighlightedSegments(labelText, matchRanges)
-                            : labelText}
-                        </b>
-                      ) : matchRanges.length > 0 ? (
-                        buildHighlightedSegments(labelText, matchRanges)
-                      ) : (
-                        labelText
-                      )}
-                    </text>
+                    <text
+                      content={
+                        matchRanges.length > 0
+                          ? buildHighlightedContent(labelText, matchRanges, isSelected)
+                          : new StyledText([
+                              ...stringToStyledText(labelText).chunks.map(chunk => (isSelected ? bold(chunk) : chunk)),
+                            ])
+                      }
+                    />
                   </SelectableRow>
                 )
               })}
@@ -331,19 +333,15 @@ export function WorktreeView({
                 return (
                   <SelectableRow key={`host-${service.port}`} selected={isSelected}>
                     <StatusIndicator running={service.running} />
-                    <text>
-                      {isSelected ? (
-                        <b>
-                          {matchRanges.length > 0
-                            ? buildHighlightedSegments(labelText, matchRanges)
-                            : labelText}
-                        </b>
-                      ) : matchRanges.length > 0 ? (
-                        buildHighlightedSegments(labelText, matchRanges)
-                      ) : (
-                        labelText
-                      )}
-                    </text>
+                    <text
+                      content={
+                        matchRanges.length > 0
+                          ? buildHighlightedContent(labelText, matchRanges, isSelected)
+                          : new StyledText([
+                              ...stringToStyledText(labelText).chunks.map(chunk => (isSelected ? bold(chunk) : chunk)),
+                            ])
+                      }
+                    />
                   </SelectableRow>
                 )
               })}

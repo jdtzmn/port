@@ -407,7 +407,7 @@ describe('Dashboard', () => {
       },
     ]
 
-    const { renderer, mockInput, renderOnce, captureSpans } = await testRender(
+    const { renderer, mockInput, renderOnce, captureSpans, captureCharFrame } = await testRender(
       <Dashboard {...props({ worktrees: repeatedWorktrees, activeWorktreeName: 'bug-auth-auth' })} />,
       { width: 80, height: 20 }
     )
@@ -448,7 +448,7 @@ describe('Dashboard', () => {
       },
     ]
 
-    const { renderer, mockInput, renderOnce, captureSpans } = await testRender(
+    const { renderer, mockInput, renderOnce, captureSpans, captureCharFrame } = await testRender(
       <Dashboard {...props({ worktrees: inUseWorktrees, activeWorktreeName: 'worktree-in-use' })} />,
       { width: 80, height: 20 }
     )
@@ -473,6 +473,48 @@ describe('Dashboard', () => {
     expect(text).toContain('worktree-in-use')
     expect(text).not.toContain('worktree-use-in-use')
     expect(line!.spans.some(span => span.text.includes('-in') && span.fg.equals(blue))).toBe(true)
+  })
+
+  test('querying -t keeps jacob-better-tui text unchanged', async () => {
+    const tuiWorktrees: WorktreeStatus[] = [
+      {
+        name: 'jacob-better-tui',
+        path: '/repo',
+        services: [],
+        running: true,
+      },
+      {
+        name: 'feature-auth',
+        path: '/repo/.port/trees/feature-auth',
+        services: [],
+        running: false,
+      },
+    ]
+
+    const { renderer, mockInput, renderOnce, captureSpans, captureCharFrame } = await testRender(
+      <Dashboard {...props({ worktrees: tuiWorktrees, activeWorktreeName: 'jacob-better-tui' })} />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    await pressAndRender(mockInput, renderOnce, '-')
+    await pressAndRender(mockInput, renderOnce, 't')
+    mockInput.pressEnter()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const blue = RGBA.fromHex('#00AAFF')
+    const line = captureSpans().lines.find(line => line.spans.map(span => span.text).join('').includes('jacob-better-tui'))
+    expect(line).toBeDefined()
+    const text = line!.spans.map(span => span.text).join('')
+    expect(text).toContain('jacob-better-tui')
+    expect(text).not.toContain('jacob-betterui-tui')
+    expect(line!.spans.some(span => span.text.includes('-t') && span.fg.equals(blue))).toBe(true)
   })
 
   test('filtered navigation j/k skips non-matching worktrees', async () => {

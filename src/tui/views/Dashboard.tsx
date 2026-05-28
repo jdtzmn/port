@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { StyledText, bold, fg, stringToStyledText, type TextChunk } from '@opentui/core'
 import { useKeyboard } from '@opentui/react'
 import type { ScrollBoxRenderable } from '@opentui/core'
 import type { PortConfig, HostService } from '../../types.ts'
@@ -51,24 +52,29 @@ export function buildServicesText(services: { name: string; running: boolean }[]
   return services.map(s => `${s.name} ${s.running ? '●' : '○'}`).join(' ')
 }
 
-function buildHighlightedSegments(text: string, ranges: MatchRange[]): React.ReactNode[] {
-  const segments: React.ReactNode[] = []
+function buildHighlightedContent(text: string, ranges: MatchRange[], isBold: boolean): StyledText {
+  const chunks: TextChunk[] = []
   let cursor = 0
+
+  const pushChunk = (chunk: TextChunk) => {
+    chunks.push(isBold ? bold(chunk) : chunk)
+  }
+
   for (const range of ranges) {
     if (range.start > cursor) {
-      segments.push(text.slice(cursor, range.start))
+      for (const chunk of stringToStyledText(text.slice(cursor, range.start)).chunks) {
+        pushChunk(chunk)
+      }
     }
-    segments.push(
-      <span key={range.start} fg="#00AAFF">
-        {text.slice(range.start, range.end)}
-      </span>
-    )
+    pushChunk(isBold ? bold(fg('#00AAFF')(text.slice(range.start, range.end))) : fg('#00AAFF')(text.slice(range.start, range.end)))
     cursor = range.end
   }
   if (cursor < text.length) {
-    segments.push(text.slice(cursor))
+    for (const chunk of stringToStyledText(text.slice(cursor)).chunks) {
+      pushChunk(chunk)
+    }
   }
-  return segments
+  return new StyledText(chunks)
 }
 
 export function Dashboard({
@@ -280,21 +286,22 @@ export function Dashboard({
           return (
             <SelectableRow key={worktree.name} selected={isSelected}>
               <StatusIndicator running={worktree.running} />
-              <text flexGrow={1} flexShrink={1} wrapMode="none" truncate>
-                {isActive ? (
-                  <b>
-                    {matchRanges.length > 0 ? buildHighlightedSegments(baseName, matchRanges) : baseName}
-                    {isRoot ? ' (root)' : ''}
-                  </b>
-                ) : matchRanges.length > 0 ? (
-                  <>
-                    {buildHighlightedSegments(baseName, matchRanges)}
-                    {isRoot ? ' (root)' : ''}
-                  </>
-                ) : (
-                  displayName
-                )}
-              </text>
+                <text
+                  flexGrow={1}
+                  flexShrink={1}
+                  wrapMode="none"
+                  truncate
+                  content={
+                    matchRanges.length > 0
+                      ? new StyledText([
+                          ...buildHighlightedContent(baseName, matchRanges, isActive).chunks,
+                          ...stringToStyledText(isRoot ? ' (root)' : '').chunks,
+                        ])
+                      : new StyledText([
+                          ...stringToStyledText(displayName).chunks.map(chunk => (isActive ? bold(chunk) : chunk)),
+                        ])
+                  }
+                />
               {isActive && (
                 <text wrapMode="none" flexShrink={0} fg="#FFFF00">
                   ▣{' '}
