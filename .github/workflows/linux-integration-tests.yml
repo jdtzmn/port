@@ -12,12 +12,12 @@ on:
         description: JSON array of shard indexes (for matrix)
         required: false
         type: string
-        default: '[1,2,3]'
+        default: '[1,2,3,4]'
       total-shards:
         description: Total number of Vitest shards
         required: false
         type: number
-        default: 3
+        default: 4
 
 jobs:
   linux-integration:
