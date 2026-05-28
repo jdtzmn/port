@@ -2,10 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { WorktreeEntry, ServiceEntry } from '@/lib/docker'
-import {
-  readPersistedQuery,
-  writePersistedQuery,
-} from '@/lib/queryPersistence'
+import { readPersistedQuery, writePersistedQuery } from '@/lib/queryPersistence'
 
 const ASCII_LOGO = `\
                    ██

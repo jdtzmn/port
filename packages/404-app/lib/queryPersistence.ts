@@ -16,7 +16,10 @@ export function readPersistedQuery(storage: QueryStorageLike | null | undefined)
   }
 }
 
-export function writePersistedQuery(storage: QueryStorageLike | null | undefined, query: string): void {
+export function writePersistedQuery(
+  storage: QueryStorageLike | null | undefined,
+  query: string
+): void {
   if (!storage) return
 
   try {
