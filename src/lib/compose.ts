@@ -789,6 +789,7 @@ async function waitForTraefikReady(timeoutMs = 15000): Promise<void> {
   while (Date.now() - startTime < timeoutMs) {
     const connected = await new Promise<boolean>(resolve => {
       const socket = createConnection({ host: '127.0.0.1', port: 80 })
+      socket.unref?.()
       const timer = setTimeout(() => {
         socket.destroy()
         resolve(false)
