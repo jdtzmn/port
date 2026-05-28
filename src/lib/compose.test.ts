@@ -5,6 +5,7 @@ import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   generateOverrideContent,
+  getProjectName,
   getComposeFileStack,
   getServicePorts,
   startTraefik,
@@ -35,6 +36,16 @@ describe('getServicePorts', () => {
     })
 
     expect(ports).toEqual([18000, 3001])
+  })
+})
+
+describe('getProjectName', () => {
+  test('normalizes uppercase letters in worktree names for docker compose', () => {
+    expect(getProjectName('/repo', 'localStorage')).toBe('repo-localstorage')
+  })
+
+  test('returns the normalized repo name for the main repo', () => {
+    expect(getProjectName('/Users/jacob/Documents/GitHub/Port', 'Port')).toBe('port')
   })
 })
 
