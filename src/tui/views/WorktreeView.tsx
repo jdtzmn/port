@@ -1,3 +1,4 @@
+import { StyledText, bold, fg, stringToStyledText, type TextChunk } from '@opentui/core'
 import { useEffect, useRef, useState } from 'react'
 import { useKeyboard } from '@opentui/react'
 import type { ScrollBoxRenderable } from '@opentui/core'
@@ -5,9 +6,10 @@ import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
-import { KeyHints } from '../components/KeyHints.tsx'
+import { SelectableRow } from '../components/SelectableRow.tsx'
 import { useFilterNavigation } from '../hooks/useFilterNavigation.ts'
 import { findSubstringMatchRanges, type MatchRange } from '../lib/filtering.ts'
+import { isQuestionMarkKey, useTuiInteraction } from '../lib/interaction.tsx'
 
 interface Actions {
   downWorktree: (worktreePath: string, worktreeName: string) => Promise<ActionResult>
@@ -25,6 +27,7 @@ interface WorktreeViewProps {
   loading: boolean
   statusMessage: { text: string; type: 'success' | 'error' } | null
   showStatus: (text: string, type: 'success' | 'error') => void
+  keyboardEnabled?: boolean
 }
 
 interface ServiceItem {
@@ -55,24 +58,33 @@ function serviceLabelText(service: ServiceItem): string {
   return `${service.name} :${service.port} -> :${service.actualPort} PID ${service.pid}`
 }
 
-function buildHighlightedSegments(text: string, ranges: MatchRange[]): React.ReactNode[] {
-  const segments: React.ReactNode[] = []
+function buildHighlightedContent(text: string, ranges: MatchRange[], isBold: boolean): StyledText {
+  const chunks: TextChunk[] = []
   let cursor = 0
+
+  const pushChunk = (chunk: TextChunk) => {
+    chunks.push(isBold ? bold(chunk) : chunk)
+  }
+
   for (const range of ranges) {
     if (range.start > cursor) {
-      segments.push(text.slice(cursor, range.start))
+      for (const chunk of stringToStyledText(text.slice(cursor, range.start)).chunks) {
+        pushChunk(chunk)
+      }
     }
-    segments.push(
-      <span key={range.start} fg="#00AAFF">
-        {text.slice(range.start, range.end)}
-      </span>
+    pushChunk(
+      isBold
+        ? bold(fg('#00AAFF')(text.slice(range.start, range.end)))
+        : fg('#00AAFF')(text.slice(range.start, range.end))
     )
     cursor = range.end
   }
   if (cursor < text.length) {
-    segments.push(text.slice(cursor))
+    for (const chunk of stringToStyledText(text.slice(cursor)).chunks) {
+      pushChunk(chunk)
+    }
   }
-  return segments
+  return new StyledText(chunks)
 }
 
 function buildServiceItems(
@@ -132,7 +144,9 @@ export function WorktreeView({
   loading,
   statusMessage,
   showStatus,
+  keyboardEnabled = true,
 }: WorktreeViewProps) {
+  const { dispatch } = useTuiInteraction()
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [busy, setBusy] = useState(false)
   const scrollRef = useRef<ScrollBoxRenderable>(null)
@@ -187,12 +201,10 @@ export function WorktreeView({
   }, [selectedIndex, worktree, hostServices, config])
 
   const worktreeName = worktree?.name ?? 'unknown'
-  const baseUrl = `http://${worktreeName}.${config.domain}`
   const services = buildServiceItems(worktree, hostServices, config, worktreeName)
   const {
     mode,
     highlightQuery,
-    highlightMatches,
     handleKey: handleFilterKey,
   } = useFilterNavigation({
     items: services,
@@ -200,9 +212,14 @@ export function WorktreeView({
     getSearchText: serviceSearchText,
   })
 
+  useEffect(() => {
+    dispatch({ type: 'set-pane-mode', pane: 'services', mode })
+  }, [dispatch, mode])
+
   useKeyboard(event => {
-    if (event.ctrl || event.meta || busy) return
+    if (!keyboardEnabled || event.ctrl || event.meta || busy) return
     const keySequence = (event as { sequence?: string }).sequence
+    if (isQuestionMarkKey(event.name, keySequence, event.shift)) return
 
     if (handleFilterKey({ eventName: event.name, keySequence })) {
       return
@@ -266,30 +283,6 @@ export function WorktreeView({
 
   return (
     <box flexDirection="column" width="100%" height="100%">
-      {/* Header */}
-      <box flexDirection="row" gap={1} flexShrink={0}>
-        <text>
-          <b>{worktreeName}</b>
-        </text>
-        {loading && <text fg="#888888"> refreshing...</text>}
-        {busy && <text fg="#FFFF00"> working...</text>}
-      </box>
-
-      {/* URL */}
-      <text fg="#00AAFF" flexShrink={0}>
-        {baseUrl}
-      </text>
-
-      <box height={1} flexShrink={0} />
-
-      {/* Docker services header (always visible) */}
-      {services.some(s => s.type === 'docker') && (
-        <text fg="#888888" flexShrink={0}>
-          <b>Docker Services</b>
-        </text>
-      )}
-
-      {/* Scrollable services list */}
       <scrollbox
         ref={scrollRef}
         flexGrow={1}
@@ -298,7 +291,6 @@ export function WorktreeView({
         scrollX={false}
         contentOptions={{ flexDirection: 'column', width: '100%' }}
       >
-        {/* Docker services */}
         {services.some(s => s.type === 'docker') && (
           <>
             {services
@@ -312,37 +304,27 @@ export function WorktreeView({
                   : []
 
                 return (
-                  <box key={`${service.name}-${service.port}-${i}`} flexDirection="row" gap={1}>
-                    <text>{isSelected ? '>' : ' '}</text>
-                    <text>
-                      {isSelected ? (
-                        <b>
-                          {matchRanges.length > 0
-                            ? buildHighlightedSegments(labelText, matchRanges)
-                            : labelText}
-                        </b>
-                      ) : matchRanges.length > 0 ? (
-                        buildHighlightedSegments(labelText, matchRanges)
-                      ) : (
-                        labelText
-                      )}
-                    </text>
+                  <SelectableRow key={`${service.name}-${service.port}-${i}`} selected={isSelected}>
                     <StatusIndicator running={service.running} />
-                    <text fg="#888888">{service.running ? 'running' : 'stopped'}</text>
-                  </box>
+                    <text
+                      content={
+                        matchRanges.length > 0
+                          ? buildHighlightedContent(labelText, matchRanges, isSelected)
+                          : new StyledText([
+                              ...stringToStyledText(labelText).chunks.map(chunk =>
+                                isSelected ? bold(chunk) : chunk
+                              ),
+                            ])
+                      }
+                    />
+                  </SelectableRow>
                 )
               })}
           </>
         )}
 
-        {/* Host services section */}
         {services.some(s => s.type === 'host') && (
           <>
-            <box height={1} />
-            <text fg="#888888">
-              <b>Host Services</b>
-            </text>
-
             {services
               .filter(s => s.type === 'host')
               .map(service => {
@@ -354,23 +336,20 @@ export function WorktreeView({
                   : []
 
                 return (
-                  <box key={`host-${service.port}`} flexDirection="row" gap={1}>
-                    <text>{isSelected ? '>' : ' '}</text>
-                    <text>
-                      {isSelected ? (
-                        <b>
-                          {matchRanges.length > 0
-                            ? buildHighlightedSegments(labelText, matchRanges)
-                            : labelText}
-                        </b>
-                      ) : matchRanges.length > 0 ? (
-                        buildHighlightedSegments(labelText, matchRanges)
-                      ) : (
-                        labelText
-                      )}
-                    </text>
+                  <SelectableRow key={`host-${service.port}`} selected={isSelected}>
                     <StatusIndicator running={service.running} />
-                  </box>
+                    <text
+                      content={
+                        matchRanges.length > 0
+                          ? buildHighlightedContent(labelText, matchRanges, isSelected)
+                          : new StyledText([
+                              ...stringToStyledText(labelText).chunks.map(chunk =>
+                                isSelected ? bold(chunk) : chunk
+                              ),
+                            ])
+                      }
+                    />
+                  </SelectableRow>
                 )
               })}
           </>
@@ -379,62 +358,12 @@ export function WorktreeView({
         {services.length === 0 && !loading && <text fg="#888888">No services configured</text>}
       </scrollbox>
 
-      <box height={1} flexShrink={0} />
-
       {/* Status message */}
       {statusMessage && (
         <text fg={statusMessage.type === 'success' ? '#00FF00' : '#FF4444'} flexShrink={0}>
           {statusMessage.text}
         </text>
       )}
-
-      {mode !== 'normal' && (
-        <text
-          fg={
-            mode === 'query'
-              ? highlightQuery.length === 0
-                ? '#888888'
-                : highlightMatches.length > 0
-                  ? '#00AAFF'
-                  : '#FFAA00'
-              : '#00AAFF'
-          }
-        >
-          /{highlightQuery}{' '}
-          {highlightQuery.length === 0
-            ? '(type to filter)'
-            : `(${highlightMatches.length} match${highlightMatches.length === 1 ? '' : 'es'})`}
-        </text>
-      )}
-
-      {/* Key hints */}
-      <KeyHints
-        hints={
-          mode === 'query'
-            ? [
-                { key: 'Type', action: 'filter' },
-                { key: 'Backspace', action: 'delete' },
-                { key: 'Enter', action: 'apply' },
-                { key: 'Esc', action: 'cancel' },
-              ]
-            : mode === 'filtered-nav'
-              ? [
-                  { key: 'j/k', action: 'next/prev match' },
-                  { key: '/', action: 'edit filter' },
-                  { key: 'Esc', action: 'clear filter' },
-                  { key: 'Enter', action: 'open in browser' },
-                ]
-              : [
-                  { key: 'Enter', action: 'open in browser' },
-                  { key: '/', action: 'filter' },
-                  { key: 'd', action: 'down' },
-                  { key: 'x', action: 'kill host svc' },
-                  { key: 'Esc', action: 'back' },
-                  { key: 'r', action: 'refresh' },
-                  { key: 'q', action: 'quit' },
-                ]
-        }
-      />
     </box>
   )
 }

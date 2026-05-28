@@ -1,14 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { StyledText, bold, fg, stringToStyledText, type TextChunk } from '@opentui/core'
 import { useKeyboard } from '@opentui/react'
 import type { ScrollBoxRenderable } from '@opentui/core'
 import type { PortConfig, HostService } from '../../types.ts'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { StatusIndicator } from '../components/StatusIndicator.tsx'
-import { KeyHints } from '../components/KeyHints.tsx'
 import { Confirm } from '../components/Confirm.tsx'
 import { useFilterNavigation } from '../hooks/useFilterNavigation.ts'
+import { SelectableRow } from '../components/SelectableRow.tsx'
 import { findSubstringMatchRanges, type MatchRange } from '../lib/filtering.ts'
+import { orderWorktreesForDashboard } from '../lib/worktreeOrdering.ts'
+import { isQuestionMarkKey, useTuiInteraction } from '../lib/interaction.tsx'
 
 interface Actions {
   upWorktree: (worktreePath: string, worktreeName: string) => Promise<ActionResult>
@@ -27,11 +30,14 @@ interface DashboardProps {
   onOpenWorktree: (name: string) => void
   activeWorktreeName: string
   initialSelectedName: string | null
+  selectedWorktreeName?: string | null
+  onSelectedWorktreeNameChange?: (name: string) => void
   actions: Actions
   refresh: () => void
   loading: boolean
   statusMessage: { text: string; type: 'success' | 'error' } | null
   showStatus: (text: string, type: 'success' | 'error') => void
+  keyboardEnabled?: boolean
 }
 
 type PendingAction = 'archive' | null
@@ -46,30 +52,38 @@ export function buildServicesText(services: { name: string; running: boolean }[]
   return services.map(s => `${s.name} ${s.running ? '●' : '○'}`).join(' ')
 }
 
-function buildHighlightedSegments(text: string, ranges: MatchRange[]): React.ReactNode[] {
-  const segments: React.ReactNode[] = []
+function buildHighlightedContent(text: string, ranges: MatchRange[], isBold: boolean): StyledText {
+  const chunks: TextChunk[] = []
   let cursor = 0
+
+  const pushChunk = (chunk: TextChunk) => {
+    chunks.push(isBold ? bold(chunk) : chunk)
+  }
+
   for (const range of ranges) {
     if (range.start > cursor) {
-      segments.push(text.slice(cursor, range.start))
+      for (const chunk of stringToStyledText(text.slice(cursor, range.start)).chunks) {
+        pushChunk(chunk)
+      }
     }
-    segments.push(
-      <span key={range.start} fg="#00AAFF">
-        {text.slice(range.start, range.end)}
-      </span>
+    pushChunk(
+      isBold
+        ? bold(fg('#00AAFF')(text.slice(range.start, range.end)))
+        : fg('#00AAFF')(text.slice(range.start, range.end))
     )
     cursor = range.end
   }
   if (cursor < text.length) {
-    segments.push(text.slice(cursor))
+    for (const chunk of stringToStyledText(text.slice(cursor)).chunks) {
+      pushChunk(chunk)
+    }
   }
-  return segments
+  return new StyledText(chunks)
 }
 
 export function Dashboard({
-  repoName,
+  repoRoot,
   worktrees,
-  traefikRunning,
   onSelectWorktree,
   onOpenWorktree,
   activeWorktreeName,
@@ -78,15 +92,24 @@ export function Dashboard({
   loading,
   statusMessage,
   showStatus,
+  keyboardEnabled = true,
+  selectedWorktreeName,
+  onSelectedWorktreeNameChange,
 }: DashboardProps) {
+  const { dispatch } = useTuiInteraction()
+  const orderedWorktrees = useMemo(
+    () => orderWorktreesForDashboard(worktrees, activeWorktreeName),
+    [worktrees, activeWorktreeName]
+  )
+
   const [selectedIndex, setSelectedIndex] = useState(() => {
-    if (!initialSelectedName) return 0
-    const idx = worktrees.findIndex(w => w.name === initialSelectedName)
+    const initialName = selectedWorktreeName ?? initialSelectedName
+    if (!initialName) return 0
+    const idx = orderedWorktrees.findIndex(w => w.name === initialName)
     return idx >= 0 ? idx : 0
   })
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
   const [busy, setBusy] = useState(false)
-  const initialSelectionAppliedRef = useRef(false)
   const scrollRef = useRef<ScrollBoxRenderable>(null)
   const {
     mode,
@@ -94,10 +117,22 @@ export function Dashboard({
     highlightMatches,
     handleKey: handleFilterKey,
   } = useFilterNavigation({
-    items: worktrees,
+    items: orderedWorktrees,
     setSelectedIndex,
     getSearchText: worktree => worktree.name,
   })
+
+  useEffect(() => {
+    dispatch({ type: 'set-pane-mode', pane: 'worktrees', mode })
+  }, [dispatch, mode])
+
+  useEffect(() => {
+    if (pendingAction) {
+      dispatch({ type: 'begin-confirm', action: pendingAction })
+    } else {
+      dispatch({ type: 'end-confirm' })
+    }
+  }, [dispatch, pendingAction])
 
   // Keep selected row visible inside the scrollbox
   useEffect(() => {
@@ -113,33 +148,28 @@ export function Dashboard({
   }, [selectedIndex])
 
   useEffect(() => {
-    if (initialSelectionAppliedRef.current) return
-
-    if (!initialSelectedName) {
-      initialSelectionAppliedRef.current = true
+    if (orderedWorktrees.length === 0) {
       return
     }
 
-    if (worktrees.length === 0) {
-      return
-    }
+    const targetName = selectedWorktreeName ?? initialSelectedName
+    if (!targetName) return
 
-    const idx = worktrees.findIndex(w => w.name === initialSelectedName)
+    const idx = orderedWorktrees.findIndex(w => w.name === targetName)
     if (idx >= 0) {
       setSelectedIndex(idx)
     }
+  }, [initialSelectedName, orderedWorktrees, selectedWorktreeName])
 
-    initialSelectionAppliedRef.current = true
-  }, [initialSelectedName, worktrees])
-
-  const selectedWorktree = worktrees[selectedIndex]
-  const isRootSelected = selectedIndex === 0
+  const selectedWorktree = orderedWorktrees[selectedIndex]
+  const isRootSelected = selectedWorktree?.path === repoRoot
 
   useKeyboard(event => {
-    if (event.ctrl || event.meta || busy) return
+    if (!keyboardEnabled || event.ctrl || event.meta || busy) return
 
     const keySequence = (event as { sequence?: string }).sequence
-    const maxIndex = worktrees.length - 1
+    if (isQuestionMarkKey(event.name, keySequence, event.shift)) return
+    const maxIndex = orderedWorktrees.length - 1
 
     // If we're in a confirm dialog, don't handle navigation
     if (pendingAction) return
@@ -151,11 +181,25 @@ export function Dashboard({
     switch (event.name) {
       case 'j':
       case 'down':
-        setSelectedIndex(i => Math.min(i + 1, maxIndex))
+        setSelectedIndex(i => {
+          const nextIndex = Math.min(i + 1, maxIndex)
+          const nextName = orderedWorktrees[nextIndex]?.name
+          if (nextName && nextName !== selectedWorktreeName) {
+            onSelectedWorktreeNameChange?.(nextName)
+          }
+          return nextIndex
+        })
         break
       case 'k':
       case 'up':
-        setSelectedIndex(i => Math.max(i - 1, 0))
+        setSelectedIndex(i => {
+          const nextIndex = Math.max(i - 1, 0)
+          const nextName = orderedWorktrees[nextIndex]?.name
+          if (nextName && nextName !== selectedWorktreeName) {
+            onSelectedWorktreeNameChange?.(nextName)
+          }
+          return nextIndex
+        })
         break
       case 'return':
         if (selectedWorktree) {
@@ -206,8 +250,13 @@ export function Dashboard({
       .then(result => {
         showStatus(result.message, result.success ? 'success' : 'error')
         // Adjust selection if needed
-        if (selectedIndex >= worktrees.length - 1) {
-          setSelectedIndex(Math.max(0, worktrees.length - 2))
+        if (selectedIndex >= orderedWorktrees.length - 1) {
+          const nextIndex = Math.max(0, orderedWorktrees.length - 2)
+          setSelectedIndex(nextIndex)
+          const nextName = orderedWorktrees[nextIndex]?.name
+          if (nextName && nextName !== selectedWorktreeName) {
+            onSelectedWorktreeNameChange?.(nextName)
+          }
         }
       })
       .finally(() => setBusy(false))
@@ -219,32 +268,6 @@ export function Dashboard({
 
   return (
     <box flexDirection="column" width="100%" height="100%">
-      {/* Header */}
-      <box flexDirection="row" gap={1} flexShrink={0}>
-        <text>
-          <b>port: {repoName}</b>
-        </text>
-        {loading && <text fg="#888888"> refreshing...</text>}
-        {busy && <text fg="#FFFF00"> working...</text>}
-      </box>
-
-      <box height={1} flexShrink={0} />
-
-      {/* Traefik status */}
-      <box flexDirection="row" gap={1} flexShrink={0}>
-        <text fg="#888888">Traefik:</text>
-        <StatusIndicator running={traefikRunning} />
-        <text>{traefikRunning ? 'running' : 'stopped'}</text>
-      </box>
-
-      <box height={1} flexShrink={0} />
-
-      {/* Worktree list header */}
-      <text fg="#888888" flexShrink={0}>
-        <b>Worktrees</b>
-      </text>
-
-      {/* Worktree rows */}
       <scrollbox
         ref={scrollRef}
         flexGrow={1}
@@ -253,61 +276,48 @@ export function Dashboard({
         scrollX={false}
         contentOptions={{ flexDirection: 'column', width: '100%' }}
       >
-        {worktrees.length === 0 && !loading && <text fg="#888888">No worktrees found</text>}
+        {orderedWorktrees.length === 0 && !loading && <text fg="#888888">No worktrees found</text>}
 
-        {worktrees.map((worktree, index) => {
+        {orderedWorktrees.map((worktree, index) => {
           const isSelected = index === selectedIndex
-          const isRoot = index === 0
+          const isRoot = worktree.path === repoRoot
           const isActive = worktree.name === activeWorktreeName
-          const sortedServices = [...worktree.services].sort(
-            (a, b) => Number(b.running) - Number(a.running)
-          )
-          const servicesText = buildServicesText(sortedServices)
-          const totalCount = worktree.services.length
-          const nameStr = worktree.name + (isRoot ? ' (root)' : '')
+          const baseName = worktree.name
+          const displayName = baseName + (isRoot ? ' (root)' : '')
           const matchRanges = highlightQuery
-            ? findSubstringMatchRanges(nameStr, highlightQuery)
+            ? findSubstringMatchRanges(baseName, highlightQuery)
             : []
 
           return (
-            <box key={worktree.name} flexDirection="row" height={1} overflow="hidden">
-              <text wrapMode="none" flexShrink={0}>
-                {isSelected ? '> ' : '  '}
-              </text>
+            <SelectableRow key={worktree.name} selected={isSelected}>
+              <StatusIndicator running={worktree.running} />
+              <text
+                flexGrow={1}
+                flexShrink={1}
+                wrapMode="none"
+                truncate
+                content={
+                  matchRanges.length > 0
+                    ? new StyledText([
+                        ...buildHighlightedContent(baseName, matchRanges, isActive).chunks,
+                        ...stringToStyledText(isRoot ? ' (root)' : '').chunks,
+                      ])
+                    : new StyledText([
+                        ...stringToStyledText(displayName).chunks.map(chunk =>
+                          isActive ? bold(chunk) : chunk
+                        ),
+                      ])
+                }
+              />
               {isActive && (
                 <text wrapMode="none" flexShrink={0} fg="#FFFF00">
-                  ★{' '}
+                  ▣{' '}
                 </text>
               )}
-              <text flexShrink={1} wrapMode="none">
-                {matchRanges.length > 0 ? buildHighlightedSegments(nameStr, matchRanges) : nameStr}
-              </text>
-              {totalCount === 0 && loading && (
-                <text wrapMode="none" flexShrink={0} fg="#555555">
-                  {' ...'}
-                </text>
-              )}
-              {totalCount > 0 && (
-                <text wrapMode="none" flexShrink={0}>
-                  {'  '}
-                </text>
-              )}
-              {totalCount > 0 && (
-                <text fg="#888888" flexShrink={100} wrapMode="none">
-                  {servicesText}
-                </text>
-              )}
-              {totalCount > 0 && (
-                <text wrapMode="none" flexShrink={0} fg="#555555">
-                  {'  ' + totalCount + ' total'}
-                </text>
-              )}
-            </box>
+            </SelectableRow>
           )
         })}
       </scrollbox>
-
-      <box height={1} flexShrink={0} />
 
       {/* Status message */}
       {statusMessage && (
@@ -342,39 +352,6 @@ export function Dashboard({
           message={`Archive worktree ${selectedWorktree.name}?`}
           onConfirm={handleConfirmArchive}
           onCancel={handleCancelAction}
-        />
-      )}
-
-      {/* Key hints */}
-      {!pendingAction && (
-        <KeyHints
-          hints={
-            mode === 'query'
-              ? [
-                  { key: 'Type', action: 'filter' },
-                  { key: 'Backspace', action: 'delete' },
-                  { key: 'Enter', action: 'apply' },
-                  { key: 'Esc', action: 'cancel' },
-                ]
-              : mode === 'filtered-nav'
-                ? [
-                    { key: 'j/k', action: 'next/prev match' },
-                    { key: '/', action: 'edit filter' },
-                    { key: 'Esc', action: 'clear filter' },
-                    { key: 'Enter', action: 'inspect' },
-                    { key: 'o', action: 'open' },
-                  ]
-                : [
-                    { key: 'Enter', action: 'inspect' },
-                    { key: 'o', action: 'open' },
-                    { key: '/', action: 'filter' },
-                    { key: 'u', action: 'up' },
-                    { key: 'd', action: 'down' },
-                    { key: 'a', action: 'archive' },
-                    { key: 'r', action: 'refresh' },
-                    { key: 'q', action: 'quit' },
-                  ]
-          }
         />
       )}
     </box>

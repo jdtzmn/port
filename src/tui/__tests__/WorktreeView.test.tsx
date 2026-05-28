@@ -1,10 +1,12 @@
 import { test, expect, afterEach, describe } from 'bun:test'
 import { testRender } from '@opentui/react/test-utils'
 import type { TestRenderer } from '@opentui/core/testing'
+import { RGBA } from '@opentui/core'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { HostService, PortConfig } from '../../types.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { WorktreeView } from '../views/WorktreeView.tsx'
+import { SELECTED_ROW_BACKGROUND } from '../components/SelectableRow.tsx'
 
 const mockConfig: PortConfig = { domain: 'port' }
 
@@ -41,6 +43,15 @@ function frameLine(frame: string, contains: string): string {
   return frame.split('\n').find(line => line.includes(contains)) ?? ''
 }
 
+function expectSelectedRowBackground(
+  frame: { lines: Array<{ spans: Array<{ text: string; bg: RGBA }> }> },
+  contains: string
+) {
+  const line = frame.lines.find(l => l.spans.some(span => span.text.includes(contains)))
+  expect(line).toBeDefined()
+  expect(line!.spans.some(span => span.bg.equals(RGBA.fromHex(SELECTED_ROW_BACKGROUND)))).toBe(true)
+}
+
 let currentRenderer: TestRenderer | null = null
 
 afterEach(() => {
@@ -51,7 +62,7 @@ afterEach(() => {
 })
 
 describe('WorktreeView', () => {
-  test('renders worktree name and URL', async () => {
+  test('renders service rows without pane chrome', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <WorktreeView
         worktree={mockWorktree}
@@ -72,8 +83,59 @@ describe('WorktreeView', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    expect(frame).toContain('feature-auth')
-    expect(frame).toContain('http://feature-auth.port')
+    expect(frame).not.toContain('feature-auth')
+    expect(frame).not.toContain('http://feature-auth.port')
+    expect(frame).not.toContain('Docker Services')
+    expect(frame).toContain('web:3000')
+    expect(frame).toContain('api:8080')
+  })
+
+  test('selected service rows use the shared background highlight', async () => {
+    const { renderer, renderOnce, captureSpans } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    expectSelectedRowBackground(captureSpans(), 'web:3000')
+  })
+
+  test('hides the redundant title, url and docker services label', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+
+    expect(frame).not.toContain('feature-auth')
+    expect(frame).not.toContain('http://feature-auth.port')
+    expect(frame).not.toContain('Docker Services')
   })
 
   test('renders docker services with ports', async () => {
@@ -97,7 +159,7 @@ describe('WorktreeView', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    expect(frame).toContain('Docker Services')
+    expect(frame).not.toContain('Docker Services')
     expect(frame).toContain('web')
     expect(frame).toContain(':3000')
     expect(frame).toContain('api')
@@ -127,10 +189,39 @@ describe('WorktreeView', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    expect(frame).toContain('Host Services')
+    expect(frame).not.toContain('Host Services')
     expect(frame).toContain('port 5173')
     expect(frame).toContain('49821')
     expect(frame).toContain('PID 12345')
+  })
+
+  test('shows service status badges before the labels', async () => {
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={mockHostServices}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+      />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const frame = captureCharFrame()
+    const webLine = frame.split('\n').find(line => line.includes('web:3000')) ?? ''
+    const dbLine = frame.split('\n').find(line => line.includes('db:5432')) ?? ''
+
+    expect(webLine).toMatch(/^●/)
+    expect(dbLine).toMatch(/^○/)
+    expect(webLine).not.toMatch(/web:3000.*●/)
+    expect(dbLine).not.toMatch(/db:5432.*○/)
   })
 
   test('Esc calls onBack', async () => {
@@ -166,7 +257,39 @@ describe('WorktreeView', () => {
     expect(backed).toBe(true)
   })
 
-  test('shows key hints', async () => {
+  test('ignores navigation keys when keyboard is disabled', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <WorktreeView
+        worktree={mockWorktree}
+        hostServices={[]}
+        config={mockConfig}
+        repoRoot="/repo"
+        onBack={noop}
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+        keyboardEnabled={false}
+      />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const before = captureCharFrame()
+    expect(frameLine(before, 'web:3000')).not.toContain('>')
+
+    mockInput.pressKey('j')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const after = captureCharFrame()
+    expect(frameLine(after, 'web:3000')).not.toContain('>')
+    expect(frameLine(after, 'api:8080')).not.toContain('>')
+  })
+
+  test('does not render inline key hints', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <WorktreeView
         worktree={mockWorktree}
@@ -187,11 +310,11 @@ describe('WorktreeView', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    expect(frame).toContain('[Enter]')
-    expect(frame).toContain('[d]')
-    expect(frame).toContain('[Esc]')
-    expect(frame).toContain('[r]')
-    expect(frame).toContain('[q]')
+    expect(frame).not.toContain('[Enter]')
+    expect(frame).not.toContain('[d]')
+    expect(frame).not.toContain('[Esc]')
+    expect(frame).not.toContain('[r]')
+    expect(frame).not.toContain('[q]')
   })
 
   test('shows no services message when empty', async () => {
@@ -225,7 +348,7 @@ describe('WorktreeView', () => {
     expect(frame).toContain('No services configured')
   })
 
-  test('many services do not overflow into header or key hints', async () => {
+  test('many services stay content-only', async () => {
     const manyServicesWorktree: WorktreeStatus = {
       name: 'big-app',
       path: '/repo/.port/trees/big-app',
@@ -259,9 +382,8 @@ describe('WorktreeView', () => {
     const frame = captureCharFrame()
     const lines = frame.split('\n')
 
-    // Header must remain visible
-    expect(frame).toContain('big-app')
-    expect(frame).toContain('http://big-app.port')
+    expect(frame).not.toContain('big-app')
+    expect(frame).not.toContain('http://big-app.port')
 
     // Not all 20 services should be visible (some must be clipped/scrolled)
     const serviceLines = lines.filter(l => l.includes('svc-'))
@@ -269,7 +391,7 @@ describe('WorktreeView', () => {
     expect(serviceLines.length).toBeGreaterThan(0)
   })
 
-  test('/ enters query mode and shows filter prompt', async () => {
+  test('/ enters query mode without rendering a prompt', async () => {
     const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
       <WorktreeView
         worktree={mockWorktree}
@@ -293,9 +415,9 @@ describe('WorktreeView', () => {
     await renderOnce()
 
     const frame = captureCharFrame()
-    expect(frame).toContain('/ (type to filter)')
-    expect(frame).toContain('[Type]')
-    expect(frame).toContain('[Backspace]')
+    expect(frame).not.toContain('/ (type to filter)')
+    expect(frame).not.toContain('[Type]')
+    expect(frame).not.toContain('[Backspace]')
   })
 
   test('query mode accepts text and applies filter on Enter', async () => {
@@ -334,17 +456,17 @@ describe('WorktreeView', () => {
     await renderOnce()
 
     let frame = captureCharFrame()
-    expect(frame).toContain('/api')
-    expect(frame).toContain('(1 match)')
+    expect(frame).not.toContain('/api')
+    expect(frame).not.toContain('(1 match)')
 
     mockInput.pressEnter()
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frame).toContain('/api (1 match)')
-    expect(frame).toContain('[j/k]')
-    expect(frameLine(frame, 'api:8080')).toContain('>')
+    expect(frame).not.toContain('/api (1 match)')
+    expect(frame).not.toContain('[j/k]')
+    expect(frameLine(frame, 'api:8080')).not.toContain('>')
   })
 
   test('filtered navigation j/k skips non-matching services', async () => {
@@ -390,14 +512,14 @@ describe('WorktreeView', () => {
     await renderOnce()
 
     let frame = captureCharFrame()
-    expect(frameLine(frame, 'alpha:3000')).toContain('>')
+    expect(frameLine(frame, 'alpha:3000')).not.toContain('>')
 
     mockInput.pressKey('j')
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frameLine(frame, 'api:8080')).toContain('>')
+    expect(frameLine(frame, 'api:8080')).not.toContain('>')
     expect(frameLine(frame, 'db:5432')).not.toContain('>')
 
     mockInput.pressKey('k')
@@ -405,21 +527,21 @@ describe('WorktreeView', () => {
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frameLine(frame, 'alpha:3000')).toContain('>')
+    expect(frameLine(frame, 'alpha:3000')).not.toContain('>')
 
     mockInput.pressKey('k')
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frameLine(frame, 'api:8080')).toContain('>')
+    expect(frameLine(frame, 'api:8080')).not.toContain('>')
 
     mockInput.pressKey('j')
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frameLine(frame, 'alpha:3000')).toContain('>')
+    expect(frameLine(frame, 'alpha:3000')).not.toContain('>')
   })
 
   test('Esc clears filtered mode and returns to normal navigation', async () => {
@@ -463,7 +585,7 @@ describe('WorktreeView', () => {
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frameLine(frame, 'db:5432')).toContain('>')
+    expect(frameLine(frame, 'db:5432')).not.toContain('>')
   })
 
   test('can filter by host-service port', async () => {
@@ -500,8 +622,8 @@ describe('WorktreeView', () => {
     await renderOnce()
 
     const frame = captureCharFrame()
-    expect(frame).toContain('/5173 (1 match)')
-    expect(frameLine(frame, 'port 5173')).toContain('>')
+    expect(frame).not.toContain('/5173 (1 match)')
+    expect(frame).toContain('port 5173')
   })
 
   test('Esc in query mode cancels back to normal mode', async () => {
@@ -531,7 +653,7 @@ describe('WorktreeView', () => {
     await renderOnce()
 
     let frame = captureCharFrame()
-    expect(frame).toContain('/d')
+    expect(frame).not.toContain('/d')
 
     mockInput.pressEscape()
     await new Promise(resolve => setTimeout(resolve, 50))
@@ -539,7 +661,7 @@ describe('WorktreeView', () => {
 
     frame = captureCharFrame()
     expect(frame).not.toContain('/d')
-    expect(frame).toContain('[/]')
+    expect(frame).not.toContain('[/]')
   })
 
   test('empty query Enter clears filter prompt', async () => {
@@ -571,6 +693,6 @@ describe('WorktreeView', () => {
 
     const frame = captureCharFrame()
     expect(frame).not.toContain('(type to filter)')
-    expect(frame).toContain('[/]')
+    expect(frame).not.toContain('[/]')
   })
 })

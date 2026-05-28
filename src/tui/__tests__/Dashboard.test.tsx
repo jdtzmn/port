@@ -1,12 +1,14 @@
 import { test, expect, afterEach, describe } from 'bun:test'
 import { testRender } from '@opentui/react/test-utils'
 import type { TestRenderer } from '@opentui/core/testing'
+import { RGBA } from '@opentui/core'
 import { useEffect, useState } from 'react'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import type { HostService, PortConfig } from '../../types.ts'
 import type { ActionResult } from '../hooks/useActions.ts'
 import { findSubstringMatchRanges } from '../lib/filtering.ts'
 import { Dashboard, buildServicesText } from '../views/Dashboard.tsx'
+import { SELECTED_ROW_BACKGROUND } from '../components/SelectableRow.tsx'
 
 const mockConfig: PortConfig = { domain: 'port' }
 
@@ -98,6 +100,22 @@ function frameLine(frame: string, contains: string): string {
   return frame.split('\n').find(line => line.includes(contains)) ?? ''
 }
 
+function expectSelectedRowBackground(
+  frame: { lines: Array<{ spans: Array<{ text: string; bg: RGBA }> }> },
+  contains: string
+) {
+  const needle = contains.replace(/\s+/g, '')
+  const line = frame.lines.find(l =>
+    l.spans
+      .map(span => span.text)
+      .join('')
+      .replace(/\s+/g, '')
+      .includes(needle)
+  )
+  expect(line).toBeDefined()
+  expect(line!.spans.some(span => span.bg.equals(RGBA.fromHex(SELECTED_ROW_BACKGROUND)))).toBe(true)
+}
+
 async function pressAndRender(
   mockInput: { pressKey: (key: string) => void; pressEnter: () => void },
   renderOnce: () => Promise<void>,
@@ -128,10 +146,10 @@ describe('Dashboard', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    expect(frame).toContain('port: myapp')
-    expect(frame).toContain('Traefik:')
-    expect(frame).toContain('running')
-    expect(frame).toContain('Worktrees')
+    expect(frame).not.toContain('port: myapp')
+    expect(frame).not.toContain('Traefik:')
+    expect(frame).not.toContain('running')
+    expect(frame).not.toContain('Worktrees')
     expect(frame).toContain('myapp')
     expect(frame).toContain('feature-auth')
   })
@@ -146,11 +164,65 @@ describe('Dashboard', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    expect(frame).toContain('★')
+    expect(frame).toContain('▣')
     expect(frame).toContain('(root)')
   })
 
-  test('shows service status indicators', async () => {
+  test('renders a status badge before the worktree label', async () => {
+    const { renderer, renderOnce, captureSpans } = await testRender(
+      <Dashboard {...props({ activeWorktreeName: 'myapp' })} />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const rootLine = captureSpans().lines.find(line =>
+      line.spans
+        .map(span => span.text)
+        .join('')
+        .includes('myapp')
+    )
+    const rootText = rootLine?.spans.map(span => span.text).join('') ?? ''
+
+    expect(rootText).toMatch(/●/)
+    expect(rootText).toMatch(/myapp\s*\(root\)/)
+    expect(rootText).toMatch(/▣\s█$/)
+  })
+
+  test('keeps the active marker pinned when the worktree name truncates', async () => {
+    const longWorktreeName = 'this-is-a-very-long-worktree-name-that-should-truncate'
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard
+        {...props({
+          worktrees: [
+            {
+              name: longWorktreeName,
+              path: '/repo',
+              services: [],
+              running: true,
+            },
+            {
+              name: 'feature-auth',
+              path: '/repo/.port/trees/feature-auth',
+              services: [],
+              running: false,
+            },
+          ],
+          activeWorktreeName: longWorktreeName,
+        })}
+      />,
+      { width: 28, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const longLine = captureCharFrame().split('\n')[0] ?? ''
+
+    expect(longLine).toContain('...')
+    expect(longLine).toMatch(/▣\s█$/)
+  })
+
+  test('does not list services in the worktree pane', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <Dashboard {...props()} />,
       { width: 60, height: 20 }
@@ -160,8 +232,10 @@ describe('Dashboard', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    expect(frame).toContain('●')
-    expect(frame).toContain('○')
+    expect(frame).not.toContain('web ●')
+    expect(frame).not.toContain('web ○')
+    expect(frame).not.toContain('db ●')
+    expect(frame).not.toContain('db ○')
   })
 
   test('findSubstringMatchRanges returns all case-insensitive matches', () => {
@@ -173,7 +247,7 @@ describe('Dashboard', () => {
     ])
   })
 
-  test('shows key hints including enter, open, and jump', async () => {
+  test('does not render key hints in the worktree pane', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <Dashboard {...props()} />,
       { width: 80, height: 20 }
@@ -183,19 +257,20 @@ describe('Dashboard', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    // Note: scrollbox has a test-renderer artifact where its internal
-    // structure overwrites some sibling text in captureCharFrame().
-    // Key brackets are reliably captured; some action labels are not.
-    expect(frame).toContain('[Enter]')
-    expect(frame).toContain('[o]')
-    expect(frame).toContain('open')
-    expect(frame).toContain('[/]')
-    expect(frame).toContain('filter')
-    expect(frame).toContain('[u]')
-    expect(frame).toContain('[d]')
-    expect(frame).toContain('[a]')
-    expect(frame).toContain('[r]')
-    expect(frame).toContain('[q]')
+    expect(frame).not.toContain('[Enter]')
+    expect(frame).not.toContain('Enter inspect')
+    expect(frame).not.toContain('open in browser')
+  })
+
+  test('selected worktree rows use the shared background highlight', async () => {
+    const { renderer, renderOnce, captureSpans } = await testRender(<Dashboard {...props()} />, {
+      width: 60,
+      height: 20,
+    })
+    currentRenderer = renderer
+
+    await renderOnce()
+    expectSelectedRowBackground(captureSpans(), 'myapp (root)')
   })
 
   test('j/k navigates worktree list', async () => {
@@ -207,7 +282,7 @@ describe('Dashboard', () => {
 
     await renderOnce()
     const frame1 = captureCharFrame()
-    expect(frame1).toContain('> ')
+    expect(frame1).not.toContain('> ')
 
     mockInput.pressKey('j')
     await renderOnce()
@@ -215,6 +290,26 @@ describe('Dashboard', () => {
 
     expect(frame2).toContain('myapp')
     expect(frame2).toContain('feature-auth')
+  })
+
+  test('ignores navigation keys when keyboard is disabled', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props()} keyboardEnabled={false} />,
+      { width: 60, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const before = captureCharFrame()
+    expect(frameLine(before, 'myapp (root)')).not.toContain('>')
+
+    mockInput.pressKey('j')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const after = captureCharFrame()
+    expect(frameLine(after, 'myapp (root)')).not.toContain('>')
+    expect(frameLine(after, 'feature-auth')).not.toContain('>')
   })
 
   test('Enter calls onSelectWorktree', async () => {
@@ -280,7 +375,7 @@ describe('Dashboard', () => {
 
     const frame = captureCharFrame()
 
-    expect(frameLine(frame, 'feature-auth')).toContain('>')
+    expect(frameLine(frame, 'feature-auth')).not.toContain('>')
     expect(frame).toContain('(type to filter)')
   })
 
@@ -304,7 +399,152 @@ describe('Dashboard', () => {
 
     expect(frame).toContain('/j')
     expect(frame).toContain('(1 match)')
-    expect(frameLine(frame, 'myapp (root)')).toContain('>')
+    expect(frameLine(frame, 'myapp (root)')).not.toContain('>')
+  })
+
+  test('query highlights repeated matches in worktree names', async () => {
+    const repeatedWorktrees: WorktreeStatus[] = [
+      {
+        name: 'bug-auth-auth',
+        path: '/repo',
+        services: [],
+        running: true,
+      },
+      {
+        name: 'feature-auth',
+        path: '/repo/.port/trees/feature-auth',
+        services: [],
+        running: false,
+      },
+    ]
+
+    const { renderer, mockInput, renderOnce, captureSpans } = await testRender(
+      <Dashboard
+        {...props({ worktrees: repeatedWorktrees, activeWorktreeName: 'bug-auth-auth' })}
+      />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    await pressAndRender(mockInput, renderOnce, 'a')
+    await pressAndRender(mockInput, renderOnce, 'u')
+    await pressAndRender(mockInput, renderOnce, 't')
+    await pressAndRender(mockInput, renderOnce, 'h')
+    mockInput.pressEnter()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const blue = RGBA.fromHex('#00AAFF')
+    const line = captureSpans().lines.find(l =>
+      l.spans
+        .map(span => span.text)
+        .join('')
+        .includes('bug-auth-auth')
+    )
+    expect(line).toBeDefined()
+    expect(line!.spans.filter(span => span.text === 'auth' && span.fg.equals(blue)).length).toBe(2)
+  })
+
+  test('querying -in keeps worktree-in-use text unchanged', async () => {
+    const inUseWorktrees: WorktreeStatus[] = [
+      {
+        name: 'worktree-in-use',
+        path: '/repo',
+        services: [],
+        running: true,
+      },
+      {
+        name: 'feature-auth',
+        path: '/repo/.port/trees/feature-auth',
+        services: [],
+        running: false,
+      },
+    ]
+
+    const { renderer, mockInput, renderOnce, captureSpans } = await testRender(
+      <Dashboard
+        {...props({ worktrees: inUseWorktrees, activeWorktreeName: 'worktree-in-use' })}
+      />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    await pressAndRender(mockInput, renderOnce, '-')
+    await pressAndRender(mockInput, renderOnce, 'i')
+    await pressAndRender(mockInput, renderOnce, 'n')
+    mockInput.pressEnter()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const blue = RGBA.fromHex('#00AAFF')
+    const line = captureSpans().lines.find(line =>
+      line.spans
+        .map(span => span.text)
+        .join('')
+        .includes('worktree-in-use')
+    )
+    expect(line).toBeDefined()
+    const text = line!.spans.map(span => span.text).join('')
+    expect(text).toContain('worktree-in-use')
+    expect(text).not.toContain('worktree-use-in-use')
+    expect(line!.spans.some(span => span.text.includes('-in') && span.fg.equals(blue))).toBe(true)
+  })
+
+  test('querying -t keeps jacob-better-tui text unchanged', async () => {
+    const tuiWorktrees: WorktreeStatus[] = [
+      {
+        name: 'jacob-better-tui',
+        path: '/repo',
+        services: [],
+        running: true,
+      },
+      {
+        name: 'feature-auth',
+        path: '/repo/.port/trees/feature-auth',
+        services: [],
+        running: false,
+      },
+    ]
+
+    const { renderer, mockInput, renderOnce, captureSpans } = await testRender(
+      <Dashboard {...props({ worktrees: tuiWorktrees, activeWorktreeName: 'jacob-better-tui' })} />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    await pressAndRender(mockInput, renderOnce, '-')
+    await pressAndRender(mockInput, renderOnce, 't')
+    mockInput.pressEnter()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const blue = RGBA.fromHex('#00AAFF')
+    const line = captureSpans().lines.find(line =>
+      line.spans
+        .map(span => span.text)
+        .join('')
+        .includes('jacob-better-tui')
+    )
+    expect(line).toBeDefined()
+    const text = line!.spans.map(span => span.text).join('')
+    expect(text).toContain('jacob-better-tui')
+    expect(text).not.toContain('jacob-betterui-tui')
+    expect(line!.spans.some(span => span.text.includes('-t') && span.fg.equals(blue))).toBe(true)
   })
 
   test('filtered navigation j/k skips non-matching worktrees', async () => {
@@ -330,14 +570,14 @@ describe('Dashboard', () => {
     await renderOnce()
 
     let frame = captureCharFrame()
-    expect(frameLine(frame, 'feature-auth')).toContain('>')
+    expect(frameLine(frame, 'feature-auth')).not.toContain('>')
 
     mockInput.pressKey('j')
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frameLine(frame, 'bug-auth-ui')).toContain('>')
+    expect(frameLine(frame, 'bug-auth-ui')).not.toContain('>')
     expect(frameLine(frame, 'chore-clean')).not.toContain('>')
 
     mockInput.pressKey('j')
@@ -345,14 +585,14 @@ describe('Dashboard', () => {
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frameLine(frame, 'feature-auth')).toContain('>')
+    expect(frameLine(frame, 'feature-auth')).not.toContain('>')
 
     mockInput.pressKey('k')
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
     frame = captureCharFrame()
-    expect(frameLine(frame, 'bug-auth-ui')).toContain('>')
+    expect(frameLine(frame, 'bug-auth-ui')).not.toContain('>')
   })
 
   test('[/] edit filter clears the current query before typing', async () => {
@@ -394,6 +634,52 @@ describe('Dashboard', () => {
     expect(frame).not.toContain('/authj')
   })
 
+  test('filtering by root keeps the root row text intact', async () => {
+    const rootWorktrees: WorktreeStatus[] = [
+      {
+        name: 'port',
+        path: '/repo',
+        services: [],
+        running: true,
+      },
+      {
+        name: 'feature-auth',
+        path: '/repo/.port/trees/feature-auth',
+        services: [],
+        running: false,
+      },
+    ]
+
+    const { renderer, mockInput, renderOnce, captureSpans } = await testRender(
+      <Dashboard {...props({ worktrees: rootWorktrees, activeWorktreeName: 'port' })} />,
+      { width: 48, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    await pressAndRender(mockInput, renderOnce, 'r')
+    await pressAndRender(mockInput, renderOnce, 'o')
+    await pressAndRender(mockInput, renderOnce, 'o')
+    await pressAndRender(mockInput, renderOnce, 't')
+    mockInput.pressEnter()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const rootLine = captureSpans().lines.find(line =>
+      line.spans
+        .map(span => span.text)
+        .join('')
+        .includes('port')
+    )
+    const rootText = rootLine?.spans.map(span => span.text).join('') ?? ''
+    expect(rootText).toMatch(/●.*port\s*\(root\).*▣/)
+    expect(rootText).not.toContain('�')
+  })
+
   test('star indicator follows activeWorktreeName', async () => {
     // Active worktree is feature-auth, not the root
     const { renderer, renderOnce, captureCharFrame } = await testRender(
@@ -410,13 +696,13 @@ describe('Dashboard', () => {
     const rootLine = lines.find(l => l.includes('(root)'))
     const authLine = lines.find(l => l.includes('feature-auth'))
 
-    // Root should NOT have star
+    // Root should NOT have active marker
     expect(rootLine).toBeDefined()
-    expect(rootLine!).not.toContain('★')
+    expect(rootLine!).not.toContain('▣')
 
-    // feature-auth SHOULD have star
+    // feature-auth SHOULD have active marker
     expect(authLine).toBeDefined()
-    expect(authLine!).toContain('★')
+    expect(authLine!).toContain('▣')
   })
 
   test('initialSelectedName places caret on current worktree', async () => {
@@ -437,8 +723,8 @@ describe('Dashboard', () => {
     const authLine = frame.split('\n').find(line => line.includes('feature-auth'))
 
     expect(authLine).toBeDefined()
-    expect(authLine!).toContain('>')
-    expect(authLine!).toContain('★')
+    expect(authLine!).not.toContain('>')
+    expect(authLine!).toContain('▣')
   })
 
   test('applies initialSelectedName after async worktree load', async () => {
@@ -475,8 +761,8 @@ describe('Dashboard', () => {
     const authLine = frame.split('\n').find(line => line.includes('feature-auth'))
 
     expect(authLine).toBeDefined()
-    expect(authLine!).toContain('>')
-    expect(authLine!).toContain('★')
+    expect(authLine!).not.toContain('>')
+    expect(authLine!).toContain('▣')
   })
 
   test('shows loading state', async () => {
@@ -489,10 +775,10 @@ describe('Dashboard', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    expect(frame).toContain('refreshing...')
+    expect(frame).not.toContain('refreshing...')
   })
 
-  test('displays running services before stopped services', async () => {
+  test('keeps active marker and total count without listing service names', async () => {
     const mixedWorktrees: WorktreeStatus[] = [
       {
         name: 'myapp',
@@ -508,7 +794,7 @@ describe('Dashboard', () => {
     ]
 
     const { renderer, renderOnce, captureCharFrame } = await testRender(
-      <Dashboard {...props({ worktrees: mixedWorktrees, activeWorktreeName: '' })} />,
+      <Dashboard {...props({ worktrees: mixedWorktrees, activeWorktreeName: 'myapp' })} />,
       { width: 120, height: 20 }
     )
     currentRenderer = renderer
@@ -517,23 +803,15 @@ describe('Dashboard', () => {
     const frame = captureCharFrame()
     const appLine = frame.split('\n').find(l => l.includes('(root)'))!
 
-    // Running services (web, api) should appear before stopped (db, redis)
-    const webPos = appLine.indexOf('web')
-    const apiPos = appLine.indexOf('api')
-    const dbPos = appLine.indexOf('db')
-    const redisPos = appLine.indexOf('redis')
-
-    expect(webPos).toBeGreaterThan(-1)
-    expect(apiPos).toBeGreaterThan(-1)
-    expect(dbPos).toBeGreaterThan(-1)
-    expect(redisPos).toBeGreaterThan(-1)
-    expect(webPos).toBeLessThan(dbPos)
-    expect(apiPos).toBeLessThan(dbPos)
-    expect(webPos).toBeLessThan(redisPos)
-    expect(apiPos).toBeLessThan(redisPos)
+    expect(appLine).toContain('▣')
+    expect(appLine).not.toContain(' total')
+    expect(appLine).not.toContain('web')
+    expect(appLine).not.toContain('api')
+    expect(appLine).not.toContain('db')
+    expect(appLine).not.toContain('redis')
   })
 
-  test('shows total count for worktrees with services', async () => {
+  test('does not show service totals in the worktree pane', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <Dashboard {...props({ activeWorktreeName: '' })} />,
       { width: 80, height: 20 }
@@ -543,11 +821,10 @@ describe('Dashboard', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    // mockWorktrees first entry has 2 services (web, db)
-    expect(frame).toContain('2 total')
+    expect(frame).not.toContain(' total')
   })
 
-  test('services text truncates at narrow widths and shows total count', async () => {
+  test('rows stay single-line with long names and narrow widths', async () => {
     const manyServicesWorktrees: WorktreeStatus[] = [
       {
         name: 'myapp',
@@ -564,7 +841,7 @@ describe('Dashboard', () => {
       },
     ]
 
-    // 60 cols: enough for name + some services + total, but not all services
+    // 60 cols: enough for names, but the rows should still stay on one line
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <Dashboard {...props({ worktrees: manyServicesWorktrees, activeWorktreeName: '' })} />,
       { width: 60, height: 20 }
@@ -574,11 +851,10 @@ describe('Dashboard', () => {
     await renderOnce()
     const frame = captureCharFrame()
 
-    // The total count suffix should always be visible
-    expect(frame).toContain('6 total')
+    expect(frame).not.toContain(' total')
   })
 
-  test('rows stay single-line with long names, many services, and narrow widths', async () => {
+  test('rows stay single-line with long names and many services', async () => {
     const stressWorktrees: WorktreeStatus[] = [
       {
         name: 'myapp',
@@ -650,11 +926,7 @@ describe('Dashboard', () => {
       // At minimum, 4 worktree names should each appear on their own line
       expect(worktreeLines.length).toBeGreaterThanOrEqual(4)
 
-      // "N total" suffix should always be visible for every worktree with services
-      expect(frame).toContain('10 total')
-      expect(frame).toContain('7 total')
-      expect(frame).toContain('2 total')
-      expect(frame).toContain('1 total')
+      expect(frame).not.toContain(' total')
 
       // No worktree name should spill onto a second line (check that name fragments
       // like "(root)" don't appear on a line without "myapp")
@@ -687,16 +959,10 @@ describe('Dashboard', () => {
     const frame = captureCharFrame()
     const lines = frame.split('\n')
 
-    // Header elements must remain visible and not be overwritten by worktree rows
-    expect(frame).toContain('port: myapp')
-    expect(frame).toContain('Traefik:')
-    expect(frame).toContain('Worktrees')
-
-    // The "Worktrees" label should appear BEFORE any worktree row
-    const worktreesLabelLine = lines.findIndex(l => l.includes('Worktrees'))
-    const firstRowLine = lines.findIndex(l => l.includes('> '))
-    expect(worktreesLabelLine).toBeGreaterThan(-1)
-    expect(firstRowLine).toBeGreaterThan(worktreesLabelLine)
+    // No redundant header chrome should remain in the pane body
+    expect(frame).not.toContain('port: myapp')
+    expect(frame).not.toContain('Traefik:')
+    expect(frame).not.toContain('Worktrees')
 
     // Not all 20 worktrees should be visible (some must be clipped)
     const visibleBranches = lines.filter(l => l.includes('branch-')).length
