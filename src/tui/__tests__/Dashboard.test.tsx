@@ -163,19 +163,19 @@ describe('Dashboard', () => {
   })
 
   test('renders a status badge before the worktree label', async () => {
-    const { renderer, renderOnce, captureCharFrame } = await testRender(
+    const { renderer, renderOnce, captureSpans } = await testRender(
       <Dashboard {...props({ activeWorktreeName: 'myapp' })} />,
       { width: 60, height: 20 }
     )
     currentRenderer = renderer
 
     await renderOnce()
-    const frame = captureCharFrame()
-    const rootLine = frameLine(frame, '(root)')
+    const rootLine = captureSpans().lines.find(line => line.spans.map(span => span.text).join('').includes('myapp'))
+    const rootText = rootLine?.spans.map(span => span.text).join('') ?? ''
 
-    expect(rootLine).toMatch(/^●/)
-    expect(rootLine).toMatch(/myapp\s*\(root\)/)
-    expect(rootLine).toMatch(/▣\s█$/)
+    expect(rootText).toMatch(/●/)
+    expect(rootText).toMatch(/myapp\s*\(root\)/)
+    expect(rootText).toMatch(/▣\s█$/)
   })
 
   test('keeps the active marker pinned when the worktree name truncates', async () => {
@@ -391,6 +391,90 @@ describe('Dashboard', () => {
     expect(frameLine(frame, 'myapp (root)')).not.toContain('>')
   })
 
+  test('query highlights repeated matches in worktree names', async () => {
+    const repeatedWorktrees: WorktreeStatus[] = [
+      {
+        name: 'bug-auth-auth',
+        path: '/repo',
+        services: [],
+        running: true,
+      },
+      {
+        name: 'feature-auth',
+        path: '/repo/.port/trees/feature-auth',
+        services: [],
+        running: false,
+      },
+    ]
+
+    const { renderer, mockInput, renderOnce, captureSpans } = await testRender(
+      <Dashboard {...props({ worktrees: repeatedWorktrees, activeWorktreeName: 'bug-auth-auth' })} />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    await pressAndRender(mockInput, renderOnce, 'a')
+    await pressAndRender(mockInput, renderOnce, 'u')
+    await pressAndRender(mockInput, renderOnce, 't')
+    await pressAndRender(mockInput, renderOnce, 'h')
+    mockInput.pressEnter()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const blue = RGBA.fromHex('#00AAFF')
+    const line = captureSpans().lines.find(l => l.spans.map(span => span.text).join('').includes('bug-auth-auth'))
+    expect(line).toBeDefined()
+    expect(line!.spans.filter(span => span.text === 'auth' && span.fg.equals(blue)).length).toBe(2)
+  })
+
+  test('querying -in keeps worktree-in-use text unchanged', async () => {
+    const inUseWorktrees: WorktreeStatus[] = [
+      {
+        name: 'worktree-in-use',
+        path: '/repo',
+        services: [],
+        running: true,
+      },
+      {
+        name: 'feature-auth',
+        path: '/repo/.port/trees/feature-auth',
+        services: [],
+        running: false,
+      },
+    ]
+
+    const { renderer, mockInput, renderOnce, captureSpans } = await testRender(
+      <Dashboard {...props({ worktrees: inUseWorktrees, activeWorktreeName: 'worktree-in-use' })} />,
+      { width: 80, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    await pressAndRender(mockInput, renderOnce, '-')
+    await pressAndRender(mockInput, renderOnce, 'i')
+    await pressAndRender(mockInput, renderOnce, 'n')
+    mockInput.pressEnter()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const blue = RGBA.fromHex('#00AAFF')
+    const line = captureSpans().lines.find(line => line.spans.map(span => span.text).join('').includes('worktree-in-use'))
+    expect(line).toBeDefined()
+    const text = line!.spans.map(span => span.text).join('')
+    expect(text).toContain('worktree-in-use')
+    expect(text).not.toContain('worktree-use-in-use')
+    expect(line!.spans.some(span => span.text.includes('-in') && span.fg.equals(blue))).toBe(true)
+  })
+
   test('filtered navigation j/k skips non-matching worktrees', async () => {
     const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
       <Dashboard {...props({ worktrees: filterWorktrees, activeWorktreeName: 'myapp' })} />,
@@ -494,7 +578,7 @@ describe('Dashboard', () => {
       },
     ]
 
-    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+    const { renderer, mockInput, renderOnce, captureSpans } = await testRender(
       <Dashboard {...props({ worktrees: rootWorktrees, activeWorktreeName: 'port' })} />,
       { width: 48, height: 20 }
     )
@@ -513,9 +597,10 @@ describe('Dashboard', () => {
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
-    const rootLine = frameLine(captureCharFrame(), '(root)')
-    expect(rootLine).toMatch(/●.*port\s*\(root\).*▣/)
-    expect(rootLine).not.toContain('�')
+    const rootLine = captureSpans().lines.find(line => line.spans.map(span => span.text).join('').includes('port'))
+    const rootText = rootLine?.spans.map(span => span.text).join('') ?? ''
+    expect(rootText).toMatch(/●.*port\s*\(root\).*▣/)
+    expect(rootText).not.toContain('�')
   })
 
   test('star indicator follows activeWorktreeName', async () => {

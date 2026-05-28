@@ -8,6 +8,7 @@ import { StatusIndicator } from '../components/StatusIndicator.tsx'
 import { Confirm } from '../components/Confirm.tsx'
 import { useFilterNavigation } from '../hooks/useFilterNavigation.ts'
 import { SelectableRow } from '../components/SelectableRow.tsx'
+import { findSubstringMatchRanges, type MatchRange } from '../lib/filtering.ts'
 import { orderWorktreesForDashboard } from '../lib/worktreeOrdering.ts'
 import { isQuestionMarkKey, useTuiInteraction } from '../lib/interaction.tsx'
 
@@ -48,6 +49,26 @@ type PendingAction = 'archive' | null
  */
 export function buildServicesText(services: { name: string; running: boolean }[]): string {
   return services.map(s => `${s.name} ${s.running ? '●' : '○'}`).join(' ')
+}
+
+function buildHighlightedSegments(text: string, ranges: MatchRange[]): React.ReactNode[] {
+  const segments: React.ReactNode[] = []
+  let cursor = 0
+  for (const range of ranges) {
+    if (range.start > cursor) {
+      segments.push(text.slice(cursor, range.start))
+    }
+    segments.push(
+      <span key={range.start} fg="#00AAFF">
+        {text.slice(range.start, range.end)}
+      </span>
+    )
+    cursor = range.end
+  }
+  if (cursor < text.length) {
+    segments.push(text.slice(cursor))
+  }
+  return segments
 }
 
 export function Dashboard({
@@ -252,13 +273,27 @@ export function Dashboard({
           const isRoot = worktree.path === repoRoot
           const isActive = worktree.name === activeWorktreeName
           const totalCount = worktree.services.length
-          const nameStr = worktree.name + (isRoot ? ' (root)' : '')
+          const baseName = worktree.name
+          const displayName = baseName + (isRoot ? ' (root)' : '')
+          const matchRanges = highlightQuery ? findSubstringMatchRanges(baseName, highlightQuery) : []
 
           return (
             <SelectableRow key={worktree.name} selected={isSelected}>
               <StatusIndicator running={worktree.running} />
               <text flexGrow={1} flexShrink={1} wrapMode="none" truncate>
-                {isActive ? <b>{nameStr}</b> : nameStr}
+                {isActive ? (
+                  <b>
+                    {matchRanges.length > 0 ? buildHighlightedSegments(baseName, matchRanges) : baseName}
+                    {isRoot ? ' (root)' : ''}
+                  </b>
+                ) : matchRanges.length > 0 ? (
+                  <>
+                    {buildHighlightedSegments(baseName, matchRanges)}
+                    {isRoot ? ' (root)' : ''}
+                  </>
+                ) : (
+                  displayName
+                )}
               </text>
               {isActive && (
                 <text wrapMode="none" flexShrink={0} fg="#FFFF00">
