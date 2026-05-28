@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { WorktreeEntry, ServiceEntry } from '@/lib/docker'
+import { readPersistedQuery, writePersistedQuery } from '@/lib/queryPersistence'
 
 const ASCII_LOGO = `\
                    ██
@@ -170,6 +171,7 @@ function WorktreeSection({
 export default function NotFound() {
   const [worktrees, setWorktrees] = useState<WorktreeEntry[]>([])
   const [query, setQuery] = useState('')
+  const [queryHydrated, setQueryHydrated] = useState(false)
   const [loading, setLoading] = useState(true)
   const [activeIndex, setActiveIndex] = useState(-1)
 
@@ -190,6 +192,31 @@ export default function NotFound() {
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
+
+  useEffect(() => {
+    let storage: Storage | null = null
+    try {
+      storage = window.sessionStorage
+    } catch {
+      storage = null
+    }
+
+    setQuery(readPersistedQuery(storage))
+    setQueryHydrated(true)
+  }, [])
+
+  useEffect(() => {
+    if (!queryHydrated) return
+
+    let storage: Storage | null = null
+    try {
+      storage = window.sessionStorage
+    } catch {
+      storage = null
+    }
+
+    writePersistedQuery(storage, query)
+  }, [query, queryHydrated])
 
   // Reset active index whenever filter changes
   useEffect(() => {
