@@ -130,6 +130,10 @@ export function TuiShell({
       return
     }
 
+    if (interaction.panes[activePane].mode !== 'normal') {
+      return
+    }
+
     const shellKeyAction = resolveShellPaneKey(activePane, event.name, event.shift)
     if (shellKeyAction === PANES.worktrees || shellKeyAction === PANES.services) {
       dispatch({ type: 'set-active-pane', pane: shellKeyAction })

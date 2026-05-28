@@ -36,6 +36,16 @@ function frameLine(frame: string, contains: string): string {
   return frame.split('\n').find(line => line.includes(contains)) ?? ''
 }
 
+async function pressAndRender(
+  mockInput: { pressKey: (key: string) => void },
+  renderOnce: () => Promise<void>,
+  key: string
+) {
+  mockInput.pressKey(key)
+  await new Promise(resolve => setTimeout(resolve, 50))
+  await renderOnce()
+}
+
 let currentRenderer: TestRenderer | null = null
 
 afterEach(() => {
@@ -165,6 +175,43 @@ describe('TuiShell', () => {
     expect(footerLine.indexOf('? toggle help')).toBeLessThan(footerLine.indexOf('Port Running'))
     expect(footerLine.startsWith(' ')).toBe(true)
     expect(footerLine).toContain('Port Running')
+  })
+
+  test('slash query mode keeps l inside the worktree filter instead of moving focus', async () => {
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <TuiShell
+        repoRoot="/repo"
+        repoName="myapp"
+        worktrees={mockWorktrees}
+        hostServices={[] as HostService[]}
+        traefikRunning={true}
+        config={mockConfig}
+        activeWorktreeName="myapp"
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+        requestExit={noop}
+      />,
+      { width: 96, height: 24 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    await pressAndRender(mockInput, renderOnce, 'a')
+    await pressAndRender(mockInput, renderOnce, 'u')
+    await pressAndRender(mockInput, renderOnce, 't')
+    await pressAndRender(mockInput, renderOnce, 'h')
+    await pressAndRender(mockInput, renderOnce, 'l')
+    await pressAndRender(mockInput, renderOnce, 'j')
+
+    const frame = captureCharFrame()
+    expect(frame).toContain('/authlj')
   })
 
   test('truncates footer hints but keeps help pinned last', async () => {

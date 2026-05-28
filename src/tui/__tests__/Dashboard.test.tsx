@@ -104,7 +104,8 @@ function expectSelectedRowBackground(
   frame: { lines: Array<{ spans: Array<{ text: string; bg: RGBA }> }> },
   contains: string
 ) {
-  const line = frame.lines.find(l => l.spans.some(span => span.text.includes(contains)))
+  const needle = contains.replace(/\s+/g, '')
+  const line = frame.lines.find(l => l.spans.map(span => span.text).join('').replace(/\s+/g, '').includes(needle))
   expect(line).toBeDefined()
   expect(line!.spans.some(span => span.bg.equals(RGBA.fromHex(SELECTED_ROW_BACKGROUND)))).toBe(true)
 }
@@ -169,10 +170,11 @@ describe('Dashboard', () => {
     currentRenderer = renderer
 
     await renderOnce()
-    const rootLine = frameLine(captureCharFrame(), 'myapp (root)')
+    const frame = captureCharFrame()
+    const rootLine = frameLine(frame, '(root)')
 
     expect(rootLine).toMatch(/^●/)
-    expect(rootLine).toContain('myapp (root)')
+    expect(rootLine).toMatch(/myapp\s*\(root\)/)
     expect(rootLine).toMatch(/▣\s█$/)
   })
 
@@ -474,6 +476,46 @@ describe('Dashboard', () => {
     frame = captureCharFrame()
     expect(frame).toContain('/j')
     expect(frame).not.toContain('/authj')
+  })
+
+  test('filtering by root keeps the root row text intact', async () => {
+    const rootWorktrees: WorktreeStatus[] = [
+      {
+        name: 'port',
+        path: '/repo',
+        services: [],
+        running: true,
+      },
+      {
+        name: 'feature-auth',
+        path: '/repo/.port/trees/feature-auth',
+        services: [],
+        running: false,
+      },
+    ]
+
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
+      <Dashboard {...props({ worktrees: rootWorktrees, activeWorktreeName: 'port' })} />,
+      { width: 48, height: 20 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    mockInput.pressKey('/')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    await pressAndRender(mockInput, renderOnce, 'r')
+    await pressAndRender(mockInput, renderOnce, 'o')
+    await pressAndRender(mockInput, renderOnce, 'o')
+    await pressAndRender(mockInput, renderOnce, 't')
+    mockInput.pressEnter()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await renderOnce()
+
+    const rootLine = frameLine(captureCharFrame(), '(root)')
+    expect(rootLine).toMatch(/●.*port\s*\(root\).*▣/)
+    expect(rootLine).not.toContain('�')
   })
 
   test('star indicator follows activeWorktreeName', async () => {
