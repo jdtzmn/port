@@ -100,6 +100,7 @@ import { prune } from './prune.ts'
 describe('prune command', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    delete process.env.PORT_WORKTREE
 
     mocks.detectWorktree.mockReturnValue({ repoRoot: '/repo' })
     mocks.ensurePortRuntimeDir.mockResolvedValue(undefined)

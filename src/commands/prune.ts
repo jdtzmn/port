@@ -7,6 +7,7 @@ import { failWithError } from '../lib/cli.ts'
 import { getProjectName } from '../lib/compose.ts'
 import { cleanupDockerResources, scanDockerResourcesForProject } from '../lib/docker-cleanup.ts'
 import { getStaleWorktreeCandidates, type StaleWorktreeCandidate } from '../lib/staleWorktrees.ts'
+import { sanitizeBranchName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
 import { exit } from './exit.ts'
 

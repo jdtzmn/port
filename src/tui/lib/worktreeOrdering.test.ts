@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 import type { WorktreeStatus } from '../../lib/worktreeStatus.ts'
 import { orderWorktreesForDashboard } from './worktreeOrdering.ts'
 

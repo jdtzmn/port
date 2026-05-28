@@ -1,4 +1,4 @@
-import { test, expect } from 'bun:test'
+import { test, expect } from 'vitest'
 import { testRender } from '@opentui/react/test-utils'
 import { RGBA } from '@opentui/core'
 import { SelectableRow, SELECTED_ROW_BACKGROUND } from './SelectableRow.tsx'

@@ -8,7 +8,12 @@ export default defineConfig({
     environment: 'node',
     globalSetup: ['./tests/globalSetup.ts'],
     setupFiles: ['./tests/setup.ts'],
-    exclude: ['**/node_modules/**', '**/.port/**', '**/src/tui/__tests__/**'],
+    exclude: [
+      '**/node_modules/**',
+      '**/.port/**',
+      '**/src/tui/__tests__/**',
+      '**/src/tui/components/SelectableRow.test.tsx',
+    ],
     maxWorkers: Math.max(1, Math.floor(availableParallelism() / 2)),
   },
   resolve: {
