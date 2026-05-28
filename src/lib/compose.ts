@@ -5,7 +5,7 @@ import { stringify as yamlStringify } from 'yaml'
 import type { ParsedComposeFile, ParsedComposeService } from '../types.ts'
 import { TRAEFIK_NETWORK, TRAEFIK_DIR } from './traefik.ts'
 import { execAsync, execWithStdio } from './exec.ts'
-import { sanitizeFolderName } from './sanitize.ts'
+import { sanitizeBranchName, sanitizeFolderName } from './sanitize.ts'
 
 /**
  * Escape a shell argument to prevent command injection.
@@ -53,11 +53,12 @@ interface ComposeRuntimeContext {
  */
 export function getProjectName(repoRoot: string, worktreeName: string): string {
   const repoName = sanitizeFolderName(basename(repoRoot))
+  const sanitizedWorktreeName = sanitizeBranchName(worktreeName)
   // If worktree name is already the repo name (main repo case), just use it
-  if (repoName === worktreeName) {
-    return worktreeName
+  if (repoName === sanitizedWorktreeName) {
+    return repoName
   }
-  return `${repoName}-${worktreeName}`
+  return `${repoName}-${sanitizedWorktreeName}`
 }
 
 /**
