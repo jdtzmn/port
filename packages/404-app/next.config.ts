@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
   // Pin tracing root to this package so standalone output is self-contained
   // (prevents Next.js from inferring the monorepo root via bun.lock discovery)
   outputFileTracingRoot: path.join(__dirname),
+  turbopack: {
+    root: path.join(__dirname),
+  },
 }
 
 export default nextConfig
