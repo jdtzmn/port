@@ -161,9 +161,8 @@ describe('TuiShell', () => {
       .filter(line => line.trim().length > 0)
       .at(-1) ?? ''
 
-    expect(footerLine).toContain('q quit')
     expect(footerLine).toContain('? toggle help')
-    expect(footerLine.indexOf('q quit')).toBeLessThan(footerLine.indexOf('? toggle help'))
+    expect(footerLine.indexOf('? toggle help')).toBeLessThan(footerLine.indexOf('Port Running'))
     expect(footerLine.startsWith(' ')).toBe(true)
     expect(footerLine).toContain('Port Running')
   })
@@ -195,7 +194,8 @@ describe('TuiShell', () => {
       .filter(line => line.trim().length > 0)
       .at(-1) ?? ''
 
-    expect(footerLine.trimEnd()).toMatch(/\? toggle help$/)
+    expect(footerLine).toContain('? toggle help')
+    expect(footerLine.indexOf('? toggle help')).toBeLessThan(footerLine.indexOf('Port Running'))
     expect(footerLine).not.toContain('archive')
   })
 

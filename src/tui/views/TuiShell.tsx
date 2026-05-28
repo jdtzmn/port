@@ -16,7 +16,7 @@ import {
   isQuestionMarkKey,
   tuiInteractionReducer,
 } from '../lib/interaction.tsx'
-import { fitKeyHintsToWidth, estimateHintWidth } from '../lib/commands.ts'
+import { fitKeyHintsToWidth } from '../lib/commands.ts'
 import {
   adjustSplitPercent,
   computePaneWidths,
@@ -92,17 +92,11 @@ export function TuiShell({
   const portStatus = loading ? 'unknown' : traefikRunning ? 'running' : 'stopped'
   const activePane = interaction.activePane
   const footerHints = useMemo<KeyHint[]>(() => getFooterHints(interaction), [interaction])
-  const footerHelpHint = footerHints.find(hint => hint.key === '?') ?? {
-    key: '?',
-    action: 'toggle help',
-  }
   const portStatusLabel = !loading ? (traefikRunning ? 'Running' : 'Stopped') : null
   const footerPortWidth = portStatusLabel ? 14 : 6
   const footerLeftHints = useMemo<KeyHint[]>(() => {
-    const leftHints = footerHints.filter(hint => hint.key !== '?')
-    const helpWidth = estimateHintWidth(footerHelpHint)
-    return fitKeyHintsToWidth(leftHints, Math.max(0, width - helpWidth - footerPortWidth - 4))
-  }, [footerHints, footerHelpHint, width])
+    return fitKeyHintsToWidth(footerHints, Math.max(0, width - footerPortWidth - 3))
+  }, [footerHints, footerPortWidth, width])
   const helpSections = useMemo(() => getHelpSections(interaction), [interaction])
   const helpWidth = Math.max(60, Math.min(width - 6, 86))
 
@@ -242,7 +236,7 @@ export function TuiShell({
       )}
 
       <box flexDirection="row" flexShrink={0} height={1} paddingX={1} gap={1}>
-        <box flexDirection="row" width={Math.max(0, width - footerPortWidth - estimateHintWidth(footerHelpHint) - 4)} flexShrink={0} overflow="hidden">
+        <box flexDirection="row" width={Math.max(0, width - footerPortWidth - 3)} flexShrink={0} overflow="hidden">
           <KeyHints hints={footerLeftHints} />
         </box>
         <box flexDirection="row" gap={1} flexShrink={0} width={footerPortWidth}>
@@ -255,9 +249,6 @@ export function TuiShell({
               {portStatusLabel}
             </text>
           )}
-        </box>
-        <box flexDirection="row" flexShrink={0} width={estimateHintWidth(footerHelpHint) + 1}>
-          <KeyHints hints={[footerHelpHint]} />
         </box>
       </box>
     </box>
