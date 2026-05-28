@@ -1,8 +1,14 @@
 import { readFile, rm, writeFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { stringify as yamlStringify, parse as yamlParse } from 'yaml'
-import { describe, test, expect, beforeAll, beforeEach } from 'vitest'
+import { describe, test, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest'
 import { useIsolatedPortGlobalDir } from '@tests/isolatedGlobalDir'
+
+vi.mock('./exec.ts', () => ({
+  execAsync: vi.fn(),
+}))
+
+import * as exec from './exec.ts'
 
 type TraefikModule = typeof import('./traefik.ts')
 
@@ -45,9 +51,18 @@ describe('Traefik state concurrency', () => {
 
 describe('Traefik 404 handler', () => {
   useIsolatedPortGlobalDir('port-traefik-404-test', { resetModules: true })
+  const execAsyncMock = vi.mocked(exec.execAsync)
 
   beforeAll(async () => {
     traefik = await import('./traefik.ts')
+  })
+
+  beforeEach(() => {
+    execAsyncMock.mockReset()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   beforeEach(async () => {
@@ -118,6 +133,28 @@ describe('Traefik 404 handler', () => {
 
     const secondCreate = await traefik.ensure404Handler()
     expect(secondCreate).toBe(false)
+  })
+
+  test('ensure404HandlerImage rebuilds when the cached image platform mismatches', async () => {
+    const expectedPlatform = process.arch === 'arm64' ? 'linux/arm64' : 'linux/amd64'
+    const mismatchedPlatform = expectedPlatform === 'linux/arm64' ? 'linux/amd64' : 'linux/arm64'
+
+    execAsyncMock
+      .mockResolvedValueOnce({ stdout: `${mismatchedPlatform}\n`, stderr: '' })
+      .mockResolvedValueOnce({ stdout: '', stderr: '' })
+
+    await traefik.ensure404HandlerImage()
+
+    expect(execAsyncMock).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining(
+        "docker image inspect --format '{{.Os}}/{{.Architecture}}' ghcr.io/jdtzmn/port-404-handler:"
+      )
+    )
+    expect(execAsyncMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('docker build -t ghcr.io/jdtzmn/port-404-handler:')
+    )
   })
 
   test('generated compose includes 404 handler service with ghcr.io image', async () => {

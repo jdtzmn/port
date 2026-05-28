@@ -64,6 +64,35 @@ function get404HandlerImage(): string {
   return 'ghcr.io/jdtzmn/port-404-handler:latest'
 }
 
+function get404HandlerDockerfilePath(): string | null {
+  const candidates = ['../packages/404-app/Dockerfile', '../../packages/404-app/Dockerfile']
+
+  for (const candidate of candidates) {
+    try {
+      const dockerfilePath = fileURLToPath(new URL(candidate, import.meta.url))
+      if (existsSync(dockerfilePath)) {
+        return dockerfilePath
+      }
+    } catch {
+      // Try next candidate
+    }
+  }
+
+  return null
+}
+
+function getExpectedDockerPlatform(): string {
+  if (process.arch === 'arm64') {
+    return 'linux/arm64'
+  }
+
+  if (process.arch === 'x64') {
+    return 'linux/amd64'
+  }
+
+  return `linux/${process.arch}`
+}
+
 /**
  * Ensure the 404 handler Docker image is available locally.
  *
@@ -79,19 +108,23 @@ export async function ensure404HandlerImage(
   onBuilt?: () => void
 ): Promise<void> {
   const image = get404HandlerImage()
-  const dockerfilePath = fileURLToPath(new URL('../packages/404-app/Dockerfile', import.meta.url))
+  const dockerfilePath = get404HandlerDockerfilePath()
 
-  if (!existsSync(dockerfilePath)) {
+  if (!dockerfilePath) {
     // Not running from source — image should be available on ghcr.io for this release
     return
   }
 
-  // Check if the image already exists locally
   try {
-    await execAsync(`docker image inspect ${image}`)
-    return // already built, nothing to do
+    const { stdout } = await execAsync(
+      `docker image inspect --format '{{.Os}}/{{.Architecture}}' ${image}`
+    )
+
+    if (stdout.trim() === getExpectedDockerPlatform()) {
+      return // already built for this platform, nothing to do
+    }
   } catch {
-    // Not found locally — build it
+    // Not found locally or inspect failed — build it
   }
 
   onBuilding?.()
