@@ -12,15 +12,15 @@ interface AppProps {
   requestExit: (info: ExitInfo) => void
 }
 
-export function App({ startView, context, config, requestExit }: AppProps) {
+export function App(props: AppProps) {
   const [statusMessage, setStatusMessage] = useState<{
     text: string
     type: 'success' | 'error'
   } | null>(null)
 
   const { worktrees, hostServices, traefikRunning, loading, error, refresh } = usePortData(
-    context.repoRoot,
-    config
+    props.context.repoRoot,
+    props.config
   )
 
   // Show data loading errors as status messages
@@ -28,7 +28,7 @@ export function App({ startView, context, config, requestExit }: AppProps) {
     setStatusMessage({ text: error, type: 'error' })
   }
 
-  const actions = useActions(context.repoRoot, config, refresh)
+  const actions = useActions(props.context.repoRoot, props.config, refresh)
 
   const showStatus = useCallback((text: string, type: 'success' | 'error') => {
     setStatusMessage({ text, type })
@@ -37,20 +37,20 @@ export function App({ startView, context, config, requestExit }: AppProps) {
 
   return (
     <TuiShell
-      repoRoot={context.repoRoot}
-      repoName={context.name}
-      activeWorktreeName={context.name}
-      activeWorktreePath={context.worktreePath}
+      repoRoot={props.context.repoRoot}
+      repoName={props.context.name}
+      activeWorktreeName={props.context.name}
+      activeWorktreePath={props.context.worktreePath}
       worktrees={worktrees}
       hostServices={hostServices}
       traefikRunning={traefikRunning}
-      config={config}
+      config={props.config}
       actions={actions}
       refresh={refresh}
       loading={loading}
       statusMessage={statusMessage}
       showStatus={showStatus}
-      requestExit={requestExit}
+      requestExit={props.requestExit}
     />
   )
 }

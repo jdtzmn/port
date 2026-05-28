@@ -72,7 +72,11 @@ function buildHighlightedContent(text: string, ranges: MatchRange[], isBold: boo
         pushChunk(chunk)
       }
     }
-    pushChunk(isBold ? bold(fg('#00AAFF')(text.slice(range.start, range.end))) : fg('#00AAFF')(text.slice(range.start, range.end)))
+    pushChunk(
+      isBold
+        ? bold(fg('#00AAFF')(text.slice(range.start, range.end)))
+        : fg('#00AAFF')(text.slice(range.start, range.end))
+    )
     cursor = range.end
   }
   if (cursor < text.length) {
@@ -201,7 +205,6 @@ export function WorktreeView({
   const {
     mode,
     highlightQuery,
-    highlightMatches,
     handleKey: handleFilterKey,
   } = useFilterNavigation({
     items: services,
@@ -308,7 +311,9 @@ export function WorktreeView({
                         matchRanges.length > 0
                           ? buildHighlightedContent(labelText, matchRanges, isSelected)
                           : new StyledText([
-                              ...stringToStyledText(labelText).chunks.map(chunk => (isSelected ? bold(chunk) : chunk)),
+                              ...stringToStyledText(labelText).chunks.map(chunk =>
+                                isSelected ? bold(chunk) : chunk
+                              ),
                             ])
                       }
                     />
@@ -338,7 +343,9 @@ export function WorktreeView({
                         matchRanges.length > 0
                           ? buildHighlightedContent(labelText, matchRanges, isSelected)
                           : new StyledText([
-                              ...stringToStyledText(labelText).chunks.map(chunk => (isSelected ? bold(chunk) : chunk)),
+                              ...stringToStyledText(labelText).chunks.map(chunk =>
+                                isSelected ? bold(chunk) : chunk
+                              ),
                             ])
                       }
                     />
@@ -357,7 +364,6 @@ export function WorktreeView({
           {statusMessage.text}
         </text>
       )}
-
     </box>
   )
 }

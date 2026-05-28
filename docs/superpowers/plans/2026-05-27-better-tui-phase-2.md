@@ -13,6 +13,7 @@
 ### Task 1: Add shell-level `/` routing coverage
 
 **Files:**
+
 - Modify: `src/tui/__tests__/TuiShell.test.tsx`
 
 - [ ] **Step 1: Write the failing test**

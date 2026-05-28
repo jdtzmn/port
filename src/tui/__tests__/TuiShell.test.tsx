@@ -32,10 +32,6 @@ const mockActions = {
   killHostService: noopAsync,
 }
 
-function frameLine(frame: string, contains: string): string {
-  return frame.split('\n').find(line => line.includes(contains)) ?? ''
-}
-
 async function pressAndRender(
   mockInput: { pressKey: (key: string) => void },
   renderOnce: () => Promise<void>,
@@ -166,10 +162,11 @@ describe('TuiShell', () => {
 
     await renderOnce()
     const frame = captureCharFrame()
-    const footerLine = frame
-      .split('\n')
-      .filter(line => line.trim().length > 0)
-      .at(-1) ?? ''
+    const footerLine =
+      frame
+        .split('\n')
+        .filter(line => line.trim().length > 0)
+        .at(-1) ?? ''
 
     expect(footerLine).toContain('? toggle help')
     expect(footerLine.indexOf('? toggle help')).toBeLessThan(footerLine.indexOf('Port Running'))
@@ -236,10 +233,11 @@ describe('TuiShell', () => {
     currentRenderer = renderer
 
     await renderOnce()
-    const footerLine = captureCharFrame()
-      .split('\n')
-      .filter(line => line.trim().length > 0)
-      .at(-1) ?? ''
+    const footerLine =
+      captureCharFrame()
+        .split('\n')
+        .filter(line => line.trim().length > 0)
+        .at(-1) ?? ''
 
     expect(footerLine).toContain('? toggle help')
     expect(footerLine.indexOf('? toggle help')).toBeLessThan(footerLine.indexOf('Port Running'))
@@ -272,14 +270,17 @@ describe('TuiShell', () => {
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
-    let footerLine = captureCharFrame()
-      .split('\n')
-      .filter(line => line.trim().length > 0)
-      .at(-1) ?? ''
+    const footerLine =
+      captureCharFrame()
+        .split('\n')
+        .filter(line => line.trim().length > 0)
+        .at(-1) ?? ''
 
     expect(footerLine).toContain('Type type filter text')
     expect(footerLine).toContain('? toggle help')
-    expect(footerLine.indexOf('Type type filter text')).toBeLessThan(footerLine.indexOf('? toggle help'))
+    expect(footerLine.indexOf('Type type filter text')).toBeLessThan(
+      footerLine.indexOf('? toggle help')
+    )
   })
 
   test('question mark opens and closes the help dialog without quitting', async () => {

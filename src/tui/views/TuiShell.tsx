@@ -45,7 +45,11 @@ interface TuiShellProps {
   loading: boolean
   statusMessage: { text: string; type: 'success' | 'error' } | null
   showStatus: (text: string, type: 'success' | 'error') => void
-  requestExit: (info: { activeWorktreeName: string; worktreePath: string; changed: boolean }) => void
+  requestExit: (info: {
+    activeWorktreeName: string
+    worktreePath: string
+    changed: boolean
+  }) => void
 }
 
 const PANES = {
@@ -224,23 +228,28 @@ export function TuiShell({
       </box>
 
       {interaction.helpOpen && (
-        <box
-          position="absolute"
-          left={0}
-          top={0}
-          right={0}
-          bottom={1}
-        >
-          <box flexDirection="row" width="100%" height="100%" alignItems="center" justifyContent="center">
-          <TuiInteractionContext.Provider value={{ state: interaction, dispatch }}>
-            <HelpDialog title="Keyboard Shortcuts" sections={helpSections} width={helpWidth} />
-          </TuiInteractionContext.Provider>
+        <box position="absolute" left={0} top={0} right={0} bottom={1}>
+          <box
+            flexDirection="row"
+            width="100%"
+            height="100%"
+            alignItems="center"
+            justifyContent="center"
+          >
+            <TuiInteractionContext.Provider value={{ state: interaction, dispatch }}>
+              <HelpDialog title="Keyboard Shortcuts" sections={helpSections} width={helpWidth} />
+            </TuiInteractionContext.Provider>
           </box>
         </box>
       )}
 
       <box flexDirection="row" flexShrink={0} height={1} paddingX={1} gap={1}>
-        <box flexDirection="row" width={Math.max(0, width - footerPortWidth - 3)} flexShrink={0} overflow="hidden">
+        <box
+          flexDirection="row"
+          width={Math.max(0, width - footerPortWidth - 3)}
+          flexShrink={0}
+          overflow="hidden"
+        >
           <KeyHints hints={footerLeftHints} />
         </box>
         <box flexDirection="row" gap={1} flexShrink={0} width={footerPortWidth}>

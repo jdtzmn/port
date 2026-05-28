@@ -105,7 +105,13 @@ function expectSelectedRowBackground(
   contains: string
 ) {
   const needle = contains.replace(/\s+/g, '')
-  const line = frame.lines.find(l => l.spans.map(span => span.text).join('').replace(/\s+/g, '').includes(needle))
+  const line = frame.lines.find(l =>
+    l.spans
+      .map(span => span.text)
+      .join('')
+      .replace(/\s+/g, '')
+      .includes(needle)
+  )
   expect(line).toBeDefined()
   expect(line!.spans.some(span => span.bg.equals(RGBA.fromHex(SELECTED_ROW_BACKGROUND)))).toBe(true)
 }
@@ -170,7 +176,12 @@ describe('Dashboard', () => {
     currentRenderer = renderer
 
     await renderOnce()
-    const rootLine = captureSpans().lines.find(line => line.spans.map(span => span.text).join('').includes('myapp'))
+    const rootLine = captureSpans().lines.find(line =>
+      line.spans
+        .map(span => span.text)
+        .join('')
+        .includes('myapp')
+    )
     const rootText = rootLine?.spans.map(span => span.text).join('') ?? ''
 
     expect(rootText).toMatch(/●/)
@@ -252,10 +263,10 @@ describe('Dashboard', () => {
   })
 
   test('selected worktree rows use the shared background highlight', async () => {
-    const { renderer, renderOnce, captureSpans } = await testRender(
-      <Dashboard {...props()} />,
-      { width: 60, height: 20 }
-    )
+    const { renderer, renderOnce, captureSpans } = await testRender(<Dashboard {...props()} />, {
+      width: 60,
+      height: 20,
+    })
     currentRenderer = renderer
 
     await renderOnce()
@@ -283,7 +294,7 @@ describe('Dashboard', () => {
 
   test('ignores navigation keys when keyboard is disabled', async () => {
     const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
-      <Dashboard {...props()} {...({ keyboardEnabled: false } as any)} />,
+      <Dashboard {...props()} keyboardEnabled={false} />,
       { width: 60, height: 20 }
     )
     currentRenderer = renderer
@@ -407,8 +418,10 @@ describe('Dashboard', () => {
       },
     ]
 
-    const { renderer, mockInput, renderOnce, captureSpans, captureCharFrame } = await testRender(
-      <Dashboard {...props({ worktrees: repeatedWorktrees, activeWorktreeName: 'bug-auth-auth' })} />,
+    const { renderer, mockInput, renderOnce, captureSpans } = await testRender(
+      <Dashboard
+        {...props({ worktrees: repeatedWorktrees, activeWorktreeName: 'bug-auth-auth' })}
+      />,
       { width: 80, height: 20 }
     )
     currentRenderer = renderer
@@ -427,7 +440,12 @@ describe('Dashboard', () => {
     await renderOnce()
 
     const blue = RGBA.fromHex('#00AAFF')
-    const line = captureSpans().lines.find(l => l.spans.map(span => span.text).join('').includes('bug-auth-auth'))
+    const line = captureSpans().lines.find(l =>
+      l.spans
+        .map(span => span.text)
+        .join('')
+        .includes('bug-auth-auth')
+    )
     expect(line).toBeDefined()
     expect(line!.spans.filter(span => span.text === 'auth' && span.fg.equals(blue)).length).toBe(2)
   })
@@ -448,8 +466,10 @@ describe('Dashboard', () => {
       },
     ]
 
-    const { renderer, mockInput, renderOnce, captureSpans, captureCharFrame } = await testRender(
-      <Dashboard {...props({ worktrees: inUseWorktrees, activeWorktreeName: 'worktree-in-use' })} />,
+    const { renderer, mockInput, renderOnce, captureSpans } = await testRender(
+      <Dashboard
+        {...props({ worktrees: inUseWorktrees, activeWorktreeName: 'worktree-in-use' })}
+      />,
       { width: 80, height: 20 }
     )
     currentRenderer = renderer
@@ -467,7 +487,12 @@ describe('Dashboard', () => {
     await renderOnce()
 
     const blue = RGBA.fromHex('#00AAFF')
-    const line = captureSpans().lines.find(line => line.spans.map(span => span.text).join('').includes('worktree-in-use'))
+    const line = captureSpans().lines.find(line =>
+      line.spans
+        .map(span => span.text)
+        .join('')
+        .includes('worktree-in-use')
+    )
     expect(line).toBeDefined()
     const text = line!.spans.map(span => span.text).join('')
     expect(text).toContain('worktree-in-use')
@@ -491,7 +516,7 @@ describe('Dashboard', () => {
       },
     ]
 
-    const { renderer, mockInput, renderOnce, captureSpans, captureCharFrame } = await testRender(
+    const { renderer, mockInput, renderOnce, captureSpans } = await testRender(
       <Dashboard {...props({ worktrees: tuiWorktrees, activeWorktreeName: 'jacob-better-tui' })} />,
       { width: 80, height: 20 }
     )
@@ -509,7 +534,12 @@ describe('Dashboard', () => {
     await renderOnce()
 
     const blue = RGBA.fromHex('#00AAFF')
-    const line = captureSpans().lines.find(line => line.spans.map(span => span.text).join('').includes('jacob-better-tui'))
+    const line = captureSpans().lines.find(line =>
+      line.spans
+        .map(span => span.text)
+        .join('')
+        .includes('jacob-better-tui')
+    )
     expect(line).toBeDefined()
     const text = line!.spans.map(span => span.text).join('')
     expect(text).toContain('jacob-better-tui')
@@ -639,7 +669,12 @@ describe('Dashboard', () => {
     await new Promise(resolve => setTimeout(resolve, 50))
     await renderOnce()
 
-    const rootLine = captureSpans().lines.find(line => line.spans.map(span => span.text).join('').includes('port'))
+    const rootLine = captureSpans().lines.find(line =>
+      line.spans
+        .map(span => span.text)
+        .join('')
+        .includes('port')
+    )
     const rootText = rootLine?.spans.map(span => span.text).join('') ?? ''
     expect(rootText).toMatch(/●.*port\s*\(root\).*▣/)
     expect(rootText).not.toContain('�')

@@ -66,7 +66,11 @@ function buildHighlightedContent(text: string, ranges: MatchRange[], isBold: boo
         pushChunk(chunk)
       }
     }
-    pushChunk(isBold ? bold(fg('#00AAFF')(text.slice(range.start, range.end))) : fg('#00AAFF')(text.slice(range.start, range.end)))
+    pushChunk(
+      isBold
+        ? bold(fg('#00AAFF')(text.slice(range.start, range.end)))
+        : fg('#00AAFF')(text.slice(range.start, range.end))
+    )
     cursor = range.end
   }
   if (cursor < text.length) {
@@ -278,30 +282,33 @@ export function Dashboard({
           const isSelected = index === selectedIndex
           const isRoot = worktree.path === repoRoot
           const isActive = worktree.name === activeWorktreeName
-          const totalCount = worktree.services.length
           const baseName = worktree.name
           const displayName = baseName + (isRoot ? ' (root)' : '')
-          const matchRanges = highlightQuery ? findSubstringMatchRanges(baseName, highlightQuery) : []
+          const matchRanges = highlightQuery
+            ? findSubstringMatchRanges(baseName, highlightQuery)
+            : []
 
           return (
             <SelectableRow key={worktree.name} selected={isSelected}>
               <StatusIndicator running={worktree.running} />
-                <text
-                  flexGrow={1}
-                  flexShrink={1}
-                  wrapMode="none"
-                  truncate
-                  content={
-                    matchRanges.length > 0
-                      ? new StyledText([
-                          ...buildHighlightedContent(baseName, matchRanges, isActive).chunks,
-                          ...stringToStyledText(isRoot ? ' (root)' : '').chunks,
-                        ])
-                      : new StyledText([
-                          ...stringToStyledText(displayName).chunks.map(chunk => (isActive ? bold(chunk) : chunk)),
-                        ])
-                  }
-                />
+              <text
+                flexGrow={1}
+                flexShrink={1}
+                wrapMode="none"
+                truncate
+                content={
+                  matchRanges.length > 0
+                    ? new StyledText([
+                        ...buildHighlightedContent(baseName, matchRanges, isActive).chunks,
+                        ...stringToStyledText(isRoot ? ' (root)' : '').chunks,
+                      ])
+                    : new StyledText([
+                        ...stringToStyledText(displayName).chunks.map(chunk =>
+                          isActive ? bold(chunk) : chunk
+                        ),
+                      ])
+                }
+              />
               {isActive && (
                 <text wrapMode="none" flexShrink={0} fg="#FFFF00">
                   ▣{' '}
@@ -347,7 +354,6 @@ export function Dashboard({
           onCancel={handleCancelAction}
         />
       )}
-
     </box>
   )
 }

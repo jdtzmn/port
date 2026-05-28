@@ -19,7 +19,9 @@ test('SelectableRow applies a background only when selected', async () => {
   try {
     await renderOnce()
     const frame = captureSpans()
-    const selectedLine = frame.lines.find(line => line.spans.some(span => span.text.includes('selected')))
+    const selectedLine = frame.lines.find(line =>
+      line.spans.some(span => span.text.includes('selected'))
+    )
     const idleLine = frame.lines.find(line => line.spans.some(span => span.text.includes('idle')))
 
     expect(selectedLine).toBeDefined()

@@ -50,14 +50,28 @@ describe('HelpDialog', () => {
     expect(frame).toContain('Esc close help')
 
     const spans = captureSpans()
-    const titleLine = spans.lines.find(line => line.spans.some(span => span.text.includes('Keyboard Shortcuts')))
-    const sharedLine = spans.lines.find(line => line.spans.some(span => span.text.includes('Shared')))
+    const titleLine = spans.lines.find(line =>
+      line.spans.some(span => span.text.includes('Keyboard Shortcuts'))
+    )
+    const sharedLine = spans.lines.find(line =>
+      line.spans.some(span => span.text.includes('Shared'))
+    )
     const keyLine = spans.lines.find(line => line.spans.some(span => span.text.includes('?')))
-    const actionLine = spans.lines.find(line => line.spans.some(span => span.text.includes('toggle help')))
+    const actionLine = spans.lines.find(line =>
+      line.spans.some(span => span.text.includes('toggle help'))
+    )
 
-    expect(titleLine?.spans.some(span => span.text.includes('Keyboard Shortcuts') && span.fg.equals(BLUE))).toBe(true)
-    expect(sharedLine?.spans.some(span => span.text.includes('Shared') && span.fg.equals(BLUE))).toBe(true)
+    expect(
+      titleLine?.spans.some(
+        span => span.text.includes('Keyboard Shortcuts') && span.fg.equals(BLUE)
+      )
+    ).toBe(true)
+    expect(
+      sharedLine?.spans.some(span => span.text.includes('Shared') && span.fg.equals(BLUE))
+    ).toBe(true)
     expect(keyLine?.spans.some(span => span.text.includes('?') && span.fg.equals(AMBER))).toBe(true)
-    expect(actionLine?.spans.some(span => span.text.includes('toggle help') && span.fg.equals(TEXT))).toBe(true)
+    expect(
+      actionLine?.spans.some(span => span.text.includes('toggle help') && span.fg.equals(TEXT))
+    ).toBe(true)
   })
 })

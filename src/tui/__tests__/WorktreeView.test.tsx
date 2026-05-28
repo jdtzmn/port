@@ -270,7 +270,7 @@ describe('WorktreeView', () => {
         loading={false}
         statusMessage={null}
         showStatus={noop}
-        {...({ keyboardEnabled: false } as any)}
+        keyboardEnabled={false}
       />,
       { width: 60, height: 20 }
     )
@@ -421,7 +421,7 @@ describe('WorktreeView', () => {
   })
 
   test('query mode accepts text and applies filter on Enter', async () => {
-    const { renderer, mockInput, renderOnce, captureCharFrame, captureSpans } = await testRender(
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
       <WorktreeView
         worktree={mockWorktree}
         hostServices={mockHostServices}
@@ -545,7 +545,7 @@ describe('WorktreeView', () => {
   })
 
   test('Esc clears filtered mode and returns to normal navigation', async () => {
-    const { renderer, mockInput, renderOnce, captureCharFrame, captureSpans } = await testRender(
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
       <WorktreeView
         worktree={mockWorktree}
         hostServices={mockHostServices}
@@ -589,7 +589,7 @@ describe('WorktreeView', () => {
   })
 
   test('can filter by host-service port', async () => {
-    const { renderer, mockInput, renderOnce, captureCharFrame, captureSpans } = await testRender(
+    const { renderer, mockInput, renderOnce, captureCharFrame } = await testRender(
       <WorktreeView
         worktree={mockWorktree}
         hostServices={mockHostServices}

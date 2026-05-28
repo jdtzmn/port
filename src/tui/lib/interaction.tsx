@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { Dispatch, ReactNode } from 'react'
+import type { Dispatch } from 'react'
 import type { KeyHint } from '../components/KeyHints.tsx'
 import { getFooterHintsForState, getHelpSectionsForState } from './commands.ts'
 
@@ -62,10 +62,12 @@ export const TuiInteractionContext = createContext<{
 } | null>(null)
 
 export function useTuiInteraction() {
-  return useContext(TuiInteractionContext) ?? {
-    state: DEFAULT_TUI_INTERACTION_STATE,
-    dispatch: noopDispatch,
-  }
+  return (
+    useContext(TuiInteractionContext) ?? {
+      state: DEFAULT_TUI_INTERACTION_STATE,
+      dispatch: noopDispatch,
+    }
+  )
 }
 
 export function tuiInteractionReducer(
@@ -138,7 +140,11 @@ export function tuiInteractionReducer(
   }
 }
 
-export function isQuestionMarkKey(eventName: string, keySequence?: string, shift?: boolean): boolean {
+export function isQuestionMarkKey(
+  eventName: string,
+  keySequence?: string,
+  shift?: boolean
+): boolean {
   return keySequence === '?' || eventName === 'question' || (shift && eventName === 'slash')
 }
 

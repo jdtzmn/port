@@ -31,11 +31,8 @@ const worktrees: WorktreeStatus[] = [
 
 describe('orderWorktreesForDashboard', () => {
   test('puts the selected worktree first, then running worktrees, then idle worktrees', () => {
-    expect(orderWorktreesForDashboard(worktrees, 'current').map(worktree => worktree.name)).toEqual([
-      'current',
-      'beta',
-      'gamma',
-      'alpha',
-    ])
+    expect(orderWorktreesForDashboard(worktrees, 'current').map(worktree => worktree.name)).toEqual(
+      ['current', 'beta', 'gamma', 'alpha']
+    )
   })
 })
