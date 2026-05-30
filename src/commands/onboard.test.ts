@@ -54,6 +54,7 @@ describe('onboard command', () => {
     expect(mocks.header).toHaveBeenCalledWith('3. port shell-hook <bash|zsh|fish>')
     expect(mocks.header).toHaveBeenCalledWith('4. port enter <branch>')
     expect(mocks.header).toHaveBeenCalledWith('6. port open')
+    expect(mocks.header).toHaveBeenCalledWith('11. port rename <branch>')
     expect(mocks.header).toHaveBeenCalledWith(expect.stringContaining('port compose'))
     expect(mocks.header).toHaveBeenCalledWith(expect.stringContaining('port completion'))
     expect(mocks.header).toHaveBeenCalledWith(expect.stringContaining('port exit'))

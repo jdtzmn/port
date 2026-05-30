@@ -61,6 +61,11 @@ const STEPS: OnboardStep[] = [
     why: 'Changes back to the repo root and clears PORT_WORKTREE env var.',
   },
   {
+    command: 'port rename <branch>',
+    how: 'Run inside a worktree after stopping its services. Alias: port mv <branch>.',
+    why: 'Renames the current worktree and branch while keeping Port state aligned.',
+  },
+  {
     command: 'port remove <branch>',
     how: 'Use after a branch is done.',
     why: 'Stops services, removes worktree, and archives the local branch.',
