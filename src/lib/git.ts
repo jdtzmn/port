@@ -202,6 +202,34 @@ export async function createWorktree(repoRoot: string, branch: string): Promise<
 }
 
 /**
+ * Rename the current worktree to a new branch/path.
+ *
+ * Uses `git branch -m` for the branch ref and `git worktree move` for the
+ * on-disk worktree path so Git's worktree metadata stays consistent.
+ */
+export async function renameWorktree(
+  repoRoot: string,
+  oldBranch: string,
+  newBranch: string
+): Promise<string> {
+  const git = getGit(repoRoot)
+  const oldPath = getWorktreePath(repoRoot, oldBranch)
+  const newPath = getWorktreePath(repoRoot, newBranch)
+
+  try {
+    await git.raw(['branch', '-m', oldBranch, newBranch])
+
+    if (oldPath !== newPath) {
+      await git.raw(['worktree', 'move', oldPath, newPath])
+    }
+
+    return newPath
+  } catch (error) {
+    throw new GitError(`Failed to rename worktree '${oldBranch}' to '${newBranch}': ${error}`)
+  }
+}
+
+/**
  * Remove a worktree
  *
  * @param repoRoot - The repository root path

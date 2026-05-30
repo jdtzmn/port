@@ -1,9 +1,11 @@
-import { readFile, mkdir } from 'fs/promises'
+import { readFile, mkdir, rename, writeFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import type { Registry, Project, HostService, RunningWorktreeNames } from '../types.ts'
 import { withFileLock, writeFileAtomic } from './state.ts'
+import { getWorktreePath } from './worktree.ts'
+import { sanitizeBranchName } from './sanitize.ts'
 
 /** Optional env var to override global state directory (used by tests) */
 const GLOBAL_PORT_DIR_ENV = 'PORT_GLOBAL_DIR'
@@ -68,11 +70,11 @@ export async function saveRegistry(registry: Registry): Promise<void> {
   await writeFileAtomic(REGISTRY_FILE, JSON.stringify(registry, null, 2))
 }
 
-async function mutateRegistry(mutator: (registry: Registry) => void): Promise<void> {
+async function mutateRegistry(mutator: (registry: Registry) => void | Promise<void>): Promise<void> {
   await ensureGlobalDir()
   await withFileLock(REGISTRY_LOCK_FILE, async () => {
     const registry = await loadRegistry()
-    mutator(registry)
+    await mutator(registry)
     await saveRegistry(registry)
   })
 }
@@ -109,6 +111,23 @@ export async function registerProject(
 export async function unregisterProject(repo: string, branch: string): Promise<void> {
   await mutateRegistry(registry => {
     registry.projects = registry.projects.filter(p => !(p.repo === repo && p.branch === branch))
+  })
+}
+
+/**
+ * Update registered projects when a worktree is renamed.
+ */
+export async function rewriteRegistryForRename(
+  repo: string,
+  oldBranch: string,
+  newBranch: string
+): Promise<void> {
+  await mutateRegistry(registry => {
+    for (const project of registry.projects) {
+      if (project.repo === repo && project.branch === oldBranch) {
+        project.branch = newBranch
+      }
+    }
   })
 }
 
@@ -269,6 +288,79 @@ export async function getHostServicesForWorktree(
 ): Promise<HostService[]> {
   const registry = await loadRegistry()
   return registry.hostServices?.filter(s => s.repo === repo && s.branch === branch) ?? []
+}
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Check whether the current worktree still has running Docker or host services.
+ */
+export async function branchHasRunningServices(
+  repo: string,
+  branch: string,
+  composeFile: string,
+  domain: string
+): Promise<boolean> {
+  const worktreePath = getWorktreePath(repo, branch)
+
+  try {
+    const { composePs, getProjectName } = await import('./compose.ts')
+    const status = await composePs(worktreePath, composeFile, getProjectName(repo, branch), {
+      repoRoot: repo,
+      branch: sanitizeBranchName(branch),
+      domain,
+    })
+
+    if (status.some(service => service.running)) {
+      return true
+    }
+  } catch {
+    // Best effort only.
+  }
+
+  const registry = await loadRegistry()
+  return (registry.hostServices ?? []).some(
+    service => service.repo === repo && service.branch === branch && isProcessRunning(service.pid)
+  )
+}
+
+/**
+ * Update host service config files and registry entries for a renamed worktree.
+ */
+export async function rewriteHostServicesForRename(
+  repo: string,
+  oldBranch: string,
+  newBranch: string
+): Promise<void> {
+  await mutateRegistry(async registry => {
+    const matches = (registry.hostServices ?? []).filter(
+      service => service.repo === repo && service.branch === oldBranch
+    )
+
+    for (const service of matches) {
+      const oldFile = service.configFile
+      const newFile = oldFile.replace(oldBranch, newBranch)
+
+      if (oldFile !== newFile && existsSync(oldFile)) {
+        await rename(oldFile, newFile)
+      }
+
+      if (existsSync(newFile)) {
+        const content = await readFile(newFile, 'utf-8')
+        await writeFile(newFile, content.replaceAll(oldBranch, newBranch))
+      }
+
+      service.branch = newBranch
+      service.configFile = newFile
+    }
+  })
 }
 
 /**
