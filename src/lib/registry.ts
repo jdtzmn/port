@@ -70,7 +70,9 @@ export async function saveRegistry(registry: Registry): Promise<void> {
   await writeFileAtomic(REGISTRY_FILE, JSON.stringify(registry, null, 2))
 }
 
-async function mutateRegistry(mutator: (registry: Registry) => void | Promise<void>): Promise<void> {
+async function mutateRegistry(
+  mutator: (registry: Registry) => void | Promise<void>
+): Promise<void> {
   await ensureGlobalDir()
   await withFileLock(REGISTRY_LOCK_FILE, async () => {
     const registry = await loadRegistry()

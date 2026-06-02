@@ -80,11 +80,18 @@ export async function rename(newBranch: string): Promise<void> {
 
   const evalCtx = getEvalContext()
   if (evalCtx) {
-    const commands = buildEnterCommands(evalCtx.shell, newWorktreePath, sanitizedNewBranch, repoRoot)
+    const commands = buildEnterCommands(
+      evalCtx.shell,
+      newWorktreePath,
+      sanitizedNewBranch,
+      repoRoot
+    )
     writeEvalFile(commands, evalCtx.evalFile)
   } else {
     output.newline()
-    output.success(`Renamed worktree ${output.branch(oldWorktreeName)} → ${output.branch(sanitizedNewBranch)}`)
+    output.success(
+      `Renamed worktree ${output.branch(oldWorktreeName)} → ${output.branch(sanitizedNewBranch)}`
+    )
     output.newline()
     output.info(`Run: cd ${newWorktreePath}`)
   }

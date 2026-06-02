@@ -117,9 +117,7 @@ describe('rename command', () => {
     )
 
     expect(mocks.info).toHaveBeenCalledWith('Checking for running services...')
-    expect(mocks.error).toHaveBeenCalledWith(
-      'Stop running services before renaming this worktree.'
-    )
+    expect(mocks.error).toHaveBeenCalledWith('Stop running services before renaming this worktree.')
     expect(mocks.renameWorktree).not.toHaveBeenCalled()
   })
 
@@ -127,8 +125,16 @@ describe('rename command', () => {
     await rename('feature-new')
 
     expect(mocks.renameWorktree).toHaveBeenCalledWith('/repo', 'feature-old', 'feature-new')
-    expect(mocks.rewriteRegistryForRename).toHaveBeenCalledWith('/repo', 'feature-old', 'feature-new')
-    expect(mocks.rewriteHostServicesForRename).toHaveBeenCalledWith('/repo', 'feature-old', 'feature-new')
+    expect(mocks.rewriteRegistryForRename).toHaveBeenCalledWith(
+      '/repo',
+      'feature-old',
+      'feature-new'
+    )
+    expect(mocks.rewriteHostServicesForRename).toHaveBeenCalledWith(
+      '/repo',
+      'feature-old',
+      'feature-new'
+    )
     expect(mocks.writeOverrideFile).toHaveBeenCalledWith(
       '/repo/.port/trees/feature-new',
       expect.any(Object),
