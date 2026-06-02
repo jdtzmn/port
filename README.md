@@ -163,7 +163,17 @@ port exit
 
 Returns to the repository root and clears the `PORT_WORKTREE` environment variable.
 
-### 8. Start Services
+### 8. Rename a Worktree
+
+```bash
+port rename feature-new
+# or use the shorthand
+port mv feature-new
+```
+
+Run this from inside the worktree after stopping its services. It renames the current worktree and branch in place and keeps Port state aligned.
+
+### 9. Start Services
 
 ```bash
 port up [services...]
@@ -180,7 +190,7 @@ rerun that hook with:
 port open
 ```
 
-### 9. Stop Services
+### 10. Stop Services
 
 ```bash
 port down [services...]
@@ -188,7 +198,7 @@ port down [services...]
 
 Stops all services by default, or a selected subset when service names are provided. The selected containers are removed without tearing down the whole worktree.
 
-### 10. Run Host Processes (Non-Docker)
+### 11. Run Host Processes (Non-Docker)
 
 ```bash
 port run 3000 -- npm run dev
@@ -202,7 +212,7 @@ This is useful for:
 - Quick testing without containerization
 - Running multiple instances of the same service on different worktrees
 
-### 11. Check Status
+### 12. Check Status
 
 ```bash
 port status
@@ -219,7 +229,7 @@ port urls ui-frontend
 
 `port urls` works in either a worktree or the main repository.
 
-### 12. Remove a Worktree
+### 13. Remove a Worktree
 
 ```bash
 port remove feature-1
@@ -241,7 +251,7 @@ Use `--keep-branch` to preserve the local branch name.
 - Use `--cleanup-images` to clean up images without prompting
 - Image cleanup is opt-in to prevent accidentally removing shared base images
 
-### 13. Clean Up Archived Branches
+### 14. Clean Up Archived Branches
 
 ```bash
 port cleanup
@@ -270,6 +280,7 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port enter <branch>`                                               | Enter a worktree explicitly (including command names)           |
 | `port <branch>`                                                     | Enter a worktree (creates if doesn't exist)                     |
 | `port exit`                                                         | Exit the current worktree and return to repo root               |
+| `port rename <branch>` / `port mv <branch>`                         | Rename the current worktree and branch in place                 |
 | `port up [services...]`                                             | Start docker-compose services in current worktree               |
 | `port open`                                                         | Re-run the `post-up` hook in the current repo/worktree context  |
 | `port down [services...]`                                           | Stop docker-compose services and host processes selectively     |

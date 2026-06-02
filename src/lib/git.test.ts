@@ -1,5 +1,18 @@
-import { describe, expect, test } from 'vitest'
-import { parseDuplicateWorktreeError } from './git.ts'
+import { describe, expect, test, vi } from 'vitest'
+
+const rawMock = vi.hoisted(() => vi.fn())
+
+vi.mock('simple-git', () => ({
+  default: vi.fn(() => ({
+    raw: rawMock,
+  })),
+}))
+
+vi.mock('./worktree.ts', () => ({
+  getWorktreePath: vi.fn((repoRoot: string, branch: string) => `${repoRoot}/.port/trees/${branch}`),
+}))
+
+import { parseDuplicateWorktreeError, renameWorktree } from './git.ts'
 
 describe('parseDuplicateWorktreeError', () => {
   test('extracts branch and path from duplicate-worktree output', () => {
@@ -15,5 +28,19 @@ describe('parseDuplicateWorktreeError', () => {
 
   test('returns null for unrelated failures', () => {
     expect(parseDuplicateWorktreeError(new Error('fatal: unrelated failure'))).toBeNull()
+  })
+})
+
+describe('renameWorktree', () => {
+  test('moves the worktree path and renames the branch ref', async () => {
+    await renameWorktree('/repo', 'feature-old', 'feature-new')
+
+    expect(rawMock).toHaveBeenNthCalledWith(1, ['branch', '-m', 'feature-old', 'feature-new'])
+    expect(rawMock).toHaveBeenNthCalledWith(2, [
+      'worktree',
+      'move',
+      '/repo/.port/trees/feature-old',
+      '/repo/.port/trees/feature-new',
+    ])
   })
 })

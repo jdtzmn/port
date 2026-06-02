@@ -41,6 +41,7 @@ describe('getSubcommands', () => {
     const cmds = getSubcommands()
     expect(cmds).toContain('init')
     expect(cmds).toContain('enter')
+    expect(cmds).toContain('rename')
     expect(cmds).toContain('remove')
     expect(cmds).toContain('list')
     expect(cmds).toContain('status')
@@ -53,6 +54,7 @@ describe('getSubcommands', () => {
   test('includes aliases', () => {
     const cmds = getSubcommands()
     expect(cmds).toContain('ls')
+    expect(cmds).toContain('mv')
     expect(cmds).toContain('rm')
     expect(cmds).toContain('dc')
   })

@@ -59,7 +59,12 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 - **How**: Run to return to the repository root from a worktree.
 - **Why**: Changes back to the repo root and clears PORT_WORKTREE env var.
 
-### 11. \`port remove <branch>\`
+### 11. \`port rename <branch>\`
+
+- **How**: Run inside a worktree after stopping its services. Alias: port mv <branch>.
+- **Why**: Renames the current worktree and branch while keeping Port state aligned.
+
+### 12. \`port remove <branch>\`
 
 - **How**: Use after a branch is done.
 - **Why**: Stops services, removes worktree, and archives the local branch.
@@ -138,7 +143,12 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 - **How**: Run to return to the repository root from a worktree.
 - **Why**: Changes back to the repo root and clears PORT_WORKTREE env var.
 
-### 11. \`port remove <branch>\`
+### 11. \`port rename <branch>\`
+
+- **How**: Run inside a worktree after stopping its services. Alias: port mv <branch>.
+- **Why**: Renames the current worktree and branch while keeping Port state aligned.
+
+### 12. \`port remove <branch>\`
 
 - **How**: Use after a branch is done.
 - **Why**: Stops services, removes worktree, and archives the local branch.

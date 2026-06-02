@@ -2,6 +2,10 @@ import { test, expect, describe, beforeAll, beforeEach } from 'vitest'
 import { dirname } from 'path'
 import type { HostService } from '../types.ts'
 import { useIsolatedPortGlobalDir } from '@tests/isolatedGlobalDir'
+import { mkdtempSync, existsSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { writeFile, readFile } from 'fs/promises'
 
 type RegistryModule = typeof import('./registry.ts')
 
@@ -137,6 +141,70 @@ describe('Host Service Registry Functions', () => {
       expect(projects.map(project => project.branch).sort()).toEqual(
         Array.from({ length: 20 }, (_, index) => `branch-${index}`).sort()
       )
+    })
+  })
+
+  describe('rewriteRegistryForRename', () => {
+    test('updates matching project branches', async () => {
+      await registry.registerProject('/test/repo', 'old-name', [3000])
+      await registry.registerProject('/test/repo', 'other-name', [3001])
+
+      await registry.rewriteRegistryForRename('/test/repo', 'old-name', 'new-name')
+
+      expect(await registry.getAllProjects()).toEqual([
+        { repo: '/test/repo', branch: 'new-name', ports: [3000] },
+        { repo: '/test/repo', branch: 'other-name', ports: [3001] },
+      ])
+    })
+  })
+
+  describe('rewriteHostServicesForRename', () => {
+    test('renames config files and updates registry entries', async () => {
+      const tempDir = mkdtempSync(join(tmpdir(), 'port-rename-host-'))
+      const oldConfigFile = join(tempDir, 'old-name-3000.yml')
+      const newConfigFile = join(tempDir, 'new-name-3000.yml')
+
+      await writeFile(
+        oldConfigFile,
+        'http:\n  routers:\n    old-name-3000:\n      rule: Host(`old-name.port`)\n'
+      )
+
+      await registry.registerHostService({
+        repo: '/test/repo',
+        branch: 'old-name',
+        logicalPort: 3000,
+        actualPort: 49152,
+        pid: 12345,
+        configFile: oldConfigFile,
+      })
+
+      await registry.rewriteHostServicesForRename('/test/repo', 'old-name', 'new-name')
+
+      expect(existsSync(oldConfigFile)).toBe(false)
+      expect(existsSync(newConfigFile)).toBe(true)
+      expect(await readFile(newConfigFile, 'utf-8')).toContain('new-name.port')
+
+      expect(await registry.getHostService('/test/repo', 'new-name', 3000)).toMatchObject({
+        branch: 'new-name',
+        configFile: newConfigFile,
+      })
+    })
+  })
+
+  describe('branchHasRunningServices', () => {
+    test('returns true when a registered host service process is alive', async () => {
+      await registry.registerHostService({
+        repo: '/test/repo',
+        branch: 'old-name',
+        logicalPort: 3000,
+        actualPort: 49152,
+        pid: process.pid,
+        configFile: '/tmp/old-name-3000.yml',
+      })
+
+      await expect(
+        registry.branchHasRunningServices('/test/repo', 'old-name', 'missing-compose.yml', 'port')
+      ).resolves.toBe(true)
     })
   })
 

@@ -25,6 +25,7 @@ import { shellHook } from './commands/shell-hook.ts'
 import { completion } from './commands/completion.ts'
 import { hook } from './commands/hook.ts'
 import { open } from './commands/open.ts'
+import { rename } from './commands/rename.ts'
 import {
   isReservedCommand,
   shouldAutoRegisterWorktree,
@@ -241,6 +242,15 @@ program
   .command('open')
   .description('Run the post-up hook in the current repo/worktree context')
   .action(open)
+
+// port rename <branch>
+program
+  .command('rename <branch>')
+  .alias('mv')
+  .description('Rename the current worktree and branch')
+  .action(async (branch: string) => {
+    await rename(branch)
+  })
 
 // port completion <shell>
 program
