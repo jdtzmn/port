@@ -3,7 +3,7 @@ import { basename, join, resolve } from 'path'
 import { cp, mkdtemp, readdir, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import type { PortConfig } from '../src/types'
-import { execAsync } from '../src/lib/exec'
+import { execAsync, execFileAsync } from '../src/lib/exec'
 import { CONFIG_FILE, PORT_DIR, TREES_DIR } from '../src/lib/config'
 import { sanitizeFolderName } from '../src/lib/sanitize'
 
@@ -28,7 +28,10 @@ export function renderCLI(args: string[] = [], cwd?: string) {
 }
 
 export async function execPortAsync(args: string[] = [], cwd?: string) {
-  return execAsync(`bun ${cliScript()} ` + args.join(' '), {
+  // Use execFile (no shell) so the CLI script path and individual args are
+  // passed verbatim. This keeps branch names containing spaces intact instead
+  // of letting the shell split them into separate words.
+  return execFileAsync('bun', [cliScript(), ...args], {
     cwd,
   })
 }

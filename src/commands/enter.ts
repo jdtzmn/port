@@ -12,6 +12,7 @@ import {
   parseDuplicateWorktreeError,
   remoteBranchExists,
   removeWorktree,
+  resolveBranchRef,
 } from '../lib/git.ts'
 import { writeOverrideFile, parseComposeFile, getProjectName } from '../lib/compose.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
@@ -73,8 +74,11 @@ export async function enter(branch: string): Promise<void> {
     worktreePath = getWorktreePath(repoRoot, branch)
     output.dim(`Using existing worktree: ${sanitized}`)
   } else {
-    const localBranch = await branchExists(repoRoot, branch)
-    const remoteBranch = localBranch ? false : await remoteBranchExists(repoRoot, branch)
+    // Git refs cannot contain spaces, so existence checks must use the resolved
+    // ref (e.g. "my feature" → "my-feature") rather than the raw input.
+    const ref = await resolveBranchRef(repoRoot, branch)
+    const localBranch = await branchExists(repoRoot, ref)
+    const remoteBranch = localBranch ? false : await remoteBranchExists(repoRoot, ref)
 
     if (!localBranch && !remoteBranch) {
       const similarCommand = findSimilarCommand(branch)

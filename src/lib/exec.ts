@@ -1,10 +1,20 @@
-import { exec, spawn, type SpawnOptions } from 'child_process'
+import { exec, execFile, spawn, type SpawnOptions } from 'child_process'
 import { promisify } from 'util'
 
 /**
  * Promisified version of child_process.exec
  */
 export const execAsync = promisify(exec)
+
+/**
+ * Promisified version of child_process.execFile.
+ *
+ * Unlike execAsync, this does NOT spawn a shell: the program and each argument
+ * are passed as a separate argv entry, so paths and arguments containing spaces
+ * (or other shell metacharacters) are preserved verbatim. Prefer this over
+ * execAsync when the program path or any argument may contain spaces.
+ */
+export const execFileAsync = promisify(execFile)
 
 const MACOS_GUI_UNAVAILABLE_ERRORS = [
   'No user interaction allowed',

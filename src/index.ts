@@ -40,6 +40,26 @@ import * as output from './lib/output.ts'
 export const program = new Command()
 program.enablePositionalOptions()
 
+/**
+ * Join variadic branch argument tokens into a single branch name.
+ *
+ * Commander collects bare words after `port` / `port enter` as separate argv
+ * entries (e.g. `port my feature` -> ['my', 'feature']). A quoted argument
+ * (`port "my feature"`) arrives as a single entry that already contains the
+ * space. In both cases we join with a single space so the branch name is
+ * reconstructed identically, then defer hostname-safe sanitization to the
+ * worktree layer.
+ *
+ * @param parts - Variadic positional tokens from Commander (may be undefined)
+ * @returns The joined branch name, or undefined when no tokens were provided
+ */
+export function joinBranchArgs(parts: string[] | undefined): string | undefined {
+  if (!parts || parts.length === 0) {
+    return undefined
+  }
+  return parts.join(' ')
+}
+
 function getCliVersion(): string {
   try {
     const packageJsonPath = fileURLToPath(new URL('../package.json', import.meta.url))
@@ -109,11 +129,18 @@ program.command('list').alias('ls').description('Print worktree names, one per l
 // port status
 program.command('status').description('Show service status across all worktrees').action(status)
 
-// port enter <branch>
+// port enter <branch...>
+// Variadic so bare multi-word names (`port enter my feature`) are joined into a
+// single branch name rather than being truncated to the first word.
 program
-  .command('enter <branch>')
+  .command('enter <branch...>')
   .description('Enter a worktree by branch name (works even for command-name branches)')
-  .action(async (branch: string) => {
+  .action(async (branchParts: string[]) => {
+    const branch = joinBranchArgs(branchParts)
+    if (!branch) {
+      program.help()
+      return
+    }
     await enter(branch)
   })
 
@@ -265,8 +292,9 @@ program.hook('preAction', async () => {
 })
 
 program
-  .argument('[branch]', 'Branch name to enter (creates worktree if needed)')
-  .action(async (branch: string | undefined) => {
+  .argument('[branch...]', 'Branch name to enter (creates worktree if needed)')
+  .action(async (branchParts: string[] | undefined) => {
+    const branch = joinBranchArgs(branchParts)
     if (branch) {
       // Check if it looks like a command that wasn't matched
       if (isReservedCommand(branch)) {

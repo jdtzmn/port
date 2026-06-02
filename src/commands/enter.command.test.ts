@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   remoteBranchExists: vi.fn(),
   removeWorktree: vi.fn(),
   parseDuplicateWorktreeError: vi.fn(),
+  resolveBranchRef: vi.fn(),
   writeOverrideFile: vi.fn(),
   parseComposeFile: vi.fn(),
   getProjectName: vi.fn(),
@@ -54,6 +55,7 @@ vi.mock('../lib/git.ts', () => ({
   remoteBranchExists: mocks.remoteBranchExists,
   removeWorktree: mocks.removeWorktree,
   parseDuplicateWorktreeError: mocks.parseDuplicateWorktreeError,
+  resolveBranchRef: mocks.resolveBranchRef,
 }))
 
 vi.mock('../lib/compose.ts', () => ({
@@ -130,6 +132,7 @@ describe('enter typo confirmation', () => {
     mocks.worktreeExists.mockReturnValue(false)
     mocks.branchExists.mockResolvedValue(false)
     mocks.remoteBranchExists.mockResolvedValue(false)
+    mocks.resolveBranchRef.mockImplementation(async (_repoRoot: string, branch: string) => branch)
     mocks.findSimilarCommand.mockReturnValue({ command: 'install', distance: 1, similarity: 0.86 })
     mocks.createWorktree.mockResolvedValue('/repo/.port/trees/instal')
     mocks.parseDuplicateWorktreeError.mockReturnValue(null)
@@ -240,6 +243,24 @@ describe('enter typo confirmation', () => {
     expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'status')
   })
 
+  test('resolves spaced branch names to a valid ref for existence checks', async () => {
+    // "my feature" is not a valid git ref; it resolves to "my-feature".
+    mocks.findSimilarCommand.mockReturnValue(null)
+    mocks.resolveBranchRef.mockResolvedValue('my-feature')
+    mocks.createWorktree.mockResolvedValue('/repo/.port/trees/my-feature')
+
+    await enter('my feature')
+
+    // The raw name is resolved to a valid ref...
+    expect(mocks.resolveBranchRef).toHaveBeenCalledWith('/repo', 'my feature')
+    // ...and existence checks use the resolved ref, not the raw spaced name.
+    expect(mocks.branchExists).toHaveBeenCalledWith('/repo', 'my-feature')
+    // createWorktree receives the raw branch (it sanitizes the dir + resolves
+    // the ref internally).
+    expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'my feature')
+    expect(mocks.prompt).not.toHaveBeenCalled()
+  })
+
   test('reuses an existing worktree when git reports that the branch is already checked out', async () => {
     mocks.createWorktree.mockRejectedValueOnce(
       new Error(
@@ -329,6 +350,7 @@ describe('enter with shell hook eval file', () => {
     mocks.hookExists.mockResolvedValue(false)
     mocks.parseComposeFile.mockRejectedValue(new Error('compose missing'))
     mocks.getProjectName.mockReturnValue('repo-feature-1')
+    mocks.resolveBranchRef.mockImplementation(async (_repoRoot: string, branch: string) => branch)
     mocks.branch.mockImplementation((value: string) => value)
     mocks.command.mockImplementation((value: string) => value)
 
