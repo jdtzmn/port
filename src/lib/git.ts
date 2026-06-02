@@ -52,6 +52,48 @@ export function getGit(repoPath: string): SimpleGit {
 }
 
 /**
+ * Check whether a name is a valid git branch ref.
+ *
+ * Delegates to `git check-ref-format --branch`, which is the authoritative
+ * source of truth for ref naming rules (rejects spaces, control characters,
+ * `~`, `:`, `\`, etc.). Returns false when git rejects the name.
+ *
+ * @param repoRoot - The repository root path
+ * @param branch - The candidate branch name
+ * @returns true if git accepts the name as a branch ref
+ */
+export async function isValidBranchRef(repoRoot: string, branch: string): Promise<boolean> {
+  const git = getGit(repoRoot)
+
+  try {
+    await git.raw(['check-ref-format', '--branch', branch])
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Resolve the branch name to use as the actual git ref.
+ *
+ * Git forbids spaces (and other characters) in branch names, so a raw input
+ * like `"my feature"` cannot be used as a ref. When the raw name is already a
+ * valid ref (e.g. `feature/auth`) it is preserved as-is; otherwise it falls
+ * back to the hostname-safe sanitized form (`"my feature"` → `my-feature`),
+ * which is always a valid ref and matches the on-disk worktree directory name.
+ *
+ * @param repoRoot - The repository root path
+ * @param branch - The raw branch name supplied by the user
+ * @returns A valid git branch ref name
+ */
+export async function resolveBranchRef(repoRoot: string, branch: string): Promise<string> {
+  if (await isValidBranchRef(repoRoot, branch)) {
+    return branch
+  }
+  return sanitizeBranchName(branch)
+}
+
+/**
  * Check if a branch exists in the repository
  *
  * @param repoRoot - The repository root path
@@ -168,30 +210,27 @@ export async function createWorktree(repoRoot: string, branch: string): Promise<
     throw new GitError(`Worktree already exists at ${worktreePath}`)
   }
 
+  // Git refs cannot contain spaces (and other characters), so derive a valid
+  // ref name. The on-disk worktree path is independently sanitized via
+  // getWorktreePath, so the directory name is unaffected by this resolution.
+  const ref = await resolveBranchRef(repoRoot, branch)
+
   try {
-    const localExists = await branchExists(repoRoot, branch)
+    const localExists = await branchExists(repoRoot, ref)
 
     if (localExists) {
       // Branch exists locally, create worktree for it
-      await git.raw(['worktree', 'add', worktreePath, branch])
+      await git.raw(['worktree', 'add', worktreePath, ref])
     } else {
       // Check if branch exists on remote
-      const remoteExists = await remoteBranchExists(repoRoot, branch)
+      const remoteExists = await remoteBranchExists(repoRoot, ref)
 
       if (remoteExists) {
         // Track the remote branch
-        await git.raw([
-          'worktree',
-          'add',
-          '--track',
-          '-b',
-          branch,
-          worktreePath,
-          `origin/${branch}`,
-        ])
+        await git.raw(['worktree', 'add', '--track', '-b', ref, worktreePath, `origin/${ref}`])
       } else {
         // Create new branch from HEAD
-        await git.raw(['worktree', 'add', '-b', branch, worktreePath])
+        await git.raw(['worktree', 'add', '-b', ref, worktreePath])
       }
     }
 

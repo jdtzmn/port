@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   remoteBranchExists: vi.fn(),
   removeWorktree: vi.fn(),
   parseDuplicateWorktreeError: vi.fn(),
+  resolveBranchRef: vi.fn(),
   writeOverrideFile: vi.fn(),
   parseComposeFile: vi.fn(),
   getProjectName: vi.fn(),
@@ -54,6 +55,7 @@ vi.mock('../lib/git.ts', () => ({
   remoteBranchExists: mocks.remoteBranchExists,
   removeWorktree: mocks.removeWorktree,
   parseDuplicateWorktreeError: mocks.parseDuplicateWorktreeError,
+  resolveBranchRef: mocks.resolveBranchRef,
 }))
 
 vi.mock('../lib/compose.ts', () => ({
@@ -130,6 +132,7 @@ describe('enter typo confirmation', () => {
     mocks.worktreeExists.mockReturnValue(false)
     mocks.branchExists.mockResolvedValue(false)
     mocks.remoteBranchExists.mockResolvedValue(false)
+    mocks.resolveBranchRef.mockImplementation(async (_repoRoot: string, branch: string) => branch)
     mocks.findSimilarCommand.mockReturnValue({ command: 'install', distance: 1, similarity: 0.86 })
     mocks.createWorktree.mockResolvedValue('/repo/.port/trees/instal')
     mocks.parseDuplicateWorktreeError.mockReturnValue(null)
@@ -329,6 +332,7 @@ describe('enter with shell hook eval file', () => {
     mocks.hookExists.mockResolvedValue(false)
     mocks.parseComposeFile.mockRejectedValue(new Error('compose missing'))
     mocks.getProjectName.mockReturnValue('repo-feature-1')
+    mocks.resolveBranchRef.mockImplementation(async (_repoRoot: string, branch: string) => branch)
     mocks.branch.mockImplementation((value: string) => value)
     mocks.command.mockImplementation((value: string) => value)
 
