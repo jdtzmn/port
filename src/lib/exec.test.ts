@@ -58,8 +58,17 @@ async function loadExecModule(overrides?: { execImpl?: ExecImpl; spawnImpl?: Spa
     }
   })
 
+  // execFile is promisified into execFileAsync by exec.ts. These tests don't
+  // exercise it, but the mock must expose it so the import resolves.
+  const execFileMock = vi.fn(
+    (file: string, args: string[], options: unknown, callback: ExecCallback) => {
+      callback(null, 'ok', '')
+    }
+  )
+
   vi.doMock('child_process', () => ({
     exec: execMock,
+    execFile: execFileMock,
     spawn: spawnMock,
   }))
 
@@ -69,6 +78,7 @@ async function loadExecModule(overrides?: { execImpl?: ExecImpl; spawnImpl?: Spa
     execPrivileged: module.execPrivileged,
     execWithStdio: module.execWithStdio,
     execMock,
+    execFileMock,
     spawnMock,
   }
 }
