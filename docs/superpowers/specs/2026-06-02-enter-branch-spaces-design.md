@@ -29,7 +29,7 @@ Today this does not work end to end, for three reasons:
 
 3. **The E2E test harness cannot pass a space.** `execPortAsync` in
    `tests/utils.ts` builds a single shell string with
-   ``` `bun ${cliScript()} ` + args.join(' ') ``` and runs it through a shell.
+   `` `bun ${cliScript()} ` + args.join(' ') `` and runs it through a shell.
    A branch arg `"my feature"` is split into two shell words, and the script
    path itself is unquoted. No faithful E2E for spaced branches can be written
    until this is fixed.
