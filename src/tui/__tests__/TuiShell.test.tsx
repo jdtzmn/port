@@ -110,6 +110,71 @@ describe('TuiShell', () => {
     expect(frame).toContain('api:8080')
   })
 
+  test('active worktree stays pinned while others sort by creation time', async () => {
+    const recencyWorktrees: WorktreeStatus[] = [
+      {
+        name: 'current',
+        path: '/repo',
+        services: [],
+        running: false,
+        createdAt: '2026-05-04T00:00:00.000Z',
+      },
+      {
+        name: 'one',
+        path: '/repo/.port/trees/one',
+        services: [{ name: 'web', ports: [3000], running: true }],
+        running: true,
+        createdAt: '2026-05-03T00:00:00.000Z',
+      },
+      {
+        name: 'two',
+        path: '/repo/.port/trees/two',
+        services: [{ name: 'api', ports: [8080], running: true }],
+        running: true,
+        createdAt: '2026-05-01T00:00:00.000Z',
+      },
+      {
+        name: 'three',
+        path: '/repo/.port/trees/three',
+        services: [{ name: 'db', ports: [5432], running: true }],
+        running: true,
+        createdAt: '2026-05-02T00:00:00.000Z',
+      },
+    ]
+
+    const { renderer, renderOnce, captureCharFrame } = await testRender(
+      <TuiShell
+        repoRoot="/repo"
+        repoName="myapp"
+        worktrees={recencyWorktrees}
+        hostServices={[] as HostService[]}
+        traefikRunning={true}
+        config={mockConfig}
+        activeWorktreeName="current"
+        actions={mockActions}
+        refresh={noop}
+        loading={false}
+        statusMessage={null}
+        showStatus={noop}
+        requestExit={noop}
+      />,
+      { width: 96, height: 24 }
+    )
+    currentRenderer = renderer
+
+    await renderOnce()
+    const getOrder = (frame: string) => {
+      const lines = frame.split('\n')
+      return ['current', 'three', 'two', 'one']
+        .map(name => ({ name, index: lines.findIndex(line => line.includes(name)) }))
+        .sort((a, b) => a.index - b.index)
+        .map(({ name }) => name)
+    }
+
+    let frame = captureCharFrame()
+    expect(getOrder(frame)).toEqual(['current', 'one', 'three', 'two'])
+  })
+
   test('defaults to a one-third worktrees and two-thirds services split', async () => {
     const { renderer, renderOnce, captureCharFrame } = await testRender(
       <TuiShell

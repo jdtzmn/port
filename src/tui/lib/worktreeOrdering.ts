@@ -6,6 +6,25 @@ function getWorktreeGroup(activeWorktreeName: string, worktree: WorktreeStatus):
   return 2
 }
 
+function parseTimestamp(value?: string): number | null {
+  if (!value) return null
+  const parsed = Date.parse(value)
+  return Number.isNaN(parsed) ? null : parsed
+}
+
+function compareDescendingTimestamps(a?: string, b?: string): number {
+  const aTime = parseTimestamp(a)
+  const bTime = parseTimestamp(b)
+
+  if (aTime !== null && bTime !== null) {
+    return bTime - aTime
+  }
+
+  if (aTime !== null) return -1
+  if (bTime !== null) return 1
+  return 0
+}
+
 export function orderWorktreesForDashboard(
   worktrees: WorktreeStatus[],
   activeWorktreeName: string
@@ -16,7 +35,11 @@ export function orderWorktreesForDashboard(
       const groupDiff =
         getWorktreeGroup(activeWorktreeName, a) - getWorktreeGroup(activeWorktreeName, b)
       if (groupDiff !== 0) return groupDiff
-      return a.__order - b.__order
+
+      const createdDiff = compareDescendingTimestamps(a.createdAt, b.createdAt)
+      if (createdDiff !== 0) return createdDiff
+
+      return a.name.localeCompare(b.name) || a.__order - b.__order
     })
     .map(({ __order, ...worktree }) => worktree)
 }

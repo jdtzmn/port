@@ -1,4 +1,5 @@
 import { existsSync, readdirSync } from 'fs'
+import { statSync } from 'fs'
 import { join } from 'path'
 import type { RunningWorktreeNames } from '../types.ts'
 import { getTreesDir } from './config.ts'
@@ -16,6 +17,16 @@ export interface WorktreeStatus {
   path: string
   services: WorktreeServiceStatus[]
   running: boolean
+  createdAt?: string
+}
+
+function getDirectoryCreatedAt(path: string): string | undefined {
+  try {
+    const stats = statSync(path)
+    return new Date(stats.birthtimeMs || stats.ctimeMs).toISOString()
+  } catch {
+    return undefined
+  }
 }
 
 async function mapWithConcurrency<T, R>(
@@ -62,6 +73,7 @@ export function getWorktreeSkeletons(repoRoot: string): WorktreeStatus[] {
     path: repoRoot,
     services: [],
     running: false,
+    createdAt: getDirectoryCreatedAt(repoRoot),
   })
 
   if (!existsSync(treesDir)) {
@@ -80,6 +92,7 @@ export function getWorktreeSkeletons(repoRoot: string): WorktreeStatus[] {
       path: join(treesDir, entry.name),
       services: [],
       running: false,
+      createdAt: getDirectoryCreatedAt(join(treesDir, entry.name)),
     })
   }
 
