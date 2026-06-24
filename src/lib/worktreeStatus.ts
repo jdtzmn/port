@@ -2,7 +2,7 @@ import { existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import type { RunningWorktreeNames } from '../types.ts'
 import { getTreesDir } from './config.ts'
-import { composePs, parseComposeFile, getServicePorts, getProjectName } from './compose.ts'
+import { composePs, parseComposeFile, getServicePorts, buildProjectName as getProjectName } from './compose.ts'
 import { sanitizeBranchName } from './sanitize.ts'
 
 export interface WorktreeServiceStatus {

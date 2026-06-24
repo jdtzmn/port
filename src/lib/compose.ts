@@ -52,7 +52,7 @@ interface ComposeRuntimeContext {
  * @param worktreeName - The worktree/branch name
  * @returns A unique project name like "my-repo-feature-branch"
  */
-export function getProjectName(repoRoot: string, worktreeName: string): string {
+export function buildProjectName(repoRoot: string, worktreeName: string): string {
   const repoName = sanitizeFolderName(basename(repoRoot))
   const sanitizedWorktreeName = sanitizeBranchName(worktreeName)
   // If worktree name is already the repo name (main repo case), just use it

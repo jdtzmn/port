@@ -57,7 +57,7 @@ export async function compose(args: string[]): Promise<void> {
     process.exit(1)
   }
 
-  const projectName = composeLib.getProjectName(repoRoot, name)
+  const projectName = composeLib.buildProjectName(repoRoot, name)
 
   try {
     await composeLib.writeOverrideFile(

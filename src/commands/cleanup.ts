@@ -2,7 +2,7 @@ import inquirer from 'inquirer'
 import { detectWorktree } from '../lib/worktree.ts'
 import { deleteLocalBranch, listArchivedBranches } from '../lib/git.ts'
 import { failWithError } from '../lib/cli.ts'
-import { getProjectName } from '../lib/compose.ts'
+import { buildProjectName as getProjectName } from '../lib/compose.ts'
 import { cleanupDockerResources, scanDockerResourcesForProject } from '../lib/docker-cleanup.ts'
 import * as output from '../lib/output.ts'
 

@@ -10,7 +10,7 @@ import {
   traefikHasRequiredPorts,
   parseComposeFile,
   getAllPorts,
-  getProjectName,
+  buildProjectName as getProjectName,
   type ComposeCapturedResult,
 } from '../../lib/compose.ts'
 import { registerProject, unregisterProject } from '../../lib/registry.ts'

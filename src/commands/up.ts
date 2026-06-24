@@ -18,7 +18,7 @@ import {
   parseComposeFile,
   getAllPorts,
   getServicePorts,
-  getProjectName,
+  buildProjectName as getProjectName,
   resolveComposeServices,
 } from '../lib/compose.ts'
 import { findHostnameLabelCollisions, formatHostname, formatHostnameLabel } from '../lib/hostname.ts'

@@ -4,7 +4,7 @@ import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../li
 import { getDefaultBranch, fetchAndPrune } from '../lib/git.ts'
 import { removeWorktreeAndCleanup, stopWorktreeServices } from '../lib/removal.ts'
 import { failWithError } from '../lib/cli.ts'
-import { getProjectName } from '../lib/compose.ts'
+import { buildProjectName as getProjectName } from '../lib/compose.ts'
 import { cleanupDockerResources, scanDockerResourcesForProject } from '../lib/docker-cleanup.ts'
 import { getStaleWorktreeCandidates, type StaleWorktreeCandidate } from '../lib/staleWorktrees.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'

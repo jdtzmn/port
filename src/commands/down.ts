@@ -13,7 +13,7 @@ import {
   runCompose,
   stopTraefik,
   isTraefikRunning,
-  getProjectName,
+  buildProjectName as getProjectName,
   parseComposeFile,
   getServicePorts,
   resolveComposeServices,

@@ -65,7 +65,7 @@ describe('port compose pre-sync behavior', () => {
       mockParsedCompose as unknown as Awaited<ReturnType<typeof composeModule.parseComposeFile>>
     )
     vi.spyOn(composeModule, 'writeOverrideFile').mockResolvedValue()
-    vi.spyOn(composeModule, 'getProjectName').mockReturnValue('repo-feature-1')
+    vi.spyOn(composeModule, 'buildProjectName').mockReturnValue('repo-feature-1')
     vi.spyOn(traefikModule, 'ensureTraefikPorts').mockResolvedValue(true)
     vi.spyOn(composeModule, 'isTraefikRunning').mockResolvedValue(true)
     vi.spyOn(composeModule, 'startTraefik').mockResolvedValue()

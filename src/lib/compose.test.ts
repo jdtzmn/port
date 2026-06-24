@@ -5,7 +5,7 @@ import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   generateOverrideContent,
-  getProjectName,
+  buildProjectName as getProjectName,
   getComposeFileStack,
   getServicePorts,
   startTraefik,

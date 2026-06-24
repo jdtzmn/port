@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   resolveBranchRef: vi.fn(),
   writeOverrideFile: vi.fn(),
   parseComposeFile: vi.fn(),
-  getProjectName: vi.fn(),
+  buildProjectName: vi.fn(),
   hookExists: vi.fn(),
   runPostCreateHook: vi.fn(),
   prompt: vi.fn(),
@@ -61,7 +61,7 @@ vi.mock('../lib/git.ts', () => ({
 vi.mock('../lib/compose.ts', () => ({
   writeOverrideFile: mocks.writeOverrideFile,
   parseComposeFile: mocks.parseComposeFile,
-  getProjectName: mocks.getProjectName,
+  buildProjectName: mocks.buildProjectName,
 }))
 
 vi.mock('../lib/hooks.ts', () => ({
@@ -138,7 +138,7 @@ describe('enter typo confirmation', () => {
     mocks.parseDuplicateWorktreeError.mockReturnValue(null)
     mocks.hookExists.mockResolvedValue(false)
     mocks.parseComposeFile.mockRejectedValue(new Error('compose missing'))
-    mocks.getProjectName.mockReturnValue('repo-instal')
+    mocks.buildProjectName.mockReturnValue('repo-instal')
     mocks.getStaleWorktreeCandidates.mockResolvedValue([])
     mocks.formatStaleWorktreeWarning.mockImplementation(
       (count: number) => `You have ${count} stale port worktrees. Consider running port prune.`
@@ -272,7 +272,7 @@ describe('enter typo confirmation', () => {
       path: '/repo/.port/trees/shared-external',
     })
     mocks.parseComposeFile.mockResolvedValue({ services: {} })
-    mocks.getProjectName.mockReturnValue('repo-shared')
+    mocks.buildProjectName.mockReturnValue('repo-shared')
 
     await enter('shared')
 
@@ -349,7 +349,7 @@ describe('enter with shell hook eval file', () => {
     mocks.getWorktreePath.mockReturnValue('/repo/.port/trees/feature-1')
     mocks.hookExists.mockResolvedValue(false)
     mocks.parseComposeFile.mockRejectedValue(new Error('compose missing'))
-    mocks.getProjectName.mockReturnValue('repo-feature-1')
+    mocks.buildProjectName.mockReturnValue('repo-feature-1')
     mocks.resolveBranchRef.mockImplementation(async (_repoRoot: string, branch: string) => branch)
     mocks.branch.mockImplementation((value: string) => value)
     mocks.command.mockImplementation((value: string) => value)

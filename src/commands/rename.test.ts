@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   rewriteHostServicesForRename: vi.fn(),
   parseComposeFile: vi.fn(),
   writeOverrideFile: vi.fn(),
-  getProjectName: vi.fn(),
+  buildProjectName: vi.fn(),
   success: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -52,7 +52,7 @@ vi.mock('../lib/registry.ts', () => ({
 vi.mock('../lib/compose.ts', () => ({
   parseComposeFile: mocks.parseComposeFile,
   writeOverrideFile: mocks.writeOverrideFile,
-  getProjectName: mocks.getProjectName,
+  buildProjectName: mocks.buildProjectName,
 }))
 
 vi.mock('../lib/output.ts', () => ({
@@ -94,7 +94,7 @@ describe('rename command', () => {
     mocks.rewriteHostServicesForRename.mockResolvedValue(undefined)
     mocks.parseComposeFile.mockResolvedValue({ name: 'repo', services: {} })
     mocks.writeOverrideFile.mockResolvedValue(undefined)
-    mocks.getProjectName.mockReturnValue('repo-feature-new')
+    mocks.buildProjectName.mockReturnValue('repo-feature-new')
     mocks.branch.mockImplementation((value: string) => value)
 
     process.argv = ['/usr/local/bin/bun', '/repo/dist/index.js', 'rename', 'feature-new']

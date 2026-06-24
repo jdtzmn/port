@@ -313,8 +313,8 @@ export async function branchHasRunningServices(
   const worktreePath = getWorktreePath(repo, branch)
 
   try {
-    const { composePs, getProjectName } = await import('./compose.ts')
-    const status = await composePs(worktreePath, composeFile, getProjectName(repo, branch), {
+    const { composePs, buildProjectName } = await import('./compose.ts')
+    const status = await composePs(worktreePath, composeFile, buildProjectName(repo, branch), {
       repoRoot: repo,
       branch: sanitizeBranchName(branch),
       domain,

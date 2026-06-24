@@ -8,7 +8,7 @@ import {
   removeWorktreeAtPath,
 } from './git.ts'
 import { unregisterProject } from './registry.ts'
-import { runCompose, getProjectName } from './compose.ts'
+import { runCompose, buildProjectName as getProjectName } from './compose.ts'
 import { sanitizeBranchName } from './sanitize.ts'
 import { getWorktreePath } from './worktree.ts'
 import * as output from './output.ts'
