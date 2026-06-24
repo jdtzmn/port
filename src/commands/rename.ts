@@ -1,11 +1,8 @@
 import { detectWorktree, worktreeExists } from '../lib/worktree.ts'
 import { ensurePortRuntimeDir, loadConfigOrDefault, getComposeFile } from '../lib/config.ts'
 import { getCurrentBranch, branchExists, renameWorktree } from '../lib/git.ts'
-import {
-  branchHasRunningServices,
-  rewriteRegistryForRename,
-  rewriteHostServicesForRename,
-} from '../lib/registry.ts'
+import { rewriteRegistryForRename, rewriteHostServicesForRename } from '../lib/registry.ts'
+import { branchHasRunningServices } from '../lib/serviceStatus.ts'
 import { parseComposeFile, writeOverrideFile } from '../lib/compose.ts'
 import { buildProjectName as getProjectName } from '../lib/projectName.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'

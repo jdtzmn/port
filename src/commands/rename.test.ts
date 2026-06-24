@@ -45,8 +45,11 @@ vi.mock('../lib/git.ts', () => ({
 
 vi.mock('../lib/registry.ts', () => ({
   rewriteRegistryForRename: mocks.rewriteRegistryForRename,
-  branchHasRunningServices: mocks.branchHasRunningServices,
   rewriteHostServicesForRename: mocks.rewriteHostServicesForRename,
+}))
+
+vi.mock('../lib/serviceStatus.ts', () => ({
+  branchHasRunningServices: mocks.branchHasRunningServices,
 }))
 
 vi.mock('../lib/compose.ts', () => ({

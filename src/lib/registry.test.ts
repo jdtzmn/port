@@ -191,23 +191,6 @@ describe('Host Service Registry Functions', () => {
     })
   })
 
-  describe('branchHasRunningServices', () => {
-    test('returns true when a registered host service process is alive', async () => {
-      await registry.registerHostService({
-        repo: '/test/repo',
-        branch: 'old-name',
-        logicalPort: 3000,
-        actualPort: 49152,
-        pid: process.pid,
-        configFile: '/tmp/old-name-3000.yml',
-      })
-
-      await expect(
-        registry.branchHasRunningServices('/test/repo', 'old-name', 'missing-compose.yml', 'port')
-      ).resolves.toBe(true)
-    })
-  })
-
   describe('unregisterHostService', () => {
     test('removes a host service', async () => {
       const service = createMockHostService()
