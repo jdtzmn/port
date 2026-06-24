@@ -61,6 +61,9 @@ vi.mock('../lib/git.ts', () => ({
 vi.mock('../lib/compose.ts', () => ({
   writeOverrideFile: mocks.writeOverrideFile,
   parseComposeFile: mocks.parseComposeFile,
+}))
+
+vi.mock('../lib/projectName.ts', () => ({
   buildProjectName: mocks.buildProjectName,
 }))
 

@@ -30,6 +30,9 @@ vi.mock('../lib/compose.ts', () => ({
   parseComposeFile: mocks.parseComposeFile,
   getServicePorts: mocks.getServicePorts,
   composePs: mocks.composePs,
+}))
+
+vi.mock('../lib/projectName.ts', () => ({
   buildProjectName: mocks.buildProjectName,
 }))
 

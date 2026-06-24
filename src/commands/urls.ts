@@ -1,11 +1,7 @@
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
-import {
-  parseComposeFile,
-  getServicePorts,
-  composePs,
-  buildProjectName as getProjectName,
-} from '../lib/compose.ts'
+import { parseComposeFile, getServicePorts, composePs } from '../lib/compose.ts'
+import { buildProjectName as getProjectName } from '../lib/projectName.ts'
 import { formatHostname, formatHostnameLabel } from '../lib/hostname.ts'
 import * as output from '../lib/output.ts'
 

@@ -43,7 +43,7 @@ vi.mock('../lib/output.ts', () => ({
   error: mocks.error,
 }))
 
-vi.mock('../lib/compose.ts', () => ({
+vi.mock('../lib/projectName.ts', () => ({
   buildProjectName: mocks.buildProjectName,
 }))
 

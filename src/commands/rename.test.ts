@@ -52,6 +52,9 @@ vi.mock('../lib/registry.ts', () => ({
 vi.mock('../lib/compose.ts', () => ({
   parseComposeFile: mocks.parseComposeFile,
   writeOverrideFile: mocks.writeOverrideFile,
+}))
+
+vi.mock('../lib/projectName.ts', () => ({
   buildProjectName: mocks.buildProjectName,
 }))
 

@@ -1,11 +1,11 @@
 import { existsSync } from 'fs'
 import { mkdir, readFile, writeFile } from 'fs/promises'
-import { basename, join } from 'path'
+import { join } from 'path'
 import { stringify as yamlStringify } from 'yaml'
 import type { ParsedComposeFile, ParsedComposeService } from '../types.ts'
 import { TRAEFIK_NETWORK, TRAEFIK_DIR } from './traefik.ts'
 import { execAsync, execWithStdio } from './exec.ts'
-import { sanitizeBranchName, sanitizeFolderName } from './sanitize.ts'
+import { sanitizeBranchName } from './sanitize.ts'
 import { formatHostname, formatHostnameLabel } from './hostname.ts'
 
 /**
@@ -42,24 +42,6 @@ interface ComposeRuntimeContext {
   repoRoot: string
   branch: string
   domain: string
-}
-
-/**
- * Generate a unique docker-compose project name from repo root and worktree name.
- * This ensures containers from different repos with same-named worktrees don't conflict.
- *
- * @param repoRoot - Absolute path to the repo root
- * @param worktreeName - The worktree/branch name
- * @returns A unique project name like "my-repo-feature-branch"
- */
-export function buildProjectName(repoRoot: string, worktreeName: string): string {
-  const repoName = sanitizeFolderName(basename(repoRoot))
-  const sanitizedWorktreeName = sanitizeBranchName(worktreeName)
-  // If worktree name is already the repo name (main repo case), just use it
-  if (repoName === sanitizedWorktreeName) {
-    return repoName
-  }
-  return `${repoName}-${sanitizedWorktreeName}`
 }
 
 /**

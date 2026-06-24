@@ -13,11 +13,11 @@ import {
   runCompose,
   stopTraefik,
   isTraefikRunning,
-  buildProjectName as getProjectName,
   parseComposeFile,
   getServicePorts,
   resolveComposeServices,
 } from '../lib/compose.ts'
+import { buildProjectName as getProjectName } from '../lib/projectName.ts'
 import { execAsync } from '../lib/exec.ts'
 import { stopHostService } from '../lib/hostService.ts'
 import * as output from '../lib/output.ts'

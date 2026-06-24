@@ -69,6 +69,9 @@ vi.mock('../lib/compose.ts', () => ({
   runCompose: mocks.runCompose,
   stopTraefik: mocks.stopTraefik,
   isTraefikRunning: mocks.isTraefikRunning,
+}))
+
+vi.mock('../lib/projectName.ts', () => ({
   buildProjectName: mocks.buildProjectName,
 }))
 

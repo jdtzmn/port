@@ -10,9 +10,9 @@ import {
   traefikHasRequiredPorts,
   parseComposeFile,
   getAllPorts,
-  buildProjectName as getProjectName,
   type ComposeCapturedResult,
 } from '../../lib/compose.ts'
+import { buildProjectName as getProjectName } from '../../lib/projectName.ts'
 import { registerProject, unregisterProject } from '../../lib/registry.ts'
 import { ensureTraefikPorts, traefikFilesExist, initTraefikFiles } from '../../lib/traefik.ts'
 import { stopHostService } from '../../lib/hostService.ts'

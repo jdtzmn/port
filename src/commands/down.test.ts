@@ -59,10 +59,13 @@ vi.mock('../lib/compose.ts', () => ({
   runCompose: mocks.runCompose,
   stopTraefik: mocks.stopTraefik,
   isTraefikRunning: mocks.isTraefikRunning,
-  buildProjectName: mocks.buildProjectName,
   parseComposeFile: mocks.parseComposeFile,
   resolveComposeServices: mocks.resolveComposeServices,
   getServicePorts: mocks.getServicePorts,
+}))
+
+vi.mock('../lib/projectName.ts', () => ({
+  buildProjectName: mocks.buildProjectName,
 }))
 
 vi.mock('../lib/hostService.ts', () => ({

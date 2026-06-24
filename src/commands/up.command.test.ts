@@ -77,6 +77,9 @@ vi.mock('../lib/compose.ts', () => ({
   getAllPorts: mocks.getAllPorts,
   getServicePorts: mocks.getServicePorts,
   resolveComposeServices: mocks.resolveComposeServices,
+}))
+
+vi.mock('../lib/projectName.ts', () => ({
   buildProjectName: mocks.buildProjectName,
 }))
 

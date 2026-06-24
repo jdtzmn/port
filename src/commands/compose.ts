@@ -3,6 +3,7 @@ import { join } from 'path'
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import * as composeLib from '../lib/compose.ts'
+import { buildProjectName } from '../lib/projectName.ts'
 import * as traefikLib from '../lib/traefik.ts'
 import * as output from '../lib/output.ts'
 
@@ -57,7 +58,7 @@ export async function compose(args: string[]): Promise<void> {
     process.exit(1)
   }
 
-  const projectName = composeLib.buildProjectName(repoRoot, name)
+  const projectName = buildProjectName(repoRoot, name)
 
   try {
     await composeLib.writeOverrideFile(

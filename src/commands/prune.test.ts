@@ -91,7 +91,7 @@ vi.mock('../lib/docker-cleanup.ts', () => ({
   scanDockerResourcesForProject: mocks.scanDockerResourcesForProject,
 }))
 
-vi.mock('../lib/compose.ts', () => ({
+vi.mock('../lib/projectName.ts', () => ({
   buildProjectName: mocks.buildProjectName,
 }))
 
