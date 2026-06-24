@@ -21,7 +21,11 @@ import {
   buildProjectName as getProjectName,
   resolveComposeServices,
 } from '../lib/compose.ts'
-import { findHostnameLabelCollisions, formatHostname, formatHostnameLabel } from '../lib/hostname.ts'
+import {
+  findHostnameLabelCollisions,
+  formatHostname,
+  formatHostnameLabel,
+} from '../lib/hostname.ts'
 import { checkDns } from '../lib/dns.ts'
 import { hookExists, runPostUpHook } from '../lib/hooks.ts'
 import * as output from '../lib/output.ts'

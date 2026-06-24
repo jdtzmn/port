@@ -122,7 +122,9 @@ describe('prune command', () => {
     mocks.sanitizeBranchName.mockImplementation((name: string) => name)
     mocks.branch.mockImplementation((name: string) => name)
 
-    mocks.buildProjectName.mockImplementation((_repoRoot: string, branch: string) => `port-${branch}`)
+    mocks.buildProjectName.mockImplementation(
+      (_repoRoot: string, branch: string) => `port-${branch}`
+    )
     mocks.stopWorktreeServices.mockResolvedValue(undefined)
     mocks.exit.mockResolvedValue(undefined)
     mocks.cleanupDockerResources.mockResolvedValue({

@@ -63,7 +63,9 @@ describe('cleanup command', () => {
     mocks.detectWorktree.mockReturnValue({ repoRoot: '/repo' })
     mocks.listArchivedBranches.mockResolvedValue([])
     mocks.branch.mockImplementation((name: string) => name)
-    mocks.buildProjectName.mockImplementation((repoRoot: string, branch: string) => `port-${branch}`)
+    mocks.buildProjectName.mockImplementation(
+      (repoRoot: string, branch: string) => `port-${branch}`
+    )
     mocks.cleanupDockerResources.mockResolvedValue({
       volumesRemoved: 0,
       networksRemoved: 0,

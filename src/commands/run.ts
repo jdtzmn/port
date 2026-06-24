@@ -14,7 +14,11 @@ import {
   cleanupStaleHostServices,
   stopHostService,
 } from '../lib/hostService.ts'
-import { findHostnameLabelCollisions, formatHostname, formatHostnameLabel } from '../lib/hostname.ts'
+import {
+  findHostnameLabelCollisions,
+  formatHostname,
+  formatHostnameLabel,
+} from '../lib/hostname.ts'
 import type { HostService } from '../types.ts'
 import * as output from '../lib/output.ts'
 
@@ -170,7 +174,9 @@ export async function run(logicalPort: number, command: string[]): Promise<void>
   }
 
   output.newline()
-  output.success(`Service running at ${output.url(`http://${formatHostname(branch, domain)}:${logicalPort}`)}`)
+  output.success(
+    `Service running at ${output.url(`http://${formatHostname(branch, domain)}:${logicalPort}`)}`
+  )
   output.info(`Running: ${command.join(' ')}`)
   output.newline()
 

@@ -14,7 +14,11 @@ import {
   removeWorktree,
   resolveBranchRef,
 } from '../lib/git.ts'
-import { writeOverrideFile, parseComposeFile, buildProjectName as getProjectName } from '../lib/compose.ts'
+import {
+  writeOverrideFile,
+  parseComposeFile,
+  buildProjectName as getProjectName,
+} from '../lib/compose.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import { hookExists, runPostCreateHook } from '../lib/hooks.ts'
 import { mkdir } from 'fs/promises'

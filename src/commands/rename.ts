@@ -6,7 +6,11 @@ import {
   rewriteRegistryForRename,
   rewriteHostServicesForRename,
 } from '../lib/registry.ts'
-import { parseComposeFile, writeOverrideFile, buildProjectName as getProjectName } from '../lib/compose.ts'
+import {
+  parseComposeFile,
+  writeOverrideFile,
+  buildProjectName as getProjectName,
+} from '../lib/compose.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
 import { failWithError } from '../lib/cli.ts'
