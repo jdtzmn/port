@@ -5,7 +5,6 @@ import { stringify as yamlStringify } from 'yaml'
 import type { ParsedComposeFile, ParsedComposeService } from '../types.ts'
 import { TRAEFIK_NETWORK, TRAEFIK_DIR } from './traefik.ts'
 import { execAsync, execWithStdio } from './exec.ts'
-import { sanitizeBranchName } from './sanitize.ts'
 import { formatHostname, formatHostnameLabel } from './hostname.ts'
 
 /**

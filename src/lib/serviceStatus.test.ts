@@ -1,5 +1,4 @@
 import { test, expect, describe, beforeAll, beforeEach } from 'vitest'
-import type { HostService } from '../types.ts'
 import { useIsolatedPortGlobalDir } from '@tests/isolatedGlobalDir'
 
 type RegistryModule = typeof import('./registry.ts')
