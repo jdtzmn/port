@@ -1,6 +1,7 @@
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import { parseComposeFile, getServicePorts, composePs, getProjectName } from '../lib/compose.ts'
+import { formatHostname, formatHostnameLabel } from '../lib/hostname.ts'
 import * as output from '../lib/output.ts'
 
 /**
@@ -52,8 +53,8 @@ export async function urls(serviceName?: string): Promise<void> {
       const running = Array.from(runningServices.entries()).some(
         ([containerName, isRunning]) => containerName.includes(service) && isRunning
       )
-      const urls = ports.length > 0 ? [`http://${service}.${name}.${config.domain}`] : []
-      urls.push(...ports.map(port => `http://${name}.${config.domain}:${port}`))
+      const urls = ports.length > 0 ? [`http://${service}.${formatHostnameLabel(name)}.${config.domain}`] : []
+      urls.push(...ports.map(port => `http://${formatHostname(name, config.domain)}:${port}`))
 
       return {
         name: service,

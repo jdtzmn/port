@@ -6,6 +6,7 @@ import type { ParsedComposeFile, ParsedComposeService } from '../types.ts'
 import { TRAEFIK_NETWORK, TRAEFIK_DIR } from './traefik.ts'
 import { execAsync, execWithStdio } from './exec.ts'
 import { sanitizeBranchName, sanitizeFolderName } from './sanitize.ts'
+import { formatHostname, formatHostnameLabel } from './hostname.ts'
 
 /**
  * Escape a shell argument to prevent command injection.
@@ -436,7 +437,7 @@ function generateTraefikHttpLabels(
   domain: string
 ): string[] {
   const routerName = `${worktreeName}-${serviceName}-${publishedPort}`
-  const hostname = `${worktreeName}.${domain}`
+  const hostname = formatHostname(worktreeName, domain)
 
   return generateTraefikHttpRouterLabels(routerName, hostname, `port${publishedPort}`, targetPort)
 }
@@ -448,7 +449,7 @@ function generateTraefikHttpAliasLabels(
   domain: string
 ): string[] {
   const routerName = `${worktreeName}-${serviceName}-alias`
-  const hostname = `${serviceName}.${worktreeName}.${domain}`
+  const hostname = `${serviceName}.${formatHostnameLabel(worktreeName)}.${domain}`
 
   return generateTraefikHttpRouterLabels(routerName, hostname, 'web', targetPort)
 }
@@ -475,7 +476,7 @@ function generateTraefikTcpLabels(
   domain: string
 ): string[] {
   const routerName = `${worktreeName}-${serviceName}-${publishedPort}`
-  const hostname = `${worktreeName}.${domain}`
+  const hostname = formatHostname(worktreeName, domain)
 
   return [
     `traefik.tcp.routers.${routerName}.rule=HostSNI(\`${hostname}\`)`,

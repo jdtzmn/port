@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
   getProjectName: vi.fn(),
   hookExists: vi.fn(),
   runPostUpHook: vi.fn(),
+  getAllProjects: vi.fn(),
+  getAllHostServices: vi.fn(),
   success: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -52,6 +54,8 @@ vi.mock('../lib/dns.ts', () => ({
 
 vi.mock('../lib/registry.ts', () => ({
   registerProject: mocks.registerProject,
+  getAllProjects: mocks.getAllProjects,
+  getAllHostServices: mocks.getAllHostServices,
 }))
 
 vi.mock('../lib/traefik.ts', () => ({
@@ -126,6 +130,8 @@ describe('up DNS preflight', () => {
     mocks.writeOverrideFile.mockResolvedValue(undefined)
     mocks.runCompose.mockResolvedValue({ exitCode: 0 })
     mocks.registerProject.mockResolvedValue(undefined)
+    mocks.getAllProjects.mockResolvedValue([])
+    mocks.getAllHostServices.mockResolvedValue([])
     mocks.getServicePorts.mockReturnValue([])
     mocks.hookExists.mockResolvedValue(false)
     mocks.runPostUpHook.mockResolvedValue({ success: true, exitCode: 0 })

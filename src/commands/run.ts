@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'child_process'
 import inquirer from 'inquirer'
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, ensurePortRuntimeDir } from '../lib/config.ts'
-import { getHostService } from '../lib/registry.ts'
+import { getHostService, getAllProjects, getAllHostServices } from '../lib/registry.ts'
 import { ensureTraefikPorts, traefikFilesExist, initTraefikFiles } from '../lib/traefik.ts'
 import { startTraefik, isTraefikRunning, restartTraefik } from '../lib/compose.ts'
 import {
@@ -14,6 +14,7 @@ import {
   cleanupStaleHostServices,
   stopHostService,
 } from '../lib/hostService.ts'
+import { findHostnameLabelCollisions, formatHostname, formatHostnameLabel } from '../lib/hostname.ts'
 import type { HostService } from '../types.ts'
 import * as output from '../lib/output.ts'
 
@@ -51,6 +52,14 @@ export async function run(logicalPort: number, command: string[]): Promise<void>
   // Load config to get domain (defaults when config file is absent)
   const config = await loadConfigOrDefault(repoRoot)
   const domain = config.domain
+
+  const [projects, hostServices] = await Promise.all([getAllProjects(), getAllHostServices()])
+  const collisions = findHostnameLabelCollisions(repoRoot, branch, [...projects, ...hostServices])
+  if (collisions.length > 0) {
+    output.warn(
+      `Hostname label "${formatHostnameLabel(branch)}" already exists for another active service. URLs may collide.`
+    )
+  }
 
   // Clean up stale host services
   await cleanupStaleHostServices()
@@ -161,7 +170,7 @@ export async function run(logicalPort: number, command: string[]): Promise<void>
   }
 
   output.newline()
-  output.success(`Service running at ${output.url(`http://${branch}.${domain}:${logicalPort}`)}`)
+  output.success(`Service running at ${output.url(`http://${formatHostname(branch, domain)}:${logicalPort}`)}`)
   output.info(`Running: ${command.join(' ')}`)
   output.newline()
 
