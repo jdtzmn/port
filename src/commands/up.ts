@@ -1,6 +1,7 @@
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
 import { registerProject, getAllProjects, getAllHostServices } from '../lib/registry.ts'
+import { isProcessRunning } from '../lib/hostService.ts'
 import {
   ensureTraefikPorts,
   traefikFilesExist,
@@ -66,7 +67,8 @@ export async function up(requestedServices: string[] = []): Promise<void> {
   const composeFile = getComposeFile(config)
 
   const [projects, hostServices] = await Promise.all([getAllProjects(), getAllHostServices()])
-  const collisions = findHostnameLabelCollisions(repoRoot, name, [...projects, ...hostServices])
+  const liveHostServices = hostServices.filter(service => isProcessRunning(service.pid))
+  const collisions = findHostnameLabelCollisions(repoRoot, name, [...projects, ...liveHostServices])
   if (collisions.length > 0) {
     output.warn(
       `Hostname label "${formatHostnameLabel(name)}" already exists for another active service. URLs may collide.`

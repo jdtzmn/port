@@ -13,6 +13,7 @@ import {
   unregisterHostService,
   cleanupStaleHostServices,
   stopHostService,
+  isProcessRunning,
 } from '../lib/hostService.ts'
 import {
   findHostnameLabelCollisions,
@@ -58,7 +59,11 @@ export async function run(logicalPort: number, command: string[]): Promise<void>
   const domain = config.domain
 
   const [projects, hostServices] = await Promise.all([getAllProjects(), getAllHostServices()])
-  const collisions = findHostnameLabelCollisions(repoRoot, branch, [...projects, ...hostServices])
+  const liveHostServices = hostServices.filter(service => isProcessRunning(service.pid))
+  const collisions = findHostnameLabelCollisions(repoRoot, branch, [
+    ...projects,
+    ...liveHostServices,
+  ])
   if (collisions.length > 0) {
     output.warn(
       `Hostname label "${formatHostnameLabel(branch)}" already exists for another active service. URLs may collide.`
