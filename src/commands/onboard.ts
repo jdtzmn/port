@@ -2,95 +2,15 @@ import { writeFile } from 'fs/promises'
 import { resolve } from 'path'
 import * as output from '../lib/output.ts'
 import { detectWorktree } from '../lib/worktree.ts'
+import { guideEntriesByCategory, PORT_SUMMARY } from '../lib/commandGuide.ts'
 
-interface OnboardStep {
-  command: string
-  how: string
-  why: string
-}
-
-const STEPS: OnboardStep[] = [
-  {
-    command: 'port init',
-    how: 'Run in your repository root if setup has not been done yet (check with port status first).',
-    why: 'Creates .port config, hooks, and worktree directories.',
-  },
-  {
-    command: 'port install',
-    how: 'Run once per machine (or when changing domain/IP).',
-    why: 'Configures wildcard DNS so branch domains resolve locally.',
-  },
-  {
-    command: 'port shell-hook <bash|zsh|fish>',
-    how: 'Add eval "$(port shell-hook bash)" to your shell profile (one-time setup).',
-    why: 'Enables port enter/exit to change your shell directory automatically.',
-  },
-  {
-    command: 'port enter <branch>',
-    how: 'Use explicit enter, especially when branch names match commands or are already checked out elsewhere.',
-    why: 'Creates or enters the branch worktree and changes into it, reusing an existing checked-out worktree when needed.',
-  },
-  {
-    command: 'port up [services...]',
-    how: 'Run inside a worktree after entering it. Omit services to start everything, or pass specific service names to start a subset and their dependencies.',
-    why: 'Starts services and wires routing through Traefik.',
-  },
-  {
-    command: 'port open',
-    how: 'Run after port up [services...] if you want to trigger your post-up workflow manually.',
-    why: 'Re-runs the post-up hook (for example, open the browser to your branch URL).',
-  },
-  {
-    command: 'port urls [service]',
-    how: 'Run in a worktree or repository root.',
-    why: 'Shows the exact branch URLs to open and share.',
-  },
-  {
-    command: 'port status',
-    how: 'Run anytime when you need service-level visibility.',
-    why: 'Shows running/stopped services across all worktrees.',
-  },
-  {
-    command: 'port down [services...]',
-    how: 'Run in a worktree when you want to stop everything or selectively remove a subset of services while leaving the rest running.',
-    why: 'Stops services and removes the selected containers without tearing down the whole worktree.',
-  },
-  {
-    command: 'port exit',
-    how: 'Run to return to the repository root from a worktree.',
-    why: 'Changes back to the repo root and clears PORT_WORKTREE env var.',
-  },
-  {
-    command: 'port rename <branch>',
-    how: 'Run inside a worktree after stopping its services. Alias: port mv <branch>.',
-    why: 'Renames the current worktree and branch while keeping Port state aligned.',
-  },
-  {
-    command: 'port remove <branch>',
-    how: 'Use after a branch is done.',
-    why: 'Stops services, removes worktree, and archives the local branch.',
-  },
-]
-
-const ADDITIONAL_COMMANDS: OnboardStep[] = [
-  {
-    command: 'port compose [args...]',
-    how: 'Alias: port dc. Run inside a worktree to run docker compose commands.',
-    why: "Automatically applies -f flags for the worktree's compose files.",
-  },
-  {
-    command: 'port completion <shell>',
-    how: 'Run once to generate shell completion script (bash, zsh, or fish).',
-    why: 'Enables tab completion for port commands and options.',
-  },
-]
+const RECOMMENDED_COMMANDS = guideEntriesByCategory('recommended')
+const ADDITIONAL_COMMANDS = guideEntriesByCategory('additional')
+const USEFUL_CHECKS = guideEntriesByCategory('useful')
 
 /**
- * Generate markdown content from the STEPS data structure.
+ * Generate markdown content from the shared command guide data structure.
  */
-const SUMMARY =
-  'Port is a CLI for managing git worktrees that makes it easy to create, enter, and tear down parallel working copies of your repo. When those worktrees run Docker Compose services, Port can automatically stand up a Traefik reverse proxy so every worktree can bind the same ports without conflicts \u2014 each accessed via its own hostname (e.g., `feature-1.port:3000`).'
-
 export function generateMarkdown(): string {
   const lines: string[] = []
 
@@ -98,12 +18,12 @@ export function generateMarkdown(): string {
   lines.push('')
   lines.push('# Port Onboarding')
   lines.push('')
-  lines.push(SUMMARY)
+  lines.push(PORT_SUMMARY)
   lines.push('')
   lines.push('## Recommended Flow')
   lines.push('')
 
-  for (const [index, step] of STEPS.entries()) {
+  for (const [index, step] of RECOMMENDED_COMMANDS.entries()) {
     lines.push(`### ${index + 1}. \`${step.command}\``)
     lines.push('')
     lines.push(`- **How**: ${step.how}`)
@@ -121,9 +41,9 @@ export function generateMarkdown(): string {
 
   lines.push('## Useful Checks')
   lines.push('')
-  lines.push('- `port list`: list worktree names')
-  lines.push('- `port kill [port]`: stop host processes started with port run')
-  lines.push('- `port cleanup`: delete archived local branches from port remove')
+  for (const step of USEFUL_CHECKS) {
+    lines.push(`- \`${step.command}\`: ${step.description}`)
+  }
   lines.push('')
 
   return lines.join('\n')
@@ -145,12 +65,12 @@ export async function onboard(options?: { md?: boolean }): Promise<void> {
 
   output.header('Port onboarding')
   output.newline()
-  output.dim(SUMMARY)
+  output.dim(PORT_SUMMARY)
   output.newline()
   output.info('Recommended flow:')
   output.newline()
 
-  for (const [index, step] of STEPS.entries()) {
+  for (const [index, step] of RECOMMENDED_COMMANDS.entries()) {
     output.header(`${index + 1}. ${output.command(step.command)}`)
     output.dim(`   How: ${step.how}`)
     output.dim(`   Why: ${step.why}`)
@@ -166,7 +86,7 @@ export async function onboard(options?: { md?: boolean }): Promise<void> {
   output.newline()
 
   output.info('Useful checks:')
-  output.dim(`- ${output.command('port list')}: list worktree names`)
-  output.dim(`- ${output.command('port kill [port]')}: stop host processes started with port run`)
-  output.dim(`- ${output.command('port cleanup')}: delete archived local branches from port remove`)
+  for (const step of USEFUL_CHECKS) {
+    output.dim(`- ${output.command(step.command)}: ${step.description}`)
+  }
 }

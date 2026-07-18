@@ -43,6 +43,16 @@ bun add -g @jdtzmn/port
 
 `port` executes with a Bun shebang (`#!/usr/bin/env bun`), so Bun must be installed and available on `PATH` even when the package is installed via npm.
 
+### Agent Skill
+
+Port ships an installable Agent Skill that teaches compatible coding agents the safe Port workflow: setup, entering worktrees, starting services, viewing URLs, running host processes, and cleaning up.
+
+```bash
+npx skills add jdtzmn/port --skill port-cli -g
+# or from a local checkout
+npx skills add . --skill port-cli --copy -y
+```
+
 ## Quick Start
 
 Want a guided workflow in the CLI?
@@ -556,6 +566,9 @@ port/
 │   │   ├── sanitize.ts
 │   │   └── worktree.ts
 │   └── types.ts
+├── skills/
+│   └── port-cli/
+│       └── SKILL.md             # Installable Agent Skill for coding agents
 ├── traefik/
 │   └── docker-compose.yml
 └── README.md
