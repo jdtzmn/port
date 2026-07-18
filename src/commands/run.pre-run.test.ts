@@ -1,11 +1,28 @@
-import { EventEmitter } from 'events'
-import { mkdir, rm, writeFile, chmod } from 'fs/promises'
+import { mkdir, readFile, rm, writeFile, chmod } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { mkdtempSync } from 'fs'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ChildProcess } from 'child_process'
 import { PORT_DIR, HOOKS_DIR } from '../lib/config.ts'
+
+async function readFileEventually(path: string, timeoutMs = 2000): Promise<string> {
+  const start = Date.now()
+
+  while (Date.now() - start < timeoutMs) {
+    try {
+      return await readFile(path, 'utf8')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+  }
+
+  return readFile(path, 'utf8')
+}
 
 const mocks = vi.hoisted(() => {
   return {
@@ -16,6 +33,7 @@ const mocks = vi.hoisted(() => {
       args: string[]
       options: { env?: NodeJS.ProcessEnv }
     }>,
+    spawnedChildren: [] as ChildProcess[],
   }
 })
 
@@ -31,8 +49,8 @@ vi.mock('child_process', async importOriginal => {
 
       mocks.spawnedCommands.push({ cmd, args, options })
 
-      const child = new EventEmitter() as ChildProcess & { pid: number }
-      child.pid = 12345
+      const child = actual.spawn(cmd, args, options)
+      mocks.spawnedChildren.push(child)
       return child
     }),
   }
@@ -91,6 +109,7 @@ describe('port run pre-run hook', () => {
     mocks.repoRoot = mkdtempSync(join(tmpdir(), 'port-run-pre-run-test-'))
     mocks.worktreePath = join(mocks.repoRoot, PORT_DIR, 'trees', 'feature-1')
     mocks.spawnedCommands = []
+    mocks.spawnedChildren = []
 
     const hooksDir = join(mocks.repoRoot, PORT_DIR, HOOKS_DIR)
     await mkdir(hooksDir, { recursive: true })
@@ -117,15 +136,36 @@ describe('port run pre-run hook', () => {
     } else {
       process.env.DATABASE_URL = originalDatabaseUrl
     }
+    for (const child of mocks.spawnedChildren) {
+      child.removeAllListeners('exit')
+      child.removeAllListeners('error')
+      if (!child.killed) {
+        child.kill()
+      }
+    }
 
     await rm(mocks.repoRoot, { recursive: true, force: true })
   })
 
-  test('runs pre-run before spawning the host process and applies env overrides', async () => {
-    await run(3000, ['bun', 'run', 'dev'])
+  test('runs pre-run before the host process and applies env overrides to the running script', async () => {
+    const observedEnvPath = join(mocks.worktreePath, 'observed-env.json')
+    const script = [
+      `await Bun.write(${JSON.stringify(observedEnvPath)}, JSON.stringify({`,
+      '  PORT: process.env.PORT,',
+      '  DATABASE_URL: process.env.DATABASE_URL,',
+      '  HOOK_MARKER: process.env.HOOK_MARKER,',
+      '}))',
+      'setInterval(() => {}, 1000)',
+    ].join('\n')
+
+    await run(3000, ['bun', '-e', script])
 
     expect(mocks.spawnedCommands).toHaveLength(1)
-    expect(mocks.spawnedCommands[0]?.options.env).toMatchObject({
+    const observedEnv = JSON.parse(await readFileEventually(observedEnvPath)) as Record<
+      string,
+      string
+    >
+    expect(observedEnv).toMatchObject({
       PORT: '49152',
       DATABASE_URL: 'postgres://user:pass@feature-1.port:5432/app_db',
       HOOK_MARKER: 'ran',
