@@ -42,6 +42,11 @@ jobs:
           bun -e "import { generateMarkdown } from './src/commands/onboard.ts'; require('fs').writeFileSync('ONBOARD.md', generateMarkdown());"
           git diff --exit-code ONBOARD.md || (echo "ONBOARD.md is out of sync — run 'port onboard --md' to regenerate" && exit 1)
 
+      - name: Check Port skill is up to date
+        run: |
+          bun run generate:skill
+          git diff --exit-code skills/port-cli/SKILL.md || (echo "skills/port-cli/SKILL.md is out of sync — run 'bun run generate:skill' to regenerate" && exit 1)
+
   linux-integration:
     name: Linux Integration Tests
     needs: core-checks

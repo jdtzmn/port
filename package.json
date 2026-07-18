@@ -39,6 +39,7 @@
     "lint:fix": "bunx eslint . --fix",
     "format": "bunx prettier --write .",
     "format:check": "bunx prettier --check .",
+    "generate:skill": "bun scripts/generate-port-skill.ts && bun x prettier --write skills/port-cli/SKILL.md",
     "test": "bunx vitest",
     "test:tui": "bun test src/tui/__tests__/"
   },

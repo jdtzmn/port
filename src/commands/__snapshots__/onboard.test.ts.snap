@@ -19,45 +19,45 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 - **How**: Run once per machine (or when changing domain/IP).
 - **Why**: Configures wildcard DNS so branch domains resolve locally.
 
-### 3. \`port shell-hook <bash|zsh|fish>\`
-
-- **How**: Add eval "$(port shell-hook bash)" to your shell profile (one-time setup).
-- **Why**: Enables port enter/exit to change your shell directory automatically.
-
-### 4. \`port enter <branch>\`
-
-- **How**: Use explicit enter, especially when branch names match commands or are already checked out elsewhere.
-- **Why**: Creates or enters the branch worktree and changes into it, reusing an existing checked-out worktree when needed.
-
-### 5. \`port up [services...]\`
-
-- **How**: Run inside a worktree after entering it. Omit services to start everything, or pass specific service names to start a subset and their dependencies.
-- **Why**: Starts services and wires routing through Traefik.
-
-### 6. \`port open\`
-
-- **How**: Run after port up [services...] if you want to trigger your post-up workflow manually.
-- **Why**: Re-runs the post-up hook (for example, open the browser to your branch URL).
-
-### 7. \`port urls [service]\`
-
-- **How**: Run in a worktree or repository root.
-- **Why**: Shows the exact branch URLs to open and share.
-
-### 8. \`port status\`
+### 3. \`port status\`
 
 - **How**: Run anytime when you need service-level visibility.
 - **Why**: Shows running/stopped services across all worktrees.
 
-### 9. \`port down [services...]\`
+### 4. \`port shell-hook <bash|zsh|fish>\`
+
+- **How**: Add eval "$(port shell-hook bash)" to your shell profile (one-time setup).
+- **Why**: Enables port enter/exit to change your shell directory automatically.
+
+### 5. \`port enter <branch>\`
+
+- **How**: Use explicit enter, especially when branch names match commands or are already checked out elsewhere.
+- **Why**: Creates or enters the branch worktree and changes into it, reusing an existing checked-out worktree when needed.
+
+### 6. \`port exit\`
+
+- **How**: Run to return to the repository root from a worktree.
+- **Why**: Changes back to the repo root and clears PORT_WORKTREE env var.
+
+### 7. \`port up [services...]\`
+
+- **How**: Run inside a worktree after entering it. Omit services to start everything, or pass specific service names to start a subset and their dependencies.
+- **Why**: Starts services and wires routing through Traefik.
+
+### 8. \`port down [services...]\`
 
 - **How**: Run in a worktree when you want to stop everything or selectively remove a subset of services while leaving the rest running.
 - **Why**: Stops services and removes the selected containers without tearing down the whole worktree.
 
-### 10. \`port exit\`
+### 9. \`port urls [service]\`
 
-- **How**: Run to return to the repository root from a worktree.
-- **Why**: Changes back to the repo root and clears PORT_WORKTREE env var.
+- **How**: Run in a worktree or repository root.
+- **Why**: Shows the exact branch URLs to open and share.
+
+### 10. \`port open\`
+
+- **How**: Run after port up [services...] if you want to trigger your post-up workflow manually.
+- **Why**: Re-runs the post-up hook (for example, open the browser to your branch URL).
 
 ### 11. \`port rename <branch>\`
 
@@ -71,16 +71,27 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 
 ## Additional Commands
 
+- **\`port onboard\`**: Shows the recommended Port workflow from the shared command metadata.
+  - Run when a user wants a guided overview, or use \`port onboard --md\` to regenerate ONBOARD.md.
+- **\`port completion <bash|zsh|fish>\`**: Enables tab completion for port commands and options.
+  - Run once to generate shell completion script (bash, zsh, or fish).
+- **\`port <branch>\`**: Creates or enters a branch worktree quickly.
+  - Use as shorthand when the branch name does not match a Port command.
 - **\`port compose [args...]\`**: Automatically applies -f flags for the worktree's compose files.
   - Alias: port dc. Run inside a worktree to run docker compose commands.
-- **\`port completion <shell>\`**: Enables tab completion for port commands and options.
-  - Run once to generate shell completion script (bash, zsh, or fish).
+- **\`port hook [hook-name]\`**: Lets users inspect or manually re-run Port lifecycle hooks.
+  - Use \`port hook --list\` to inspect hooks, or \`port hook <hook-name>\` to run one.
+- **\`port prune\`**: Cleans up worktrees whose branches have already been merged.
+  - Start with \`port prune --dry-run\`; use \`--force\` only after confirming candidates.
+- **\`port uninstall\`**: Removes machine-level DNS configuration created by port install.
+  - Run when the user explicitly wants to remove Port DNS setup for a domain.
 
 ## Useful Checks
 
-- \`port list\`: list worktree names
-- \`port kill [port]\`: stop host processes started with port run
-- \`port cleanup\`: delete archived local branches from port remove
+- \`port list\`: Print worktree names, one per line
+- \`port run <port> -- <command...>\`: Run a host process with Traefik routing
+- \`port kill [port]\`: Stop host services (optionally by logical port)
+- \`port cleanup\`: Delete archived branches created by port remove
 "
 `;
 
@@ -103,45 +114,45 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 - **How**: Run once per machine (or when changing domain/IP).
 - **Why**: Configures wildcard DNS so branch domains resolve locally.
 
-### 3. \`port shell-hook <bash|zsh|fish>\`
-
-- **How**: Add eval "$(port shell-hook bash)" to your shell profile (one-time setup).
-- **Why**: Enables port enter/exit to change your shell directory automatically.
-
-### 4. \`port enter <branch>\`
-
-- **How**: Use explicit enter, especially when branch names match commands or are already checked out elsewhere.
-- **Why**: Creates or enters the branch worktree and changes into it, reusing an existing checked-out worktree when needed.
-
-### 5. \`port up [services...]\`
-
-- **How**: Run inside a worktree after entering it. Omit services to start everything, or pass specific service names to start a subset and their dependencies.
-- **Why**: Starts services and wires routing through Traefik.
-
-### 6. \`port open\`
-
-- **How**: Run after port up [services...] if you want to trigger your post-up workflow manually.
-- **Why**: Re-runs the post-up hook (for example, open the browser to your branch URL).
-
-### 7. \`port urls [service]\`
-
-- **How**: Run in a worktree or repository root.
-- **Why**: Shows the exact branch URLs to open and share.
-
-### 8. \`port status\`
+### 3. \`port status\`
 
 - **How**: Run anytime when you need service-level visibility.
 - **Why**: Shows running/stopped services across all worktrees.
 
-### 9. \`port down [services...]\`
+### 4. \`port shell-hook <bash|zsh|fish>\`
+
+- **How**: Add eval "$(port shell-hook bash)" to your shell profile (one-time setup).
+- **Why**: Enables port enter/exit to change your shell directory automatically.
+
+### 5. \`port enter <branch>\`
+
+- **How**: Use explicit enter, especially when branch names match commands or are already checked out elsewhere.
+- **Why**: Creates or enters the branch worktree and changes into it, reusing an existing checked-out worktree when needed.
+
+### 6. \`port exit\`
+
+- **How**: Run to return to the repository root from a worktree.
+- **Why**: Changes back to the repo root and clears PORT_WORKTREE env var.
+
+### 7. \`port up [services...]\`
+
+- **How**: Run inside a worktree after entering it. Omit services to start everything, or pass specific service names to start a subset and their dependencies.
+- **Why**: Starts services and wires routing through Traefik.
+
+### 8. \`port down [services...]\`
 
 - **How**: Run in a worktree when you want to stop everything or selectively remove a subset of services while leaving the rest running.
 - **Why**: Stops services and removes the selected containers without tearing down the whole worktree.
 
-### 10. \`port exit\`
+### 9. \`port urls [service]\`
 
-- **How**: Run to return to the repository root from a worktree.
-- **Why**: Changes back to the repo root and clears PORT_WORKTREE env var.
+- **How**: Run in a worktree or repository root.
+- **Why**: Shows the exact branch URLs to open and share.
+
+### 10. \`port open\`
+
+- **How**: Run after port up [services...] if you want to trigger your post-up workflow manually.
+- **Why**: Re-runs the post-up hook (for example, open the browser to your branch URL).
 
 ### 11. \`port rename <branch>\`
 
@@ -155,15 +166,26 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 
 ## Additional Commands
 
+- **\`port onboard\`**: Shows the recommended Port workflow from the shared command metadata.
+  - Run when a user wants a guided overview, or use \`port onboard --md\` to regenerate ONBOARD.md.
+- **\`port completion <bash|zsh|fish>\`**: Enables tab completion for port commands and options.
+  - Run once to generate shell completion script (bash, zsh, or fish).
+- **\`port <branch>\`**: Creates or enters a branch worktree quickly.
+  - Use as shorthand when the branch name does not match a Port command.
 - **\`port compose [args...]\`**: Automatically applies -f flags for the worktree's compose files.
   - Alias: port dc. Run inside a worktree to run docker compose commands.
-- **\`port completion <shell>\`**: Enables tab completion for port commands and options.
-  - Run once to generate shell completion script (bash, zsh, or fish).
+- **\`port hook [hook-name]\`**: Lets users inspect or manually re-run Port lifecycle hooks.
+  - Use \`port hook --list\` to inspect hooks, or \`port hook <hook-name>\` to run one.
+- **\`port prune\`**: Cleans up worktrees whose branches have already been merged.
+  - Start with \`port prune --dry-run\`; use \`--force\` only after confirming candidates.
+- **\`port uninstall\`**: Removes machine-level DNS configuration created by port install.
+  - Run when the user explicitly wants to remove Port DNS setup for a domain.
 
 ## Useful Checks
 
-- \`port list\`: list worktree names
-- \`port kill [port]\`: stop host processes started with port run
-- \`port cleanup\`: delete archived local branches from port remove
+- \`port list\`: Print worktree names, one per line
+- \`port run <port> -- <command...>\`: Run a host process with Traefik routing
+- \`port kill [port]\`: Stop host services (optionally by logical port)
+- \`port cleanup\`: Delete archived branches created by port remove
 "
 `;
