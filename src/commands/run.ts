@@ -1,4 +1,7 @@
 import { spawn, type ChildProcess } from 'child_process'
+import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import inquirer from 'inquirer'
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, ensurePortRuntimeDir } from '../lib/config.ts'
@@ -22,6 +25,33 @@ import {
 } from '../lib/hostname.ts'
 import type { HostService } from '../types.ts'
 import * as output from '../lib/output.ts'
+import { hookExists, runPreRunHook } from '../lib/hooks.ts'
+
+function parseEnvOverrides(content: string): NodeJS.ProcessEnv {
+  const overrides: NodeJS.ProcessEnv = {}
+
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim()
+
+    if (!trimmed || trimmed.startsWith('#')) {
+      continue
+    }
+
+    const equalsIndex = trimmed.indexOf('=')
+    if (equalsIndex <= 0) {
+      continue
+    }
+
+    const key = trimmed.slice(0, equalsIndex)
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      continue
+    }
+
+    overrides[key] = trimmed.slice(equalsIndex + 1)
+  }
+
+  return overrides
+}
 
 /**
  * Run a host process with Traefik routing
@@ -154,6 +184,38 @@ export async function run(logicalPort: number, command: string[]): Promise<void>
     await unregisterHostService(repoRoot, branch, logicalPort)
   }
 
+  let envOverrides: NodeJS.ProcessEnv = {}
+  if (await hookExists(repoRoot, 'pre-run')) {
+    const envDir = await mkdtemp(join(tmpdir(), 'port-pre-run-'))
+    const envFile = join(envDir, 'env')
+
+    try {
+      await writeFile(envFile, '')
+      output.info('Running pre-run hook...')
+      const result = await runPreRunHook({
+        repoRoot,
+        worktreePath: worktreeInfo.worktreePath,
+        branch,
+        domain,
+        logicalPort,
+        actualPort,
+        envFile,
+      })
+
+      if (!result.success) {
+        output.error(`Pre-run hook failed (exit code ${result.exitCode})`)
+        output.dim('See .port/logs/latest.log for details')
+        await cleanup()
+        process.exit(result.exitCode)
+      }
+
+      envOverrides = parseEnvOverrides(await readFile(envFile, 'utf8'))
+      output.success('Pre-run hook completed')
+    } finally {
+      await rm(envDir, { recursive: true, force: true })
+    }
+  }
+
   // Set up signal handlers
   let cleanupDone = false
   const handleSignal = async (signal: string, exitCode: number) => {
@@ -189,6 +251,7 @@ export async function run(logicalPort: number, command: string[]): Promise<void>
     stdio: 'inherit',
     env: {
       ...process.env,
+      ...envOverrides,
       PORT: actualPort.toString(),
     },
   })

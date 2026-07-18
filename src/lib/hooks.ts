@@ -21,6 +21,9 @@ export const HOOK_DEFINITIONS = {
   'post-up': {
     manualScopes: ['worktree', 'main'],
   },
+  'pre-run': {
+    manualScopes: ['worktree'],
+  },
 } as const satisfies Record<string, HookDefinition>
 
 /** Available hook names derived from HOOK_DEFINITIONS */
@@ -50,6 +53,12 @@ export interface HookEnv {
   PORT_BRANCH?: string
   /** Domain suffix from port config */
   PORT_DOMAIN?: string
+  /** File path where hooks can append KEY=VALUE lines to override child env */
+  PORT_ENV_FILE?: string
+  /** Logical port requested by the user */
+  PORT_LOGICAL_PORT?: string
+  /** Actual ephemeral port allocated for the host process */
+  PORT_ACTUAL_PORT?: string
 }
 
 /**
@@ -276,6 +285,39 @@ export async function runPostUpHook(options: {
       PORT_WORKTREE_PATH: worktreePath,
       PORT_BRANCH: branch,
       PORT_DOMAIN: domain,
+    },
+    branch
+  )
+}
+
+/**
+ * Run the pre-run hook before starting a host process.
+ *
+ * The hook can append KEY=VALUE lines to PORT_ENV_FILE to override environment
+ * variables passed to the spawned command.
+ */
+export async function runPreRunHook(options: {
+  repoRoot: string
+  worktreePath: string
+  branch: string
+  domain: string
+  logicalPort: number
+  actualPort: number
+  envFile: string
+}): Promise<HookResult> {
+  const { repoRoot, worktreePath, branch, domain, logicalPort, actualPort, envFile } = options
+
+  return runHook(
+    repoRoot,
+    'pre-run',
+    {
+      PORT_ROOT_PATH: repoRoot,
+      PORT_WORKTREE_PATH: worktreePath,
+      PORT_BRANCH: branch,
+      PORT_DOMAIN: domain,
+      PORT_LOGICAL_PORT: logicalPort.toString(),
+      PORT_ACTUAL_PORT: actualPort.toString(),
+      PORT_ENV_FILE: envFile,
     },
     branch
   )

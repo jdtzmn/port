@@ -9,6 +9,7 @@ import {
   HOOKS_DIR,
   POST_CREATE_HOOK,
   POST_UP_HOOK,
+  PRE_RUN_HOOK,
   PORT_RUNTIME_GITIGNORE,
   getPortDir,
   getConfigPath,
@@ -70,6 +71,31 @@ const POST_UP_HOOK_TEMPLATE = `#!/bin/bash
 # Uncomment and customize below:
 # echo "Opening app for $PORT_BRANCH..."
 # open "http://$PORT_BRANCH.$PORT_DOMAIN:3000"
+`
+
+/** Pre-run hook template */
+const PRE_RUN_HOOK_TEMPLATE = `#!/bin/bash
+# Port pre-run hook
+# Runs before 'port run <port> -- <command...>' starts the host process
+#
+# Available environment variables:
+#   PORT_ROOT_PATH     - Absolute path to the main repository root
+#   PORT_WORKTREE_PATH - Absolute path to the current worktree
+#   PORT_BRANCH        - The branch name (sanitized)
+#   PORT_DOMAIN        - Configured domain suffix (for example: port)
+#   PORT_LOGICAL_PORT  - The port users access via <branch>.<domain>:PORT
+#   PORT_ACTUAL_PORT   - The ephemeral local port assigned to the process
+#   PORT_ENV_FILE      - Append KEY=VALUE lines here to override command env
+#
+# Exit non-zero to abort the host process before it starts.
+#
+# Example: point DATABASE_URL at this worktree's routed database host
+#   if [ -n "\${DATABASE_URL:-}" ]; then
+#     echo "DATABASE_URL=\${DATABASE_URL/localhost:5432/$PORT_BRANCH.$PORT_DOMAIN:5432}" >> "$PORT_ENV_FILE"
+#   fi
+
+# Uncomment and customize below:
+# echo "Preparing run env for $PORT_BRANCH..."
 `
 
 /** User compose override template */
@@ -148,6 +174,7 @@ export async function init(): Promise<void> {
   const hooksDir = getHooksDir(repoRoot)
   const postCreateHookPath = getHookPath(repoRoot, 'post-create')
   const postUpHookPath = getHookPath(repoRoot, 'post-up')
+  const preRunHookPath = getHookPath(repoRoot, 'pre-run')
 
   if (!existsSync(hooksDir)) {
     await mkdir(hooksDir, { recursive: true })
@@ -168,6 +195,14 @@ export async function init(): Promise<void> {
     output.success(`Created ${PORT_DIR}/${HOOKS_DIR}/${POST_UP_HOOK}`)
   } else {
     output.dim(`${PORT_DIR}/${HOOKS_DIR}/${POST_UP_HOOK} already exists`)
+  }
+
+  if (!existsSync(preRunHookPath)) {
+    await writeFile(preRunHookPath, PRE_RUN_HOOK_TEMPLATE)
+    await chmod(preRunHookPath, 0o755) // Make executable
+    output.success(`Created ${PORT_DIR}/${HOOKS_DIR}/${PRE_RUN_HOOK}`)
+  } else {
+    output.dim(`${PORT_DIR}/${HOOKS_DIR}/${PRE_RUN_HOOK} already exists`)
   }
 
   // Create user override compose template

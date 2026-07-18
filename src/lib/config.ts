@@ -36,6 +36,9 @@ export const POST_CREATE_HOOK = 'post-create.sh'
 /** Post-up hook file name */
 export const POST_UP_HOOK = 'post-up.sh'
 
+/** Pre-run hook file name */
+export const PRE_RUN_HOOK = 'pre-run.sh'
+
 /** Default domain suffix */
 export const DEFAULT_DOMAIN = 'port'
 

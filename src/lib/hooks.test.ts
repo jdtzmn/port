@@ -15,6 +15,7 @@ import {
   runHook,
   runPostCreateHook,
   runPostUpHook,
+  runPreRunHook,
   type HookEnv,
 } from './hooks.ts'
 import { PORT_DIR, HOOKS_DIR, LOGS_DIR, LATEST_LOG } from './config.ts'
@@ -81,12 +82,13 @@ describe('Path helper functions', () => {
 
 describe('hook definitions', () => {
   test('includes all hook names from definitions', () => {
-    expect(HOOK_NAMES).toEqual(['post-create', 'post-up'])
+    expect(HOOK_NAMES).toEqual(['post-create', 'post-up', 'pre-run'])
   })
 
-  test('allows post-up in main repo but restricts post-create', () => {
+  test('allows post-up in main repo but restricts worktree-only hooks', () => {
     expect(canRunHookInContext('post-up', true)).toBe(true)
     expect(canRunHookInContext('post-create', true)).toBe(false)
+    expect(canRunHookInContext('pre-run', true)).toBe(false)
   })
 })
 
@@ -593,5 +595,57 @@ echo "DOMAIN=$PORT_DOMAIN" >> "${outputFile}"
     const content = readFileSync(outputFile, 'utf-8')
     expect(content).toContain('BRANCH=feature/test')
     expect(content).toContain('DOMAIN=port')
+  })
+})
+
+describe('runPreRunHook', () => {
+  let repoRoot: string
+  let worktreePath: string
+
+  beforeEach(async () => {
+    repoRoot = await setupMockRepo()
+    worktreePath = join(repoRoot, '.port', 'trees', 'test-branch')
+    await mkdir(worktreePath, { recursive: true })
+  })
+
+  afterEach(async () => {
+    await rm(repoRoot, { recursive: true, force: true })
+  })
+
+  test('passes run-specific env values and env file path', async () => {
+    const outputFile = join(repoRoot, 'env-check-run.txt')
+    const envFile = join(repoRoot, 'pre-run.env')
+    await createExecutableScript(
+      getHooksDir(repoRoot),
+      'pre-run.sh',
+      `#!/bin/bash
+echo "BRANCH=$PORT_BRANCH" >> "${outputFile}"
+echo "DOMAIN=$PORT_DOMAIN" >> "${outputFile}"
+echo "LOGICAL=$PORT_LOGICAL_PORT" >> "${outputFile}"
+echo "ACTUAL=$PORT_ACTUAL_PORT" >> "${outputFile}"
+echo "ENV_FILE=$PORT_ENV_FILE" >> "${outputFile}"
+echo "HOOK_MARKER=ran" >> "$PORT_ENV_FILE"
+`
+    )
+
+    const result = await runPreRunHook({
+      repoRoot,
+      worktreePath,
+      branch: 'feature/test',
+      domain: 'port',
+      logicalPort: 3000,
+      actualPort: 49152,
+      envFile,
+    })
+
+    expect(result.success).toBe(true)
+
+    const content = readFileSync(outputFile, 'utf-8')
+    expect(content).toContain('BRANCH=feature/test')
+    expect(content).toContain('DOMAIN=port')
+    expect(content).toContain('LOGICAL=3000')
+    expect(content).toContain('ACTUAL=49152')
+    expect(content).toContain(`ENV_FILE=${envFile}`)
+    expect(readFileSync(envFile, 'utf-8')).toContain('HOOK_MARKER=ran')
   })
 })
