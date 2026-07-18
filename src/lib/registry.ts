@@ -4,8 +4,6 @@ import { join } from 'path'
 import { homedir } from 'os'
 import type { Registry, Project, HostService, RunningWorktreeNames } from '../types.ts'
 import { withFileLock, writeFileAtomic } from './state.ts'
-import { getWorktreePath } from './worktree.ts'
-import { sanitizeBranchName } from './sanitize.ts'
 
 /** Optional env var to override global state directory (used by tests) */
 const GLOBAL_PORT_DIR_ENV = 'PORT_GLOBAL_DIR'
@@ -290,47 +288,6 @@ export async function getHostServicesForWorktree(
 ): Promise<HostService[]> {
   const registry = await loadRegistry()
   return registry.hostServices?.filter(s => s.repo === repo && s.branch === branch) ?? []
-}
-
-function isProcessRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
- * Check whether the current worktree still has running Docker or host services.
- */
-export async function branchHasRunningServices(
-  repo: string,
-  branch: string,
-  composeFile: string,
-  domain: string
-): Promise<boolean> {
-  const worktreePath = getWorktreePath(repo, branch)
-
-  try {
-    const { composePs, getProjectName } = await import('./compose.ts')
-    const status = await composePs(worktreePath, composeFile, getProjectName(repo, branch), {
-      repoRoot: repo,
-      branch: sanitizeBranchName(branch),
-      domain,
-    })
-
-    if (status.some(service => service.running)) {
-      return true
-    }
-  } catch {
-    // Best effort only.
-  }
-
-  const registry = await loadRegistry()
-  return (registry.hostServices ?? []).some(
-    service => service.repo === repo && service.branch === branch && isProcessRunning(service.pid)
-  )
 }
 
 /**

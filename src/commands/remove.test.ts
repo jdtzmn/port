@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   runCompose: vi.fn(),
   stopTraefik: vi.fn(),
   isTraefikRunning: vi.fn(),
-  getProjectName: vi.fn(),
+  buildProjectName: vi.fn(),
   existsSync: vi.fn(),
   exit: vi.fn(),
   success: vi.fn(),
@@ -69,7 +69,10 @@ vi.mock('../lib/compose.ts', () => ({
   runCompose: mocks.runCompose,
   stopTraefik: mocks.stopTraefik,
   isTraefikRunning: mocks.isTraefikRunning,
-  getProjectName: mocks.getProjectName,
+}))
+
+vi.mock('../lib/projectName.ts', () => ({
+  buildProjectName: mocks.buildProjectName,
 }))
 
 vi.mock('fs', () => ({
@@ -131,7 +134,7 @@ describe('remove command', () => {
     mocks.runCompose.mockResolvedValue({ exitCode: 0 })
     mocks.stopTraefik.mockResolvedValue(undefined)
     mocks.isTraefikRunning.mockResolvedValue(false)
-    mocks.getProjectName.mockReturnValue('repo-demo-2')
+    mocks.buildProjectName.mockReturnValue('repo-demo-2')
 
     mocks.existsSync.mockReturnValue(true)
     mocks.branch.mockImplementation((name: string) => name)

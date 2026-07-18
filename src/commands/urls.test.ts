@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   parseComposeFile: vi.fn(),
   getServicePorts: vi.fn(),
   composePs: vi.fn(),
-  getProjectName: vi.fn(),
+  buildProjectName: vi.fn(),
   header: vi.fn(),
   serviceUrls: vi.fn(),
   branch: vi.fn(),
@@ -30,7 +30,10 @@ vi.mock('../lib/compose.ts', () => ({
   parseComposeFile: mocks.parseComposeFile,
   getServicePorts: mocks.getServicePorts,
   composePs: mocks.composePs,
-  getProjectName: mocks.getProjectName,
+}))
+
+vi.mock('../lib/projectName.ts', () => ({
+  buildProjectName: mocks.buildProjectName,
 }))
 
 vi.mock('../lib/output.ts', () => ({
@@ -59,7 +62,7 @@ describe('urls command', () => {
     mocks.loadConfigOrDefault.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
     mocks.getComposeFile.mockReturnValue('docker-compose.yml')
     mocks.branch.mockImplementation((value: string) => value)
-    mocks.getProjectName.mockReturnValue('repo-feature-1')
+    mocks.buildProjectName.mockReturnValue('repo-feature-1')
     mocks.composePs.mockResolvedValue([])
 
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => {

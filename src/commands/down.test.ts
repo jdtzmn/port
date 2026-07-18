@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
   runCompose: vi.fn(),
   stopTraefik: vi.fn(),
   isTraefikRunning: vi.fn(),
-  getProjectName: vi.fn(),
+  buildProjectName: vi.fn(),
   stopHostService: vi.fn(),
   execAsync: vi.fn(),
   success: vi.fn(),
@@ -59,10 +59,13 @@ vi.mock('../lib/compose.ts', () => ({
   runCompose: mocks.runCompose,
   stopTraefik: mocks.stopTraefik,
   isTraefikRunning: mocks.isTraefikRunning,
-  getProjectName: mocks.getProjectName,
   parseComposeFile: mocks.parseComposeFile,
   resolveComposeServices: mocks.resolveComposeServices,
   getServicePorts: mocks.getServicePorts,
+}))
+
+vi.mock('../lib/projectName.ts', () => ({
+  buildProjectName: mocks.buildProjectName,
 }))
 
 vi.mock('../lib/hostService.ts', () => ({
@@ -107,7 +110,7 @@ describe('down fallback behavior', () => {
     mocks.runCompose.mockResolvedValue({ exitCode: 0 })
     mocks.stopTraefik.mockResolvedValue(undefined)
     mocks.isTraefikRunning.mockResolvedValue(true)
-    mocks.getProjectName.mockReturnValue('demo-main')
+    mocks.buildProjectName.mockReturnValue('demo-main')
     mocks.stopHostService.mockResolvedValue(undefined)
     mocks.execAsync.mockResolvedValue({ stdout: '', stderr: '' })
     mocks.resolveComposeServices.mockReturnValue(['app'])

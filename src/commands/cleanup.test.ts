@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   detectWorktree: vi.fn(),
   listArchivedBranches: vi.fn(),
   deleteLocalBranch: vi.fn(),
-  getProjectName: vi.fn(),
+  buildProjectName: vi.fn(),
   cleanupDockerResources: vi.fn(),
   scanDockerResourcesForProject: vi.fn(),
   header: vi.fn(),
@@ -43,8 +43,8 @@ vi.mock('../lib/output.ts', () => ({
   error: mocks.error,
 }))
 
-vi.mock('../lib/compose.ts', () => ({
-  getProjectName: mocks.getProjectName,
+vi.mock('../lib/projectName.ts', () => ({
+  buildProjectName: mocks.buildProjectName,
 }))
 
 vi.mock('../lib/docker-cleanup.ts', () => ({
@@ -63,7 +63,9 @@ describe('cleanup command', () => {
     mocks.detectWorktree.mockReturnValue({ repoRoot: '/repo' })
     mocks.listArchivedBranches.mockResolvedValue([])
     mocks.branch.mockImplementation((name: string) => name)
-    mocks.getProjectName.mockImplementation((repoRoot: string, branch: string) => `port-${branch}`)
+    mocks.buildProjectName.mockImplementation(
+      (repoRoot: string, branch: string) => `port-${branch}`
+    )
     mocks.cleanupDockerResources.mockResolvedValue({
       volumesRemoved: 0,
       networksRemoved: 0,

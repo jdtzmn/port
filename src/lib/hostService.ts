@@ -4,6 +4,7 @@ import { join } from 'path'
 import { stringify as yamlStringify } from 'yaml'
 import { createServer, type Server } from 'net'
 import { TRAEFIK_DYNAMIC_DIR, ensureTraefikDynamicDir } from './traefik.ts'
+import { formatHostname } from './hostname.ts'
 import {
   registerHostService as registryRegisterHostService,
   unregisterHostService as registryUnregisterHostService,
@@ -81,7 +82,7 @@ export async function writeHostServiceConfig(
   await ensureTraefikDynamicDir()
 
   const routerName = `${branch}-${logicalPort}`
-  const hostname = `${branch}.${domain}`
+  const hostname = formatHostname(branch, domain)
 
   const config = {
     http: {

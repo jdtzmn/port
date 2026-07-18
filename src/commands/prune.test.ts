@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => ({
   branch: vi.fn(),
   cleanupDockerResources: vi.fn(),
   scanDockerResourcesForProject: vi.fn(),
-  getProjectName: vi.fn(),
+  buildProjectName: vi.fn(),
   stopWorktreeServices: vi.fn(),
   exit: vi.fn(),
 }))
@@ -91,8 +91,8 @@ vi.mock('../lib/docker-cleanup.ts', () => ({
   scanDockerResourcesForProject: mocks.scanDockerResourcesForProject,
 }))
 
-vi.mock('../lib/compose.ts', () => ({
-  getProjectName: mocks.getProjectName,
+vi.mock('../lib/projectName.ts', () => ({
+  buildProjectName: mocks.buildProjectName,
 }))
 
 import { prune } from './prune.ts'
@@ -122,7 +122,9 @@ describe('prune command', () => {
     mocks.sanitizeBranchName.mockImplementation((name: string) => name)
     mocks.branch.mockImplementation((name: string) => name)
 
-    mocks.getProjectName.mockImplementation((_repoRoot: string, branch: string) => `port-${branch}`)
+    mocks.buildProjectName.mockImplementation(
+      (_repoRoot: string, branch: string) => `port-${branch}`
+    )
     mocks.stopWorktreeServices.mockResolvedValue(undefined)
     mocks.exit.mockResolvedValue(undefined)
     mocks.cleanupDockerResources.mockResolvedValue({

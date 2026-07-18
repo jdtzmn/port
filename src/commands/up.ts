@@ -1,6 +1,7 @@
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
-import { registerProject } from '../lib/registry.ts'
+import { registerProject, getAllProjects, getAllHostServices } from '../lib/registry.ts'
+import { isProcessRunning } from '../lib/hostService.ts'
 import {
   ensureTraefikPorts,
   traefikFilesExist,
@@ -18,9 +19,14 @@ import {
   parseComposeFile,
   getAllPorts,
   getServicePorts,
-  getProjectName,
   resolveComposeServices,
 } from '../lib/compose.ts'
+import { buildProjectName as getProjectName } from '../lib/projectName.ts'
+import {
+  findHostnameLabelCollisions,
+  formatHostname,
+  formatHostnameLabel,
+} from '../lib/hostname.ts'
 import { checkDns } from '../lib/dns.ts'
 import { hookExists, runPostUpHook } from '../lib/hooks.ts'
 import * as output from '../lib/output.ts'
@@ -59,6 +65,15 @@ export async function up(requestedServices: string[] = []): Promise<void> {
   // Load config (defaults when config file is absent)
   const config = await loadConfigOrDefault(repoRoot)
   const composeFile = getComposeFile(config)
+
+  const [projects, hostServices] = await Promise.all([getAllProjects(), getAllHostServices()])
+  const liveHostServices = hostServices.filter(service => isProcessRunning(service.pid))
+  const collisions = findHostnameLabelCollisions(repoRoot, name, [...projects, ...liveHostServices])
+  if (collisions.length > 0) {
+    output.warn(
+      `Hostname label "${formatHostnameLabel(name)}" already exists for another active service. URLs may collide.`
+    )
+  }
 
   const dnsConfigured = await checkDns(config.domain)
   if (!dnsConfigured) {
@@ -180,7 +195,7 @@ export async function up(requestedServices: string[] = []): Promise<void> {
 
     const servicePorts = getServicePorts(service)
     if (servicePorts.length > 0) {
-      const urls = servicePorts.map(port => `http://${name}.${config.domain}:${port}`)
+      const urls = servicePorts.map(port => `http://${formatHostname(name, config.domain)}:${port}`)
       serviceUrls.push({ name: serviceName, urls })
     }
   }

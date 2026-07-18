@@ -5,7 +5,6 @@ import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   generateOverrideContent,
-  getProjectName,
   getComposeFileStack,
   getServicePorts,
   startTraefik,
@@ -13,6 +12,7 @@ import {
   renderPortVariables,
   renderUserOverrideFile,
 } from './compose.ts'
+import { buildProjectName as getProjectName } from './projectName.ts'
 import * as execModule from './exec.ts'
 import type { ParsedComposeFile } from '../types.ts'
 
