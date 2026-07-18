@@ -16,9 +16,15 @@
   },
   "files": [
     "dist",
+    "skills",
     "README.md",
     "LICENSE.md"
   ],
+  "pi": {
+    "skills": [
+      "skills/port-cli"
+    ]
+  },
   "module": "dist/index.js",
   "main": "dist/index.js",
   "type": "module",
