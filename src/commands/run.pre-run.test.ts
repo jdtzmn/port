@@ -76,6 +76,8 @@ vi.mock('../lib/config.ts', async importOriginal => {
 
 vi.mock('../lib/registry.ts', () => ({
   getHostService: vi.fn(async () => undefined),
+  getAllProjects: vi.fn(async () => []),
+  getAllHostServices: vi.fn(async () => []),
 }))
 
 vi.mock('../lib/traefik.ts', () => ({
