@@ -15,6 +15,7 @@ import {
 import { buildProjectName as getProjectName } from './projectName.ts'
 import * as execModule from './exec.ts'
 import type { ParsedComposeFile } from '../types.ts'
+import { formatHostnameLabel } from './hostname.ts'
 
 const netMock = vi.hoisted(() => ({
   createConnection: vi.fn(),
@@ -362,6 +363,36 @@ describe('renderUserOverrideFile', () => {
     expect(rendered).toContain('branch=feature-one')
     expect(rendered).toContain('host=feature-one.port')
     expect(rendered).toContain('compose=docker-compose.yml')
+  })
+
+  test('exposes truncated PORT_HOSTNAME_LABEL/PORT_HOSTNAME for long branch names', async () => {
+    const longBranch = `feature-${'a'.repeat(80)}`
+
+    await writeFile(
+      join(worktreePath, '.port', 'override-compose.yml'),
+      [
+        'services:',
+        '  web:',
+        '    labels:',
+        '      - label=$PORT_HOSTNAME_LABEL',
+        '      - host=${PORT_HOSTNAME}',
+      ].join('\n')
+    )
+
+    await renderUserOverrideFile({
+      repoRoot: '/repo',
+      worktreePath,
+      branch: longBranch,
+      domain: 'port',
+      composeFile: 'docker-compose.yml',
+      projectName: 'repo-feature',
+    })
+
+    const rendered = await readFile(join(worktreePath, '.port', 'override.user.yml'), 'utf-8')
+    const expectedLabel = formatHostnameLabel(longBranch)
+    expect(expectedLabel.length).toBeLessThanOrEqual(63)
+    expect(rendered).toContain(`label=${expectedLabel}`)
+    expect(rendered).toContain(`host=${expectedLabel}.port`)
   })
 
   test('returns null when override-compose.yml is missing', async () => {
