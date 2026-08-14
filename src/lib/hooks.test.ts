@@ -605,7 +605,6 @@ echo "HOSTNAME=[$PORT_HOSTNAME]" >> "${outputFile}"
     expect(content).toContain(`LABEL=${formatHostnameLabel('test-branch')}`)
     expect(content).toContain('HOSTNAME=[]')
   })
-
 })
 
 describe('runPostUpHook', () => {
