@@ -328,12 +328,14 @@ Hooks receive these environment variables:
 - `PORT_WORKTREE_PATH`
 - `PORT_BRANCH`
 - `PORT_DOMAIN`
+- `PORT_HOSTNAME_LABEL`: sanitized branch name, truncated to 63 characters (the same label Traefik routes on) — use this instead of re-deriving a hostname from `PORT_BRANCH`
+- `PORT_HOSTNAME`: `PORT_HOSTNAME_LABEL` + `.` + `PORT_DOMAIN`
 
 `pre-run.sh` also receives `PORT_LOGICAL_PORT`, `PORT_ACTUAL_PORT`, and `PORT_ENV_FILE`. Append `KEY=VALUE` lines to `$PORT_ENV_FILE` to override environment variables for the command spawned by `port run`:
 
 ```bash
 if [ -n "${DATABASE_URL:-}" ]; then
-  echo "DATABASE_URL=${DATABASE_URL/localhost:5432/$PORT_BRANCH.$PORT_DOMAIN:5432}" >> "$PORT_ENV_FILE"
+  echo "DATABASE_URL=${DATABASE_URL/localhost:5432/$PORT_HOSTNAME:5432}" >> "$PORT_ENV_FILE"
 fi
 ```
 
@@ -683,7 +685,7 @@ Notes:
 - For services without published ports, Port does not inject Traefik labels/ports/network wiring.
 - Port intentionally does not override `image`, `build`, `environment`, `volumes`, `depends_on`, or `command`.
 - `.port/override-compose.yml` is optional and user-editable; if missing, Port skips the user layer.
-- Supported user override variables: `PORT_ROOT_PATH`, `PORT_WORKTREE_PATH`, `PORT_BRANCH`, `PORT_DOMAIN`, `PORT_PROJECT_NAME`, `PORT_COMPOSE_FILE`.
+- Supported user override variables: `PORT_ROOT_PATH`, `PORT_WORKTREE_PATH`, `PORT_BRANCH`, `PORT_DOMAIN`, `PORT_HOSTNAME_LABEL`, `PORT_HOSTNAME`, `PORT_PROJECT_NAME`, `PORT_COMPOSE_FILE`.
 
 Example generated shape:
 
