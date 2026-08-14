@@ -159,6 +159,7 @@ export async function enter(branch: string): Promise<void> {
       repoRoot,
       worktreePath,
       branch: sanitized,
+      domain: config.domain,
     })
 
     if (!result.success) {

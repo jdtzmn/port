@@ -18,6 +18,7 @@ import {
   runPreRunHook,
   type HookEnv,
 } from './hooks.ts'
+import { formatHostname, formatHostnameLabel } from './hostname.ts'
 import { PORT_DIR, HOOKS_DIR, LOGS_DIR, LATEST_LOG } from './config.ts'
 
 /**
@@ -556,6 +557,54 @@ echo "BRANCH=$PORT_BRANCH" >> "${outputFile}"
     expect(result.success).toBe(true)
     expect(result.exitCode).toBe(0)
   })
+
+  test('exposes truncated PORT_HOSTNAME_LABEL and PORT_HOSTNAME (when domain is set)', async () => {
+    const outputFile = join(repoRoot, 'hostname-check.txt')
+    const longBranch = `feature-${'a'.repeat(80)}`
+    await createExecutableScript(
+      getHooksDir(repoRoot),
+      'post-create.sh',
+      `#!/bin/bash
+echo "LABEL=$PORT_HOSTNAME_LABEL" >> "${outputFile}"
+echo "HOSTNAME=$PORT_HOSTNAME" >> "${outputFile}"
+`
+    )
+
+    await runPostCreateHook({
+      repoRoot,
+      worktreePath,
+      branch: longBranch,
+      domain: 'port',
+    })
+
+    const content = readFileSync(outputFile, 'utf-8')
+    const expectedLabel = formatHostnameLabel(longBranch)
+    expect(expectedLabel.length).toBeLessThanOrEqual(63)
+    expect(content).toContain(`LABEL=${expectedLabel}`)
+    expect(content).toContain(`HOSTNAME=${formatHostname(longBranch, 'port')}`)
+  })
+
+  test('omits PORT_HOSTNAME when domain is not provided', async () => {
+    const outputFile = join(repoRoot, 'hostname-no-domain-check.txt')
+    await createExecutableScript(
+      getHooksDir(repoRoot),
+      'post-create.sh',
+      `#!/bin/bash
+echo "LABEL=$PORT_HOSTNAME_LABEL" >> "${outputFile}"
+echo "HOSTNAME=[$PORT_HOSTNAME]" >> "${outputFile}"
+`
+    )
+
+    await runPostCreateHook({
+      repoRoot,
+      worktreePath,
+      branch: 'test-branch',
+    })
+
+    const content = readFileSync(outputFile, 'utf-8')
+    expect(content).toContain(`LABEL=${formatHostnameLabel('test-branch')}`)
+    expect(content).toContain('HOSTNAME=[]')
+  })
 })
 
 describe('runPostUpHook', () => {
@@ -580,6 +629,8 @@ describe('runPostUpHook', () => {
       `#!/bin/bash
 echo "BRANCH=$PORT_BRANCH" >> "${outputFile}"
 echo "DOMAIN=$PORT_DOMAIN" >> "${outputFile}"
+echo "LABEL=$PORT_HOSTNAME_LABEL" >> "${outputFile}"
+echo "HOSTNAME=$PORT_HOSTNAME" >> "${outputFile}"
 `
     )
 
@@ -595,6 +646,8 @@ echo "DOMAIN=$PORT_DOMAIN" >> "${outputFile}"
     const content = readFileSync(outputFile, 'utf-8')
     expect(content).toContain('BRANCH=feature/test')
     expect(content).toContain('DOMAIN=port')
+    expect(content).toContain(`LABEL=${formatHostnameLabel('feature/test')}`)
+    expect(content).toContain(`HOSTNAME=${formatHostname('feature/test', 'port')}`)
   })
 })
 
@@ -621,6 +674,8 @@ describe('runPreRunHook', () => {
       `#!/bin/bash
 echo "BRANCH=$PORT_BRANCH" >> "${outputFile}"
 echo "DOMAIN=$PORT_DOMAIN" >> "${outputFile}"
+echo "LABEL=$PORT_HOSTNAME_LABEL" >> "${outputFile}"
+echo "HOSTNAME=$PORT_HOSTNAME" >> "${outputFile}"
 echo "LOGICAL=$PORT_LOGICAL_PORT" >> "${outputFile}"
 echo "ACTUAL=$PORT_ACTUAL_PORT" >> "${outputFile}"
 echo "ENV_FILE=$PORT_ENV_FILE" >> "${outputFile}"
@@ -643,6 +698,8 @@ echo "HOOK_MARKER=ran" >> "$PORT_ENV_FILE"
     const content = readFileSync(outputFile, 'utf-8')
     expect(content).toContain('BRANCH=feature/test')
     expect(content).toContain('DOMAIN=port')
+    expect(content).toContain(`LABEL=${formatHostnameLabel('feature/test')}`)
+    expect(content).toContain(`HOSTNAME=${formatHostname('feature/test', 'port')}`)
     expect(content).toContain('LOGICAL=3000')
     expect(content).toContain('ACTUAL=49152')
     expect(content).toContain(`ENV_FILE=${envFile}`)

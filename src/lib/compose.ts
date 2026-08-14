@@ -104,6 +104,8 @@ function buildUserOverrideVariables(context: UserOverrideRenderContext): Record<
     PORT_WORKTREE_PATH: context.worktreePath,
     PORT_BRANCH: context.branch,
     PORT_DOMAIN: context.domain,
+    PORT_HOSTNAME_LABEL: formatHostnameLabel(context.branch),
+    PORT_HOSTNAME: formatHostname(context.branch, context.domain),
     PORT_PROJECT_NAME: context.projectName,
     PORT_COMPOSE_FILE: context.composeFile,
   }

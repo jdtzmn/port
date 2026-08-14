@@ -3,6 +3,7 @@ import { existsSync, constants } from 'fs'
 import { access, mkdir, appendFile } from 'fs/promises'
 import { join } from 'path'
 import { getPortDir, HOOKS_DIR, LOGS_DIR, LATEST_LOG } from './config.ts'
+import { formatHostname, formatHostnameLabel } from './hostname.ts'
 
 export type HookScope = 'worktree' | 'main'
 
@@ -53,6 +54,11 @@ export interface HookEnv {
   PORT_BRANCH?: string
   /** Domain suffix from port config */
   PORT_DOMAIN?: string
+  /** Truncated, sanitized hostname label (matches the label used for Traefik routing) */
+  PORT_HOSTNAME_LABEL?: string
+  /** Full hostname: PORT_HOSTNAME_LABEL + '.' + PORT_DOMAIN */
+  PORT_HOSTNAME?: string
+
   /** File path where hooks can append KEY=VALUE lines to override child env */
   PORT_ENV_FILE?: string
   /** Logical port requested by the user */
@@ -241,6 +247,26 @@ export async function runHook(
 }
 
 /**
+ * Build the PORT_HOSTNAME_LABEL / PORT_HOSTNAME env entries for a branch.
+ *
+ * PORT_HOSTNAME_LABEL is only computed when a branch is known.
+ * PORT_HOSTNAME additionally requires a domain (matches formatHostname).
+ */
+function buildHostnameEnv(
+  branch?: string,
+  domain?: string
+): Pick<HookEnv, 'PORT_HOSTNAME_LABEL' | 'PORT_HOSTNAME'> {
+  if (!branch) {
+    return {}
+  }
+
+  return {
+    PORT_HOSTNAME_LABEL: formatHostnameLabel(branch),
+    PORT_HOSTNAME: domain ? formatHostname(branch, domain) : undefined,
+  }
+}
+
+/**
  * Run the post-create hook for a newly created worktree
  *
  * Convenience wrapper around runHook for the post-create hook
@@ -261,6 +287,7 @@ export async function runPostCreateHook(options: {
       PORT_WORKTREE_PATH: worktreePath,
       PORT_BRANCH: branch,
       PORT_DOMAIN: domain,
+      ...buildHostnameEnv(branch, domain),
     },
     branch
   )
@@ -285,6 +312,7 @@ export async function runPostUpHook(options: {
       PORT_WORKTREE_PATH: worktreePath,
       PORT_BRANCH: branch,
       PORT_DOMAIN: domain,
+      ...buildHostnameEnv(branch, domain),
     },
     branch
   )
@@ -315,6 +343,7 @@ export async function runPreRunHook(options: {
       PORT_WORKTREE_PATH: worktreePath,
       PORT_BRANCH: branch,
       PORT_DOMAIN: domain,
+      ...buildHostnameEnv(branch, domain),
       PORT_LOGICAL_PORT: logicalPort.toString(),
       PORT_ACTUAL_PORT: actualPort.toString(),
       PORT_ENV_FILE: envFile,
