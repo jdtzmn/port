@@ -220,6 +220,24 @@ describe('runHook', () => {
     expect(result.exitCode).toBe(42)
   })
 
+  test('executes a hook whose path contains spaces', async () => {
+    const spacedRoot = join(repoRoot, 'my repo')
+    await mkdir(join(spacedRoot, PORT_DIR, HOOKS_DIR), { recursive: true })
+
+    const outputFile = join(spacedRoot, 'hook-output.txt')
+    await createExecutableScript(
+      getHooksDir(spacedRoot),
+      'post-create.sh',
+      '#!/bin/bash\necho "$PWD" > "hook-output.txt"\nexit 0'
+    )
+
+    const env: HookEnv = { PORT_ROOT_PATH: spacedRoot }
+    const result = await runHook(spacedRoot, 'post-create', env, 'test-branch')
+
+    expect(result).toEqual({ success: true, exitCode: 0 })
+    expect(readFileSync(outputFile, 'utf-8').trim().endsWith('my repo')).toBe(true)
+  })
+
   test('passes PORT_ROOT_PATH environment variable to hook', async () => {
     // Script writes env var to a file so we can verify
     // Use repoRoot as cwd (via PORT_ROOT_PATH) so file is created there

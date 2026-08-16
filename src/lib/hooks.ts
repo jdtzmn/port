@@ -196,13 +196,14 @@ export async function runHook(
   await appendLog(repoRoot, branch, hookName, 'Running hook...')
 
   return new Promise(resolve => {
+    // No shell: the hook path is executed directly (hooks are executable and
+    // carry a shebang), so repo paths containing spaces are not word-split.
     const child = spawn(hookPath, [], {
       cwd: env.PORT_WORKTREE_PATH ?? env.PORT_ROOT_PATH,
       env: {
         ...process.env,
         ...env,
       },
-      shell: true,
     })
 
     // Handle stdout - stream to terminal and log
