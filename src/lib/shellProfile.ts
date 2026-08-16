@@ -84,7 +84,8 @@ export function withoutManagedBlock(content: string): string {
   for (const line of lines) {
     if (line.trim() === BLOCK_START) {
       inBlock = true
-      while (result.length > 0 && result[result.length - 1]?.trim() === '') result.pop()
+      // Drop only the single blank line withManagedBlock inserted as a separator
+      if (result.length > 0 && result[result.length - 1]?.trim() === '') result.pop()
       continue
     }
     if (inBlock) {

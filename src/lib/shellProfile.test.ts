@@ -65,6 +65,13 @@ describe('block editing', () => {
     expect(withoutManagedBlock(added)).toBe(original)
   })
 
+  test('preserves trailing blank lines in the original profile', () => {
+    const original = 'export EDITOR=vim\n\n'
+    const added = withManagedBlock(original, buildProfileBlock('zsh'))
+
+    expect(withoutManagedBlock(added)).toBe(original)
+  })
+
   test('appends a newline when the profile does not end with one', () => {
     const added = withManagedBlock('export EDITOR=vim', buildProfileBlock('bash'))
 
