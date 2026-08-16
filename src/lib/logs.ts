@@ -2,6 +2,7 @@ import { existsSync } from 'fs'
 import { mkdir } from 'fs/promises'
 import { join } from 'path'
 import { getPortDir, LOGS_DIR, LATEST_LOG } from './config.ts'
+import { sanitizeBranchName } from './sanitize.ts'
 
 /**
  * Get the path to the logs directory
@@ -21,7 +22,7 @@ export function getLogPath(repoRoot: string): string {
  * Get the path to a detached host service log file
  */
 export function getServiceLogPath(repoRoot: string, branch: string, logicalPort: number): string {
-  return join(getLogsDir(repoRoot), `${branch}-${logicalPort}.log`)
+  return join(getLogsDir(repoRoot), `${sanitizeBranchName(branch)}-${logicalPort}.log`)
 }
 
 /**
