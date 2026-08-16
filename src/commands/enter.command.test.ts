@@ -338,6 +338,9 @@ describe('enter typo confirmation', () => {
       'port',
       'repo-shared'
     )
+    expect(mocks.success).toHaveBeenCalledWith(
+      'Using existing worktree: shared-external (branch shared)'
+    )
   })
 
   test('warns when creating a new worktree and the stale count is extreme', async () => {
@@ -457,5 +460,14 @@ describe('enter with shell hook eval file', () => {
     await enter('feature-1')
 
     expect(mocks.dim).toHaveBeenCalledWith(expect.stringContaining('port shell-hook'))
+  })
+
+  test('summarizes a newly created worktree by branch name', async () => {
+    await enter('feature-1')
+
+    expect(mocks.success).toHaveBeenCalledWith('Worktree ready: feature-1')
+    expect(mocks.success).not.toHaveBeenCalledWith(
+      expect.stringContaining('Using existing worktree')
+    )
   })
 })
