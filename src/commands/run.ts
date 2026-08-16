@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'child_process'
 import { createWriteStream } from 'fs'
-import { mkdtemp, readFile, rm, writeFile, open } from 'fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import inquirer from 'inquirer'
