@@ -64,7 +64,7 @@ function parseEnvOverrides(content: string): NodeJS.ProcessEnv {
 export async function run(
   logicalPort: number,
   command: string[],
-  options: { background?: boolean } = {}
+  options: { detached?: boolean } = {}
 ): Promise<void> {
   // Validate inputs
   if (isNaN(logicalPort) || logicalPort <= 0 || logicalPort > 65535) {
@@ -233,7 +233,7 @@ export async function run(
     process.exit(exitCode)
   }
 
-  if (!options.background) {
+  if (!options.detached) {
     process.on('SIGINT', () => handleSignal('SIGINT', 130))
     process.on('SIGTERM', () => handleSignal('SIGTERM', 143))
     process.on('SIGHUP', () => handleSignal('SIGHUP', 129))
@@ -255,9 +255,9 @@ export async function run(
   output.info(`Running: ${command.join(' ')}`)
   output.newline()
 
-  // In background mode, redirect output to a log file
+  // In detached mode, redirect output to a log file
   let logFile: string | undefined
-  if (options.background) {
+  if (options.detached) {
     const logDir = join(repoRoot, '.port', 'logs')
     logFile = join(logDir, `${branch}-${logicalPort}.log`)
     
@@ -268,10 +268,10 @@ export async function run(
   }
 
   const child: ChildProcess = spawn(cmd, args, {
-    stdio: options.background 
+    stdio: options.detached 
       ? ['ignore', 'pipe', 'pipe'] 
       : 'inherit',
-    detached: options.background,
+    detached: options.detached,
     env: {
       ...process.env,
       ...envOverrides,
@@ -279,8 +279,8 @@ export async function run(
     },
   })
 
-  // In background mode, redirect stdout/stderr to log file
-  if (options.background && logFile) {
+  // In detached mode, redirect stdout/stderr to log file
+  if (options.detached && logFile) {
     const logStream = createWriteStream(logFile, { flags: 'a' })
     if (child.stdout) child.stdout.pipe(logStream)
     if (child.stderr) child.stderr.pipe(logStream)
@@ -292,10 +292,10 @@ export async function run(
     await registerHostService(service)
   }
 
-  // In background mode, detach the child process and exit
-  if (options.background) {
+  // In detached mode, detach the child process and exit
+  if (options.detached) {
     child.unref()
-    output.success('Process started in background')
+    output.success('Process started in detached mode')
     output.dim(`Use 'port kill ${logicalPort}' to stop the service`)
     if (logFile) {
       output.dim(`Tail logs: tail -f ${logFile}`)
