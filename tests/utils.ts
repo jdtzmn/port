@@ -55,6 +55,12 @@ interface SampleConfig {
    * Otherwise, uses the provided config.
    */
   initWithConfig?: PortConfig | true
+
+  /**
+   * Name of a subdirectory (inside the temp dir) to place the sample in.
+   * Useful for exercising repo paths that contain spaces.
+   */
+  dirName?: string
 }
 
 /**
@@ -66,9 +72,11 @@ interface SampleConfig {
  * You can also manually call the cleanup function to remove the directory immediately.
  */
 export async function prepareSample(sampleName: string, config?: SampleConfig) {
-  const tempDir = await mkdtemp(join(tmpdir(), 'port-test-'))
+  const rootDir = await mkdtemp(join(tmpdir(), 'port-test-'))
 
-  tempDirRegistry.add(tempDir)
+  tempDirRegistry.add(rootDir)
+
+  const tempDir = config?.dirName ? join(rootDir, config.dirName) : rootDir
 
   const samplePath = resolve(__dirname, 'samples', sampleName)
   await cp(samplePath, tempDir, { recursive: true })
@@ -96,8 +104,8 @@ export async function prepareSample(sampleName: string, config?: SampleConfig) {
     urlWithPort,
     cleanup: async () => {
       await bringDownComposeProject(tempDir)
-      await rm(tempDir, { recursive: true, force: true })
-      tempDirRegistry.delete(tempDir)
+      await rm(rootDir, { recursive: true, force: true })
+      tempDirRegistry.delete(rootDir)
     },
   }
 }
