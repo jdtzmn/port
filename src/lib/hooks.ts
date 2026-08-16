@@ -1,8 +1,9 @@
 import { spawn } from 'child_process'
 import { existsSync, constants } from 'fs'
-import { access, mkdir, appendFile } from 'fs/promises'
+import { access, appendFile } from 'fs/promises'
 import { join } from 'path'
-import { getPortDir, HOOKS_DIR, LOGS_DIR, LATEST_LOG } from './config.ts'
+import { getPortDir, HOOKS_DIR } from './config.ts'
+import { getLogsDir, getLogPath, ensureLogsDir } from './logs.ts'
 import { formatHostname, formatHostnameLabel } from './hostname.ts'
 
 export type HookScope = 'worktree' | 'main'
@@ -91,19 +92,8 @@ export function getHookPath(repoRoot: string, hookName: HookName): string {
   return join(getHooksDir(repoRoot), `${hookName}.sh`)
 }
 
-/**
- * Get the path to the logs directory
- */
-export function getLogsDir(repoRoot: string): string {
-  return join(getPortDir(repoRoot), LOGS_DIR)
-}
-
-/**
- * Get the path to the latest log file
- */
-export function getLogPath(repoRoot: string): string {
-  return join(getLogsDir(repoRoot), LATEST_LOG)
-}
+// Re-export log helpers for backwards compatibility
+export { getLogsDir, getLogPath }
 
 /**
  * Check if a hook script exists and is executable
@@ -153,13 +143,9 @@ export async function appendLog(
   hookName: HookName,
   message: string
 ): Promise<void> {
-  const logsDir = getLogsDir(repoRoot)
   const logPath = getLogPath(repoRoot)
 
-  // Ensure logs directory exists
-  if (!existsSync(logsDir)) {
-    await mkdir(logsDir, { recursive: true })
-  }
+  await ensureLogsDir(repoRoot)
 
   const timestamp = formatTimestamp()
   const prefix = formatPrefix(branch, hookName)

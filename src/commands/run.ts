@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'child_process'
-import { createWriteStream } from 'fs'
+import { open } from 'fs/promises'
 import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -24,6 +24,7 @@ import {
   formatHostname,
   formatHostnameLabel,
 } from '../lib/hostname.ts'
+import { getServiceLogPath, ensureLogsDir } from '../lib/logs.ts'
 import type { HostService } from '../types.ts'
 import * as output from '../lib/output.ts'
 import { hookExists, runPreRunHook } from '../lib/hooks.ts'
@@ -257,18 +258,21 @@ export async function run(
 
   // In detached mode, redirect output to a log file
   let logFile: string | undefined
+  let logHandle: Awaited<ReturnType<typeof open>> | undefined
   if (options.detached) {
-    const logDir = join(repoRoot, '.port', 'logs')
-    logFile = join(logDir, `${branch}-${logicalPort}.log`)
+    logFile = getServiceLogPath(repoRoot, branch, logicalPort)
 
-    // Ensure log directory exists
-    await ensurePortRuntimeDir(repoRoot)
+    await ensureLogsDir(repoRoot)
+    logHandle = await open(logFile, 'a')
 
     output.dim(`Logging to: ${logFile}`)
   }
 
+  const stdio: 'inherit' | ['ignore', number, number] =
+    options.detached && logHandle ? ['ignore', logHandle.fd, logHandle.fd] : 'inherit'
+
   const child: ChildProcess = spawn(cmd, args, {
-    stdio: options.detached ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+    stdio,
     detached: options.detached,
     env: {
       ...process.env,
@@ -277,11 +281,21 @@ export async function run(
     },
   })
 
-  // In detached mode, redirect stdout/stderr to log file
-  if (options.detached && logFile) {
-    const logStream = createWriteStream(logFile, { flags: 'a' })
-    if (child.stdout) child.stdout.pipe(logStream)
-    if (child.stderr) child.stderr.pipe(logStream)
+  // In detached mode, close the parent's copy of the log fd after the child has inherited it
+  logHandle?.close()
+
+  // In detached mode, wait for the child to either spawn or fail to start before exiting
+  if (options.detached) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        child.once('spawn', resolve)
+        child.once('error', reject)
+      })
+    } catch (err) {
+      output.error(`Failed to start process: ${err instanceof Error ? err.message : String(err)}`)
+      await cleanup()
+      process.exit(1)
+    }
   }
 
   // Update registry with actual PID
