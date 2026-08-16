@@ -145,9 +145,35 @@ export async function enter(branch: string): Promise<void> {
       }
 
       worktreePath = duplicateWorktree.path
-      output.warn(
-        `Branch "${sanitized}" is already checked out in another worktree; using ${worktreePath}`
-      )
+
+      if (process.stdin.isTTY) {
+        output.warn(
+          `Branch "${sanitized}" is already checked out in another worktree at ${worktreePath}`
+        )
+
+        const { useExistingWorktree } = await inquirer.prompt<{ useExistingWorktree: boolean }>([
+          {
+            type: 'confirm',
+            name: 'useExistingWorktree',
+            message: 'Enter that worktree instead?',
+            default: true,
+          },
+        ])
+
+        if (!useExistingWorktree) {
+          output.info('Cancelled.')
+          output.dim(
+            `Tip: a branch can only be checked out once. Remove or rename the worktree at ${worktreePath} first.`
+          )
+          process.exit(1)
+        }
+
+        output.dim(`Using existing worktree: ${worktreePath}`)
+      } else {
+        output.warn(
+          `Branch "${sanitized}" is already checked out in another worktree; using ${worktreePath}`
+        )
+      }
     }
   }
 

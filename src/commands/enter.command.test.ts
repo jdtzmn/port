@@ -264,7 +264,8 @@ describe('enter typo confirmation', () => {
     expect(mocks.prompt).not.toHaveBeenCalled()
   })
 
-  test('reuses an existing worktree when git reports that the branch is already checked out', async () => {
+  function mockDuplicateWorktree(): void {
+    mocks.branchExists.mockResolvedValue(true)
     mocks.createWorktree.mockRejectedValueOnce(
       new Error(
         "fatal: 'shared' is already used by worktree at '/repo/.port/trees/shared-external'"
@@ -276,10 +277,53 @@ describe('enter typo confirmation', () => {
     })
     mocks.parseComposeFile.mockResolvedValue({ services: {} })
     mocks.buildProjectName.mockReturnValue('repo-shared')
+  }
+
+  test('offers to enter the existing worktree when the branch is already checked out', async () => {
+    mockDuplicateWorktree()
+    mocks.prompt.mockResolvedValueOnce({ useExistingWorktree: true })
 
     await enter('shared')
 
     expect(mocks.parseDuplicateWorktreeError).toHaveBeenCalledWith(expect.any(Error))
+    expect(mocks.warn).toHaveBeenCalledWith(
+      'Branch "shared" is already checked out in another worktree at /repo/.port/trees/shared-external'
+    )
+    expect(mocks.prompt).toHaveBeenCalledWith([
+      {
+        type: 'confirm',
+        name: 'useExistingWorktree',
+        message: 'Enter that worktree instead?',
+        default: true,
+      },
+    ])
+    expect(mocks.writeOverrideFile).toHaveBeenCalledWith(
+      '/repo/.port/trees/shared-external',
+      { services: {} },
+      'shared',
+      'port',
+      'repo-shared'
+    )
+    expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'shared')
+  })
+
+  test('cancels when the user declines to enter the existing worktree', async () => {
+    mockDuplicateWorktree()
+    mocks.prompt.mockResolvedValueOnce({ useExistingWorktree: false })
+
+    await expect(enter('shared')).rejects.toThrow('process.exit:1')
+
+    expect(mocks.info).toHaveBeenCalledWith('Cancelled.')
+    expect(mocks.writeOverrideFile).not.toHaveBeenCalled()
+  })
+
+  test('reuses the existing worktree without prompting in non-interactive terminals', async () => {
+    Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true })
+    mockDuplicateWorktree()
+
+    await enter('shared')
+
+    expect(mocks.prompt).not.toHaveBeenCalled()
     expect(mocks.warn).toHaveBeenCalledWith(
       'Branch "shared" is already checked out in another worktree; using /repo/.port/trees/shared-external'
     )
@@ -290,7 +334,6 @@ describe('enter typo confirmation', () => {
       'port',
       'repo-shared'
     )
-    expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'shared')
   })
 
   test('warns when creating a new worktree and the stale count is extreme', async () => {
