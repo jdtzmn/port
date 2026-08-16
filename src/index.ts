@@ -114,13 +114,15 @@ program
 // port install
 program
   .command('install')
-  .description('Set up DNS to resolve wildcard domain used by this repo')
+  .description('Set up DNS and the shell hook for the wildcard domain used by this repo')
   .option('-y, --yes', 'Skip confirmation prompt')
   .option(
     '--dns-ip <address>',
     'IP address wildcard domains should resolve to (default: 127.0.0.1)'
   )
   .option('--domain <domain>', 'Domain suffix to configure (default: config domain or port)')
+  .option('--no-shell-hook', 'Skip adding the shell hook to your shell profile')
+  .option('--shell-hook-only', 'Only add the shell hook, skipping DNS setup')
   .action(install)
 
 // port list
@@ -200,9 +202,10 @@ program
 // port uninstall
 program
   .command('uninstall')
-  .description('Remove DNS configuration for wildcard domain used by this repo')
+  .description('Remove DNS configuration and shell hook for wildcard domain used by this repo')
   .option('-y, --yes', 'Skip confirmation prompt')
   .option('--domain <domain>', 'Domain suffix to remove (default: config domain or port)')
+  .option('--no-shell-hook', 'Leave the shell hook in your shell profile')
   .action(uninstall)
 
 // port compose <args>

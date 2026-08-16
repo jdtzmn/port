@@ -16,8 +16,8 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 
 ### 2. \`port install\`
 
-- **How**: Run once per machine (or when changing domain/IP).
-- **Why**: Configures wildcard DNS so branch domains resolve locally.
+- **How**: Run once per machine (or when changing domain/IP). Add --no-shell-hook to skip the shell profile change, or --shell-hook-only to skip DNS.
+- **Why**: Configures wildcard DNS so branch domains resolve locally, and installs the shell hook so port enter/exit can change directories.
 
 ### 3. \`port status\`
 
@@ -26,7 +26,7 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 
 ### 4. \`port shell-hook <bash|zsh|fish>\`
 
-- **How**: Add eval "$(port shell-hook bash)" to your shell profile (one-time setup).
+- **How**: Usually installed for you by port install; otherwise add eval "$(port shell-hook bash)" to your shell profile.
 - **Why**: Enables port enter/exit to change your shell directory automatically.
 
 ### 5. \`port enter <branch>\`
@@ -83,7 +83,7 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
   - Use \`port hook --list\` to inspect hooks, or \`port hook <hook-name>\` to run one.
 - **\`port prune\`**: Cleans up worktrees whose branches have already been merged.
   - Start with \`port prune --dry-run\`; use \`--force\` only after confirming candidates.
-- **\`port uninstall\`**: Removes machine-level DNS configuration created by port install.
+- **\`port uninstall\`**: Removes machine-level DNS configuration and the shell hook created by port install.
   - Run when the user explicitly wants to remove Port DNS setup for a domain.
 
 ## Useful Checks
@@ -111,8 +111,8 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 
 ### 2. \`port install\`
 
-- **How**: Run once per machine (or when changing domain/IP).
-- **Why**: Configures wildcard DNS so branch domains resolve locally.
+- **How**: Run once per machine (or when changing domain/IP). Add --no-shell-hook to skip the shell profile change, or --shell-hook-only to skip DNS.
+- **Why**: Configures wildcard DNS so branch domains resolve locally, and installs the shell hook so port enter/exit can change directories.
 
 ### 3. \`port status\`
 
@@ -121,7 +121,7 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 
 ### 4. \`port shell-hook <bash|zsh|fish>\`
 
-- **How**: Add eval "$(port shell-hook bash)" to your shell profile (one-time setup).
+- **How**: Usually installed for you by port install; otherwise add eval "$(port shell-hook bash)" to your shell profile.
 - **Why**: Enables port enter/exit to change your shell directory automatically.
 
 ### 5. \`port enter <branch>\`
@@ -178,7 +178,7 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
   - Use \`port hook --list\` to inspect hooks, or \`port hook <hook-name>\` to run one.
 - **\`port prune\`**: Cleans up worktrees whose branches have already been merged.
   - Start with \`port prune --dry-run\`; use \`--force\` only after confirming candidates.
-- **\`port uninstall\`**: Removes machine-level DNS configuration created by port install.
+- **\`port uninstall\`**: Removes machine-level DNS configuration and the shell hook created by port install.
   - Run when the user explicitly wants to remove Port DNS setup for a domain.
 
 ## Useful Checks

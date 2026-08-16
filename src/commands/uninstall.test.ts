@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   dim: vi.fn(),
   newline: vi.fn(),
   command: vi.fn((value: string) => value),
+  detectShell: vi.fn(),
+  removeShellHook: vi.fn(),
 }))
 
 vi.mock('inquirer', () => ({
@@ -55,6 +57,11 @@ vi.mock('../lib/output.ts', () => ({
   command: mocks.command,
 }))
 
+vi.mock('../lib/shellProfile.ts', () => ({
+  detectShell: mocks.detectShell,
+  removeShellHook: mocks.removeShellHook,
+}))
+
 import { uninstall } from './uninstall.ts'
 
 const originalPlatform = process.platform
@@ -75,6 +82,7 @@ describe('uninstall command', () => {
     vi.clearAllMocks()
 
     setPlatform('darwin')
+    mocks.detectShell.mockReturnValue(null)
     mocks.detectWorktree.mockImplementation(() => {
       throw new Error('not in git')
     })

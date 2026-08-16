@@ -14,6 +14,8 @@ import { configExists, loadConfig } from '../lib/config.ts'
 import * as output from '../lib/output.ts'
 import { execAsync, execPrivileged } from '../lib/exec.ts'
 import { fileOps } from '../lib/fileOps.ts'
+import { detectShell, installShellHook } from '../lib/shellProfile.ts'
+import { SUPPORTED_SHELLS } from '../lib/shell.ts'
 
 /**
  * Check if a command exists
@@ -450,15 +452,80 @@ async function installLinux(dnsIp: string, domain: string, skipConfirm = false):
 }
 
 /**
- * Install DNS configuration for wildcard domains
+ * Add the port shell hook to the user's shell profile.
  *
- * @param options - Install options (yes, dnsIp)
+ * Runs as the second half of `port install` so a single command sets up both
+ * DNS and the shell integration that makes `port enter`/`port exit` change the
+ * shell's working directory.
+ */
+async function setupShellHook(options?: { yes?: boolean }): Promise<void> {
+  const shell = detectShell()
+
+  if (!shell) {
+    output.warn(`Could not detect a supported shell (${SUPPORTED_SHELLS.join(', ')}) from $SHELL`)
+    output.info('Set up the shell hook manually:')
+    output.dim('  eval "$(port shell-hook bash)"   # in ~/.bashrc')
+    output.dim('  eval "$(port shell-hook zsh)"    # in ~/.zshrc')
+    output.dim('  port shell-hook fish | source    # in ~/.config/fish/config.fish')
+    return
+  }
+
+  if (!options?.yes) {
+    const { confirmHook } = await inquirer.prompt<{ confirmHook: boolean }>([
+      {
+        type: 'confirm',
+        name: 'confirmHook',
+        message: `Add the port shell hook to your ${shell} profile?`,
+        default: true,
+      },
+    ])
+
+    if (!confirmHook) {
+      output.dim('Shell hook setup skipped')
+      output.info(`Add it later with: ${output.command('port install --shell-hook-only')}`)
+      return
+    }
+  }
+
+  let result
+  try {
+    result = await installShellHook(shell)
+  } catch (error) {
+    output.error(`Failed to update your ${shell} profile: ${error}`)
+    return
+  }
+
+  switch (result.status) {
+    case 'installed':
+      output.success(`Shell hook added to ${result.profilePath}`)
+      output.info(`Reload your shell with: ${output.command(`source ${result.profilePath}`)}`)
+      break
+    case 'already-installed':
+      output.dim(`Shell hook already present in ${result.profilePath}`)
+      break
+    case 'manual-hook':
+      output.dim(`Shell hook already configured manually in ${result.profilePath}`)
+      break
+  }
+}
+
+/**
+ * Install DNS configuration for wildcard domains and the shell hook
+ *
+ * @param options - Install options (yes, dnsIp, domain, skipShellHook, shellHookOnly)
  */
 export async function install(options?: {
   yes?: boolean
   dnsIp?: string
   domain?: string
+  shellHook?: boolean
+  shellHookOnly?: boolean
 }): Promise<void> {
+  if (options?.shellHookOnly) {
+    await setupShellHook(options)
+    return
+  }
+
   // Validate DNS IP if provided
   const dnsIp = options?.dnsIp ?? DEFAULT_DNS_IP
 
@@ -477,6 +544,8 @@ export async function install(options?: {
   if (alreadyConfigured) {
     output.success(`DNS is already configured for *.${domain} domains (${dnsIp})`)
     output.dim('No changes needed')
+    output.newline()
+    if (options?.shellHook !== false) await setupShellHook(options)
     return
   }
 
@@ -521,6 +590,8 @@ export async function install(options?: {
   if (!success) {
     output.newline()
     output.warn('DNS setup incomplete')
+    output.newline()
+    if (options?.shellHook !== false) await setupShellHook(options)
     return
   }
 
@@ -541,4 +612,7 @@ export async function install(options?: {
     output.info('DNS changes may take a moment to propagate. Try again in a few seconds.')
     output.info(`Test manually with: ${output.command(`dig test.${domain}`)}`)
   }
+
+  output.newline()
+  if (options?.shellHook !== false) await setupShellHook(options)
 }

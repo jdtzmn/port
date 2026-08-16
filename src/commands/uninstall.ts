@@ -5,6 +5,7 @@ import { configExists, loadConfig } from '../lib/config.ts'
 import * as output from '../lib/output.ts'
 import { execAsync, execPrivileged } from '../lib/exec.ts'
 import { fileOps } from '../lib/fileOps.ts'
+import { detectShell, removeShellHook } from '../lib/shellProfile.ts'
 
 /**
  * Check if a command exists
@@ -266,11 +267,50 @@ async function uninstallLinux(domain: string): Promise<boolean> {
 }
 
 /**
- * Uninstall DNS configuration for wildcard domains
+ * Remove the port shell hook block from the user's shell profile.
+ */
+async function removeShellHookFromProfile(options?: { yes?: boolean }): Promise<void> {
+  const shell = detectShell()
+  if (!shell) return
+
+  if (!options?.yes) {
+    const { confirmHook } = await inquirer.prompt<{ confirmHook: boolean }>([
+      {
+        type: 'confirm',
+        name: 'confirmHook',
+        message: `Remove the port shell hook from your ${shell} profile?`,
+        default: false,
+      },
+    ])
+
+    if (!confirmHook) {
+      output.dim('Shell hook left in place')
+      return
+    }
+  }
+
+  try {
+    const result = await removeShellHook(shell)
+    if (result.status === 'removed') {
+      output.success(`Shell hook removed from ${result.profilePath}`)
+    } else {
+      output.dim(`No port shell hook found in ${result.profilePath}`)
+    }
+  } catch (error) {
+    output.warn(`Could not update your ${shell} profile: ${error}`)
+  }
+}
+
+/**
+ * Uninstall DNS configuration for wildcard domains and the shell hook
  *
  * @param options - Uninstall options (yes for auto-confirm)
  */
-export async function uninstall(options?: { yes?: boolean; domain?: string }): Promise<void> {
+export async function uninstall(options?: {
+  yes?: boolean
+  domain?: string
+  shellHook?: boolean
+}): Promise<void> {
   const domain = await resolveUninstallDomain(options?.domain)
 
   // First check if DNS is configured
@@ -280,6 +320,8 @@ export async function uninstall(options?: { yes?: boolean; domain?: string }): P
   if (!isConfigured) {
     output.dim(`DNS is not configured for *.${domain} domains`)
     output.dim('Nothing to uninstall')
+    output.newline()
+    if (options?.shellHook !== false) await removeShellHookFromProfile(options)
     return
   }
 
@@ -322,6 +364,8 @@ export async function uninstall(options?: { yes?: boolean; domain?: string }): P
   if (!success) {
     output.newline()
     output.warn('Uninstall incomplete')
+    output.newline()
+    if (options?.shellHook !== false) await removeShellHookFromProfile(options)
     return
   }
 
@@ -348,4 +392,7 @@ export async function uninstall(options?: { yes?: boolean; domain?: string }): P
       output.info(`  ${output.command('sudo systemd-resolve --flush-caches')}`)
     }
   }
+
+  output.newline()
+  if (options?.shellHook !== false) await removeShellHookFromProfile(options)
 }

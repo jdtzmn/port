@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
   dim: vi.fn(),
   newline: vi.fn(),
   command: vi.fn((value: string) => value),
+  detectShell: vi.fn(),
+  installShellHook: vi.fn(),
 }))
 
 vi.mock('inquirer', () => ({
@@ -62,6 +64,11 @@ vi.mock('../lib/output.ts', () => ({
   command: mocks.command,
 }))
 
+vi.mock('../lib/shellProfile.ts', () => ({
+  detectShell: mocks.detectShell,
+  installShellHook: mocks.installShellHook,
+}))
+
 import { install } from './install.ts'
 
 describe('install command domain handling', () => {
@@ -77,6 +84,7 @@ describe('install command domain handling', () => {
     mocks.configExists.mockReturnValue(false)
     mocks.loadConfig.mockResolvedValue({ domain: 'port' })
     mocks.execPrivileged.mockResolvedValue({ stdout: '' })
+    mocks.detectShell.mockReturnValue(null)
   })
 
   test('uses default .port domain when no repo config is available', async () => {
@@ -354,6 +362,7 @@ describe('install command confirmation prompts', () => {
     mocks.configExists.mockReturnValue(false)
     mocks.loadConfig.mockResolvedValue({ domain: 'port' })
     mocks.execPrivileged.mockResolvedValue({ stdout: '' })
+    mocks.detectShell.mockReturnValue(null)
   })
 
   test('prompts for dnsmasq installation when package is not installed (macOS)', async () => {
@@ -495,5 +504,84 @@ describe('install command confirmation prompts', () => {
 
     expect(mocks.dim).toHaveBeenCalledWith('dnsmasq installation cancelled')
     expect(mocks.execAsync).not.toHaveBeenCalledWith('brew install dnsmasq')
+  })
+})
+
+describe('install command shell hook setup', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+
+    mocks.checkDns.mockResolvedValue(true)
+    mocks.getDnsSetupInstructions.mockReturnValue({ platform: 'macos', instructions: [] })
+    mocks.isValidIp.mockReturnValue(true)
+    mocks.detectWorktree.mockImplementation(() => {
+      throw new Error('not in git')
+    })
+    mocks.configExists.mockReturnValue(false)
+    mocks.loadConfig.mockResolvedValue({ domain: 'port' })
+    mocks.detectShell.mockReturnValue('zsh')
+    mocks.installShellHook.mockResolvedValue({
+      status: 'installed',
+      shell: 'zsh',
+      profilePath: '/home/dev/.zshrc',
+    })
+  })
+
+  test('installs the shell hook after DNS is already configured', async () => {
+    await install({ yes: true })
+
+    expect(mocks.installShellHook).toHaveBeenCalledWith('zsh')
+    expect(mocks.success).toHaveBeenCalledWith('Shell hook added to /home/dev/.zshrc')
+  })
+
+  test('skips the shell hook with --no-shell-hook', async () => {
+    await install({ yes: true, shellHook: false })
+
+    expect(mocks.installShellHook).not.toHaveBeenCalled()
+  })
+
+  test('skips DNS setup with --shell-hook-only', async () => {
+    await install({ yes: true, shellHookOnly: true })
+
+    expect(mocks.checkDns).not.toHaveBeenCalled()
+    expect(mocks.installShellHook).toHaveBeenCalledWith('zsh')
+  })
+
+  test('prompts before touching the profile when not using --yes', async () => {
+    mocks.prompt.mockResolvedValueOnce({ confirmHook: false })
+
+    await install({})
+
+    expect(mocks.prompt).toHaveBeenCalledWith([
+      expect.objectContaining({
+        name: 'confirmHook',
+        message: 'Add the port shell hook to your zsh profile?',
+      }),
+    ])
+    expect(mocks.installShellHook).not.toHaveBeenCalled()
+    expect(mocks.dim).toHaveBeenCalledWith('Shell hook setup skipped')
+  })
+
+  test('reports an already-configured profile without rewriting it', async () => {
+    mocks.installShellHook.mockResolvedValue({
+      status: 'already-installed',
+      shell: 'zsh',
+      profilePath: '/home/dev/.zshrc',
+    })
+
+    await install({ yes: true })
+
+    expect(mocks.dim).toHaveBeenCalledWith('Shell hook already present in /home/dev/.zshrc')
+  })
+
+  test('prints manual instructions when the shell is unsupported', async () => {
+    mocks.detectShell.mockReturnValue(null)
+
+    await install({ yes: true })
+
+    expect(mocks.installShellHook).not.toHaveBeenCalled()
+    expect(mocks.warn).toHaveBeenCalledWith(
+      'Could not detect a supported shell (bash, zsh, fish) from $SHELL'
+    )
   })
 })
