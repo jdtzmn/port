@@ -305,6 +305,10 @@ describe('enter typo confirmation', () => {
       'repo-shared'
     )
     expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'shared')
+    // The summary names the reused directory, which differs from the branch.
+    expect(mocks.success).toHaveBeenCalledWith(
+      'Using existing worktree: shared-external (branch shared)'
+    )
   })
 
   test('cancels when the user declines to enter the existing worktree', async () => {

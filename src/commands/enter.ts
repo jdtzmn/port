@@ -20,6 +20,7 @@ import { sanitizeBranchName } from '../lib/sanitize.ts'
 import { hookExists, runPostCreateHook } from '../lib/hooks.ts'
 import { mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
+import { basename } from 'path'
 import inquirer from 'inquirer'
 import * as output from '../lib/output.ts'
 import { findSimilarCommand } from '../lib/commands.ts'
@@ -70,6 +71,9 @@ export async function enter(branch: string): Promise<void> {
 
   // Track whether this is a new worktree (for running post-create hook)
   let isNewWorktree = false
+
+  // Directory name of a reused worktree that Port did not create for this branch
+  let reusedWorktreeDir: string | null = null
 
   if (worktreeExists(repoRoot, branch)) {
     worktreePath = getWorktreePath(repoRoot, branch)
@@ -145,6 +149,7 @@ export async function enter(branch: string): Promise<void> {
       }
 
       worktreePath = duplicateWorktree.path
+      reusedWorktreeDir = basename(worktreePath)
 
       if (process.stdin.isTTY) {
         output.warn(
@@ -229,7 +234,13 @@ export async function enter(branch: string): Promise<void> {
 
   // Without shell integration — print human-readable output with hint
   output.newline()
-  output.success(`Worktree ready: ${output.branch(sanitized)}`)
+  if (reusedWorktreeDir) {
+    output.success(
+      `Using existing worktree: ${reusedWorktreeDir} (branch ${output.branch(sanitized)})`
+    )
+  } else {
+    output.success(`Worktree ready: ${output.branch(sanitized)}`)
+  }
   output.newline()
   output.info(`Run: cd ${worktreePath}`)
   output.newline()
