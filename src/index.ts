@@ -222,9 +222,10 @@ program
   .allowUnknownOption()
   .allowExcessArguments()
   .argument('[command...]', 'Command to run (receives PORT env var)')
-  .action(async (port: string, command: string[]) => {
+  .option('-b, --background', 'Run the process in the background (similar to nohup)')
+  .action(async (port: string, command: string[], options: { background?: boolean }) => {
     const portNum = parseInt(port, 10)
-    await run(portNum, command)
+    await run(portNum, command, options)
   })
 
 // port kill [port]
