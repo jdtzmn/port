@@ -260,17 +260,15 @@ export async function run(
   if (options.detached) {
     const logDir = join(repoRoot, '.port', 'logs')
     logFile = join(logDir, `${branch}-${logicalPort}.log`)
-    
+
     // Ensure log directory exists
     await ensurePortRuntimeDir(repoRoot)
-    
+
     output.dim(`Logging to: ${logFile}`)
   }
 
   const child: ChildProcess = spawn(cmd, args, {
-    stdio: options.detached 
-      ? ['ignore', 'pipe', 'pipe'] 
-      : 'inherit',
+    stdio: options.detached ? ['ignore', 'pipe', 'pipe'] : 'inherit',
     detached: options.detached,
     env: {
       ...process.env,
