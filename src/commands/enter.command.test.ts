@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   ensurePortRuntimeDir: vi.fn(),
   getTreesDir: vi.fn(),
   getComposeFile: vi.fn(),
+  configExists: vi.fn(),
   branchExists: vi.fn(),
   createWorktree: vi.fn(),
   remoteBranchExists: vi.fn(),
@@ -47,6 +48,7 @@ vi.mock('../lib/config.ts', () => ({
   ensurePortRuntimeDir: mocks.ensurePortRuntimeDir,
   getTreesDir: mocks.getTreesDir,
   getComposeFile: mocks.getComposeFile,
+  configExists: mocks.configExists,
 }))
 
 vi.mock('../lib/git.ts', () => ({
@@ -132,6 +134,7 @@ describe('enter typo confirmation', () => {
     mocks.loadConfigOrDefault.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
     mocks.getTreesDir.mockReturnValue('/tmp')
     mocks.getComposeFile.mockReturnValue('docker-compose.yml')
+    mocks.configExists.mockReturnValue(true)
     mocks.worktreeExists.mockReturnValue(false)
     mocks.branchExists.mockResolvedValue(false)
     mocks.remoteBranchExists.mockResolvedValue(false)
@@ -348,6 +351,7 @@ describe('enter with shell hook eval file', () => {
     mocks.loadConfigOrDefault.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
     mocks.getTreesDir.mockReturnValue('/tmp')
     mocks.getComposeFile.mockReturnValue('docker-compose.yml')
+    mocks.configExists.mockReturnValue(true)
     mocks.worktreeExists.mockReturnValue(true)
     mocks.getWorktreePath.mockReturnValue('/repo/.port/trees/feature-1')
     mocks.hookExists.mockResolvedValue(false)
@@ -410,5 +414,29 @@ describe('enter with shell hook eval file', () => {
     await enter('feature-1')
 
     expect(mocks.dim).toHaveBeenCalledWith(expect.stringContaining('port shell-hook'))
+    expect(mocks.dim).not.toHaveBeenCalledWith(expect.stringContaining('port init'))
+  })
+
+  test('suggests port init when Port is not initialized', async () => {
+    mocks.configExists.mockReturnValue(false)
+
+    await enter('feature-1')
+
+    expect(mocks.dim).toHaveBeenCalledWith(expect.stringContaining('port init'))
+    expect(mocks.dim).toHaveBeenCalledWith(expect.stringContaining('port shell-hook'))
+  })
+
+  test('stays quiet about override.yml when Port is not initialized', async () => {
+    mocks.configExists.mockReturnValue(false)
+
+    await enter('feature-1')
+
+    expect(mocks.dim).not.toHaveBeenCalledWith(expect.stringContaining('override.yml'))
+  })
+
+  test('warns about override.yml when Port is initialized', async () => {
+    await enter('feature-1')
+
+    expect(mocks.dim).toHaveBeenCalledWith(expect.stringContaining('override.yml'))
   })
 })

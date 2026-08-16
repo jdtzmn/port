@@ -5,6 +5,7 @@ import {
   getTreesDir,
   getComposeFile,
   ensurePortRuntimeDir,
+  configExists,
 } from '../lib/config.ts'
 import {
   branchExists,
@@ -52,6 +53,9 @@ export async function enter(branch: string): Promise<void> {
 
   // Load config (defaults when config file is absent)
   const config = await loadConfigOrDefault(repoRoot)
+
+  // Port works as a plain worktree manager when `port init` has not been run
+  const isInitialized = configExists(repoRoot)
 
   // Sanitize branch name
   const sanitized = sanitizeBranchName(branch)
@@ -189,8 +193,11 @@ export async function enter(branch: string): Promise<void> {
     await writeOverrideFile(worktreePath, parsedCompose, sanitized, config.domain, projectName)
     output.success('Generated .port/override.yml')
   } catch (error) {
-    // It's okay if compose parsing fails here - the file might not exist yet in the worktree
-    output.dim('Could not generate .port/override.yml (compose file may not exist yet)')
+    // It's okay if compose parsing fails here - the file might not exist yet in the
+    // worktree, and repositories without Port config may not use compose at all
+    if (isInitialized) {
+      output.dim('Could not generate .port/override.yml (compose file may not exist yet)')
+    }
   }
 
   // If running inside the shell hook, write eval commands to the sideband file
@@ -211,6 +218,11 @@ export async function enter(branch: string): Promise<void> {
   output.dim('  eval "$(port shell-hook bash)"   # in ~/.bashrc')
   output.dim('  eval "$(port shell-hook zsh)"    # in ~/.zshrc')
   output.dim('  port shell-hook fish | source    # in ~/.config/fish/config.fish')
+
+  if (!isInitialized) {
+    output.newline()
+    output.dim('Tip: Run "port init" to enable service routing, hooks and compose overrides.')
+  }
 }
 
 function getForwardedArgs(branch: string): string[] {
