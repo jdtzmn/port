@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
+import { createWriteStream } from 'fs'
+import { mkdtemp, readFile, rm, writeFile, open } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import inquirer from 'inquirer'
@@ -58,8 +59,13 @@ function parseEnvOverrides(content: string): NodeJS.ProcessEnv {
  *
  * @param logicalPort - The port users will access
  * @param command - The command and arguments to run
+ * @param options - Command options
  */
-export async function run(logicalPort: number, command: string[]): Promise<void> {
+export async function run(
+  logicalPort: number,
+  command: string[],
+  options: { background?: boolean } = {}
+): Promise<void> {
   // Validate inputs
   if (isNaN(logicalPort) || logicalPort <= 0 || logicalPort > 65535) {
     output.error('Invalid port number. Must be between 1 and 65535.')
@@ -216,7 +222,7 @@ export async function run(logicalPort: number, command: string[]): Promise<void>
     }
   }
 
-  // Set up signal handlers
+  // Set up signal handlers (only in foreground mode)
   let cleanupDone = false
   const handleSignal = async (signal: string, exitCode: number) => {
     if (cleanupDone) return
@@ -227,9 +233,11 @@ export async function run(logicalPort: number, command: string[]): Promise<void>
     process.exit(exitCode)
   }
 
-  process.on('SIGINT', () => handleSignal('SIGINT', 130))
-  process.on('SIGTERM', () => handleSignal('SIGTERM', 143))
-  process.on('SIGHUP', () => handleSignal('SIGHUP', 129))
+  if (!options.background) {
+    process.on('SIGINT', () => handleSignal('SIGINT', 130))
+    process.on('SIGTERM', () => handleSignal('SIGTERM', 143))
+    process.on('SIGHUP', () => handleSignal('SIGHUP', 129))
+  }
 
   // Spawn the child process
   const [cmd, ...args] = command
@@ -247,8 +255,23 @@ export async function run(logicalPort: number, command: string[]): Promise<void>
   output.info(`Running: ${command.join(' ')}`)
   output.newline()
 
+  // In background mode, redirect output to a log file
+  let logFile: string | undefined
+  if (options.background) {
+    const logDir = join(repoRoot, '.port', 'logs')
+    logFile = join(logDir, `${branch}-${logicalPort}.log`)
+    
+    // Ensure log directory exists
+    await ensurePortRuntimeDir(repoRoot)
+    
+    output.dim(`Logging to: ${logFile}`)
+  }
+
   const child: ChildProcess = spawn(cmd, args, {
-    stdio: 'inherit',
+    stdio: options.background 
+      ? ['ignore', 'pipe', 'pipe'] 
+      : 'inherit',
+    detached: options.background,
     env: {
       ...process.env,
       ...envOverrides,
@@ -256,13 +279,31 @@ export async function run(logicalPort: number, command: string[]): Promise<void>
     },
   })
 
+  // In background mode, redirect stdout/stderr to log file
+  if (options.background && logFile) {
+    const logStream = createWriteStream(logFile, { flags: 'a' })
+    if (child.stdout) child.stdout.pipe(logStream)
+    if (child.stderr) child.stderr.pipe(logStream)
+  }
+
   // Update registry with actual PID
   if (child.pid) {
     service.pid = child.pid
     await registerHostService(service)
   }
 
-  // Wait for child process to exit
+  // In background mode, detach the child process and exit
+  if (options.background) {
+    child.unref()
+    output.success('Process started in background')
+    output.dim(`Use 'port kill ${logicalPort}' to stop the service`)
+    if (logFile) {
+      output.dim(`Tail logs: tail -f ${logFile}`)
+    }
+    process.exit(0)
+  }
+
+  // Wait for child process to exit (foreground mode)
   child.on('exit', async (code: number | null, signal: NodeJS.Signals | null) => {
     if (cleanupDone) return
     cleanupDone = true
