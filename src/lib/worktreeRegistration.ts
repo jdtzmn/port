@@ -1,5 +1,5 @@
 import { CliError } from './cli.ts'
-import { configExists } from './config.ts'
+import { configExists, loadConfig } from './config.ts'
 import { getCurrentBranch } from './git.ts'
 import { hookExists, runPostCreateHook } from './hooks.ts'
 import { isProjectRegistered, registerProject } from './registry.ts'
@@ -60,10 +60,18 @@ export async function ensureCurrentWorktreeRegistered(): Promise<void> {
   }
 
   if (hasPostCreateHook) {
+    let config
+    try {
+      config = await loadConfig(worktreeInfo.repoRoot)
+    } catch {
+      return
+    }
+
     const result = await runPostCreateHook({
       repoRoot: worktreeInfo.repoRoot,
       worktreePath: worktreeInfo.worktreePath,
       branch,
+      domain: config.domain,
     })
 
     if (!result.success) {

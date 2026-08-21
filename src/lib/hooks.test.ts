@@ -296,6 +296,28 @@ describe('runHook', () => {
     expect(content).toBe('feature/my-awesome-branch')
   })
 
+  test('passes derived hostname environment variables to hooks', async () => {
+    const outputFile = join(repoRoot, 'hostname-env-output.txt')
+    await createExecutableScript(
+      getHooksDir(repoRoot),
+      'post-create.sh',
+      `#!/bin/bash
+echo "LABEL=$PORT_HOSTNAME_LABEL" > "${outputFile}"
+echo "HOSTNAME=$PORT_HOSTNAME" >> "${outputFile}"`
+    )
+
+    const env: HookEnv = {
+      PORT_ROOT_PATH: repoRoot,
+      PORT_BRANCH: 'feature/my-awesome-branch',
+      PORT_DOMAIN: 'custom.test',
+    }
+    await runHook(repoRoot, 'post-create', env, 'test-branch')
+
+    const content = readFileSync(outputFile, 'utf-8')
+    expect(content).toContain('LABEL=feature-my-awesome-branch')
+    expect(content).toContain('HOSTNAME=feature-my-awesome-branch.custom.test')
+  })
+
   test('sets working directory to PORT_WORKTREE_PATH', async () => {
     // Create a worktree directory
     const worktreePath = join(repoRoot, 'worktree')

@@ -186,6 +186,10 @@ export async function runHook(
   branch: string
 ): Promise<HookResult> {
   const hookPath = getHookPath(repoRoot, hookName)
+  const hookEnv: HookEnv = {
+    ...env,
+    ...buildHostnameEnv(env.PORT_BRANCH, env.PORT_DOMAIN),
+  }
   const pendingLogWrites: Promise<void>[] = []
 
   const queueLog = (message: string): void => {
@@ -199,10 +203,10 @@ export async function runHook(
     // No shell: the hook path is executed directly (hooks are executable and
     // carry a shebang), so repo paths containing spaces are not word-split.
     const child = spawn(hookPath, [], {
-      cwd: env.PORT_WORKTREE_PATH ?? env.PORT_ROOT_PATH,
+      cwd: hookEnv.PORT_WORKTREE_PATH ?? hookEnv.PORT_ROOT_PATH,
       env: {
         ...process.env,
-        ...env,
+        ...hookEnv,
       },
     })
 
