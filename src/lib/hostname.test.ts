@@ -9,6 +9,10 @@ describe('formatHostnameLabel', () => {
     expect(label).toBe('feature-' + 'a'.repeat(55))
   })
 
+  test('falls back to a valid label when sanitization removes the branch name', () => {
+    expect(formatHostnameLabel('#')).toBe('port')
+  })
+
   test('detects collisions among active labels that truncate to the same value', () => {
     const collisions = findHostnameLabelCollisions('repo-a', 'feature-' + 'a'.repeat(80), [
       { repo: 'repo-b', branch: 'feature-' + 'a'.repeat(79) + 'b' },

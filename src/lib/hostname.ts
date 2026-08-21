@@ -10,8 +10,8 @@ export interface HostnameClaim {
 export function formatHostnameLabel(branch: string): string {
   const sanitized = sanitizeBranchName(branch)
 
-  if (sanitized.length <= HOSTNAME_LABEL_LIMIT) {
-    return sanitized
+  if (!sanitized || sanitized.length <= HOSTNAME_LABEL_LIMIT) {
+    return sanitized || 'port'
   }
 
   const truncated = sanitized.slice(0, HOSTNAME_LABEL_LIMIT).replace(/-+$/g, '')

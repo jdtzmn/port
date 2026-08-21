@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   detectWorktree: vi.fn(),
   configExists: vi.fn(),
+  loadConfig: vi.fn(),
   getCurrentBranch: vi.fn(),
   isProjectRegistered: vi.fn(),
   hookExists: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock('./worktree.ts', () => ({
 
 vi.mock('./config.ts', () => ({
   configExists: mocks.configExists,
+  loadConfig: mocks.loadConfig,
 }))
 
 vi.mock('./git.ts', () => ({
@@ -37,6 +39,7 @@ import { ensureCurrentWorktreeRegistered } from './worktreeRegistration.ts'
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.configExists.mockReturnValue(true)
+  mocks.loadConfig.mockResolvedValue({ domain: 'custom.test' })
   mocks.detectWorktree.mockReturnValue({
     repoRoot: '/repo',
     worktreePath: '/repo/.port/trees/feature-worktree',
@@ -66,6 +69,18 @@ describe('ensureCurrentWorktreeRegistered', () => {
     await ensureCurrentWorktreeRegistered()
 
     expect(mocks.registerProject).toHaveBeenCalledWith('/repo', 'feature-new', [])
+  })
+  test('passes the configured domain to the post-create hook', async () => {
+    mocks.hookExists.mockResolvedValue(true)
+
+    await ensureCurrentWorktreeRegistered()
+
+    expect(mocks.runPostCreateHook).toHaveBeenCalledWith({
+      repoRoot: '/repo',
+      worktreePath: '/repo/.port/trees/feature-worktree',
+      branch: 'feature-new',
+      domain: 'custom.test',
+    })
   })
 
   test('fails when the post-create hook fails', async () => {
