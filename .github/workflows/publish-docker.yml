@@ -2,6 +2,7 @@ name: Publish 404 Handler Docker Image
 
 on:
   workflow_call:
+  workflow_dispatch: {}
 
 env:
   IMAGE_NAME: ghcr.io/jdtzmn/port-404-handler
@@ -98,7 +99,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create manifest list and push
+      # Manual runs (workflow_dispatch) are for verifying the build/merge
+      # pipeline itself (e.g. the native arm64 runner path) without
+      # touching real release tags. They only ever push a single,
+      # overwritable "manual-test" tag — never the release version or
+      # ":latest".
+      - name: Create manifest list and push (release)
+        if: github.event_name != 'workflow_dispatch'
         working-directory: /tmp/digests
         run: |
           # shellcheck disable=SC2046 # intentional word-splitting: one digest ref per arg
@@ -107,6 +114,21 @@ jobs:
             --tag ${{ env.IMAGE_NAME }}:latest \
             $(printf '${{ env.IMAGE_NAME }}@sha256:%s ' *)
 
-      - name: Inspect pushed manifest
+      - name: Create manifest list and push (manual test run)
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: /tmp/digests
+        run: |
+          # shellcheck disable=SC2046 # intentional word-splitting: one digest ref per arg
+          docker buildx imagetools create \
+            --tag ${{ env.IMAGE_NAME }}:manual-test \
+            $(printf '${{ env.IMAGE_NAME }}@sha256:%s ' *)
+
+      - name: Inspect pushed manifest (release)
+        if: github.event_name != 'workflow_dispatch'
         run: |
           docker buildx imagetools inspect ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+
+      - name: Inspect pushed manifest (manual test run)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          docker buildx imagetools inspect ${{ env.IMAGE_NAME }}:manual-test
