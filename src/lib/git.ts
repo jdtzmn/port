@@ -174,6 +174,58 @@ export async function remoteBranchExists(
 }
 
 /**
+ * Check if a remote-tracking ref (e.g. refs/remotes/origin/<branch>) exists locally
+ *
+ * @param repoRoot - The repository root path
+ * @param branch - The branch name to check
+ * @param remote - The remote name (default: 'origin')
+ * @returns true if the remote-tracking ref is present in the local repository
+ */
+export async function remoteTrackingRefExists(
+  repoRoot: string,
+  branch: string,
+  remote: string = 'origin'
+): Promise<boolean> {
+  const git = getGit(repoRoot)
+
+  try {
+    const sha = await git.raw([
+      'rev-parse',
+      '--verify',
+      '--quiet',
+      `refs/remotes/${remote}/${branch}`,
+    ])
+    return sha.trim().length > 0
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Fetch a single branch from a remote into its remote-tracking ref
+ *
+ * Uses an explicit refspec so the tracking ref is updated even when the
+ * remote's configured fetch refspec is restricted (e.g. single-branch clones).
+ *
+ * @param repoRoot - The repository root path
+ * @param branch - The branch name to fetch
+ * @param remote - The remote name (default: 'origin')
+ */
+export async function fetchRemoteBranch(
+  repoRoot: string,
+  branch: string,
+  remote: string = 'origin'
+): Promise<void> {
+  const git = getGit(repoRoot)
+
+  try {
+    await git.raw(['fetch', remote, `+refs/heads/${branch}:refs/remotes/${remote}/${branch}`])
+  } catch (error) {
+    throw new GitError(`Failed to fetch '${branch}' from ${remote}: ${error}`)
+  }
+}
+
+/**
  * Create a new branch from the current HEAD
  *
  * @param repoRoot - The repository root path
@@ -226,6 +278,12 @@ export async function createWorktree(repoRoot: string, branch: string): Promise<
       const remoteExists = await remoteBranchExists(repoRoot, ref)
 
       if (remoteExists) {
+        // remoteBranchExists queries the remote directly, so the branch may not
+        // have been fetched yet; `worktree add --track` needs origin/<ref> locally.
+        if (!(await remoteTrackingRefExists(repoRoot, ref))) {
+          await fetchRemoteBranch(repoRoot, ref)
+        }
+
         // Track the remote branch
         await git.raw(['worktree', 'add', '--track', '-b', ref, worktreePath, `origin/${ref}`])
       } else {
