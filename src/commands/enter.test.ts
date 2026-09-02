@@ -52,6 +52,15 @@ describe('parallel worktrees', () => {
 
         const text = await pollForText(url, POLL_TIMEOUT)
         expect(text).toContain('Hello from')
+
+        // `port down` must also work without a config file
+        const downResult = await execPortAsync(['down', '--yes'], worktreeDir)
+        expect(downResult.stderr).not.toContain('port init')
+
+        const { stdout: running } = await execAsync(
+          `docker compose --project-directory "${worktreeDir}" ps --services --status running`
+        )
+        expect(running.trim()).toBe('')
       } finally {
         await safeDown(worktreeDir)
         await sample.cleanup()

@@ -182,6 +182,28 @@ describe('up DNS preflight', () => {
     expect(mocks.runCompose).toHaveBeenCalled()
   })
 
+  test('starts services without a Port config file', async () => {
+    // `port init` is optional: with no .port/config.jsonc, loadConfigOrDefault
+    // supplies the defaults and `up` must run the full flow rather than
+    // telling the user to initialize.
+    mocks.loadConfigOrDefault.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
+
+    await up()
+
+    expect(mocks.writeOverrideFile).toHaveBeenCalledWith(
+      '/repo',
+      { name: 'repo', services: {} },
+      'main',
+      'port',
+      'repo-main'
+    )
+    expect(mocks.runCompose).toHaveBeenCalled()
+    expect(mocks.error).not.toHaveBeenCalled()
+    for (const log of [mocks.error, mocks.warn, mocks.info, mocks.dim]) {
+      expect(log).not.toHaveBeenCalledWith(expect.stringContaining('port init'))
+    }
+  })
+
   test('starts only requested services while surfacing dependency URLs', async () => {
     mocks.parseComposeFile.mockResolvedValue({
       name: 'repo',
