@@ -175,6 +175,7 @@ export async function run(logicalPort: number, command: string[]): Promise<void>
     actualPort,
     pid: -1,
     configFile,
+    command: command.join(' '),
   }
   await registerHostService(service)
 

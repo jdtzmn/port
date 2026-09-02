@@ -11,6 +11,7 @@ interface HostService {
   actualPort: number
   pid: number
   configFile: string
+  command?: string
 }
 
 interface Registry {
@@ -56,7 +57,7 @@ export async function GET() {
 
     for (const service of registry.hostServices) {
       const worktreeName = service.branch
-      const serviceName = 'host-service' // Generic name for host services
+      const serviceName = service.command?.trim() || `port ${service.logicalPort}`
       const port = service.logicalPort
       const url = `http://${service.branch}.${domain}:${port}`
 
