@@ -78,6 +78,8 @@ export interface HostService {
   pid: number
   /** Path to the Traefik dynamic config file */
   configFile: string
+  /** The command being run, for display purposes */
+  command?: string
 }
 
 /**

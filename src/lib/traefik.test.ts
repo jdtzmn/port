@@ -148,6 +148,15 @@ describe('Traefik 404 handler', () => {
     expect(composeContent).not.toContain('docker ps')
     expect(composeContent).not.toContain('socat')
   })
+
+  test('404 handler mounts port registry directory', async () => {
+    await traefik.initTraefikFiles([3000])
+
+    const composeContent = await readFile(traefik.TRAEFIK_COMPOSE_FILE, 'utf-8')
+
+    expect(composeContent).toContain('/mnt/port-data')
+    expect(composeContent).toContain('PORT_REGISTRY_PATH')
+  })
 })
 
 describe('composeNeeds404HandlerUpdate', () => {

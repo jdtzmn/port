@@ -182,6 +182,7 @@ export async function run(
     actualPort,
     pid: -1,
     configFile,
+    command: command.join(' '),
   }
   await registerHostService(service)
 

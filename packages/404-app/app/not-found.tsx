@@ -180,10 +180,59 @@ export default function NotFound() {
   const anchorRefs = useRef<(HTMLAnchorElement | null)[]>([])
 
   useEffect(() => {
-    fetch('/api/worktrees')
-      .then(r => r.json())
-      .then((data: WorktreeEntry[]) => {
-        setWorktrees(data)
+    Promise.all([
+      fetch('/api/worktrees')
+        .then(r => r.json())
+        .catch(() => []) as Promise<WorktreeEntry[]>,
+      fetch('/api/host-services')
+        .then(r => r.json())
+        .catch(() => []) as Promise<WorktreeEntry[]>,
+    ])
+      .then(([dockerWorktrees, hostServices]) => {
+        // Merge docker worktrees and host services
+        const merged = new Map<string, ServiceEntry[]>()
+
+        // Add docker worktrees
+        for (const wt of dockerWorktrees) {
+          if (!merged.has(wt.name)) {
+            merged.set(wt.name, [])
+          }
+          const existing = merged.get(wt.name)!
+          for (const service of wt.services) {
+            const alreadyAdded = existing.some(
+              s => s.name === service.name && s.port === service.port
+            )
+            if (!alreadyAdded) {
+              existing.push(service)
+            }
+          }
+        }
+
+        // Add host services
+        for (const wt of hostServices) {
+          if (!merged.has(wt.name)) {
+            merged.set(wt.name, [])
+          }
+          const existing = merged.get(wt.name)!
+          for (const service of wt.services) {
+            const alreadyAdded = existing.some(
+              s => s.name === service.name && s.port === service.port
+            )
+            if (!alreadyAdded) {
+              existing.push(service)
+            }
+          }
+        }
+
+        // Convert map to array
+        const result: WorktreeEntry[] = []
+        for (const [name, services] of merged) {
+          services.sort((a, b) => a.port - b.port)
+          result.push({ name, services })
+        }
+        result.sort((a, b) => a.name.localeCompare(b.name))
+
+        setWorktrees(result)
         setLoading(false)
       })
       .catch(() => setLoading(false))

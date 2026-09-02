@@ -128,7 +128,13 @@ async function updateTraefikComposeUnlocked(ports: number[]): Promise<void> {
         image: get404HandlerImage(),
         container_name: 'port-404-handler',
         restart: 'unless-stopped',
-        volumes: ['/var/run/docker.sock:/var/run/docker.sock:ro'],
+        volumes: [
+          '/var/run/docker.sock:/var/run/docker.sock:ro',
+          `${GLOBAL_PORT_DIR}:/mnt/port-data:ro`,
+        ],
+        environment: {
+          PORT_REGISTRY_PATH: '/mnt/port-data/registry.json',
+        },
         networks: [TRAEFIK_NETWORK],
       },
     },
@@ -316,7 +322,13 @@ export function generateTraefikCompose(): string {
         image: get404HandlerImage(),
         container_name: 'port-404-handler',
         restart: 'unless-stopped',
-        volumes: ['/var/run/docker.sock:/var/run/docker.sock:ro'],
+        volumes: [
+          '/var/run/docker.sock:/var/run/docker.sock:ro',
+          `${GLOBAL_PORT_DIR}:/mnt/port-data:ro`,
+        ],
+        environment: {
+          PORT_REGISTRY_PATH: '/mnt/port-data/registry.json',
+        },
         networks: [TRAEFIK_NETWORK],
       },
     },
@@ -387,19 +399,35 @@ export async function hasFileProvider(): Promise<boolean> {
  * - A service pointing to the port-404-handler container
  * - Middleware for error page handling (optional, router provides main fallback)
  *
+ * @param ports - Array of ports to create fallback routers for (in addition to web)
  * @returns Dynamic config YAML string for error pages
  */
-export function generate404ErrorPageConfig(): string {
+export function generate404ErrorPageConfig(ports: number[] = []): string {
+  const routers: Record<
+    string,
+    { rule: string; priority: number; service: string; entryPoints: string[] }
+  > = {
+    'port-404-fallback': {
+      rule: 'PathPrefix(`/`)',
+      priority: 1,
+      service: 'port-404-handler',
+      entryPoints: ['web'],
+    },
+  }
+
+  // Add fallback routers for each port entrypoint
+  for (const port of ports) {
+    routers[`port-404-fallback-${port}`] = {
+      rule: 'PathPrefix(`/`)',
+      priority: 1,
+      service: 'port-404-handler',
+      entryPoints: [`port${port}`],
+    }
+  }
+
   const config = {
     http: {
-      routers: {
-        'port-404-fallback': {
-          rule: 'PathPrefix(`/`)',
-          priority: 1,
-          service: 'port-404-handler',
-          entryPoints: ['web'],
-        },
-      },
+      routers,
       middlewares: {
         'error-pages': {
           errors: {
