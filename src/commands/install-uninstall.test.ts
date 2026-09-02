@@ -32,6 +32,11 @@ const mocks = vi.hoisted(() => ({
   dim: vi.fn(),
   newline: vi.fn(),
   command: vi.fn((v: string) => v),
+
+  // shell profile
+  detectShell: vi.fn(),
+  installShellHook: vi.fn(),
+  removeShellHook: vi.fn(),
 }))
 
 vi.mock('inquirer', () => ({ default: { prompt: mocks.prompt } }))
@@ -45,6 +50,12 @@ vi.mock('../lib/dns.ts', () => ({
   DEFAULT_DNS_IP: '127.0.0.1',
   DEFAULT_DOMAIN: 'port',
   DNSMASQ_ALT_PORT: 5354,
+}))
+
+vi.mock('../lib/shellProfile.ts', () => ({
+  detectShell: mocks.detectShell,
+  installShellHook: mocks.installShellHook,
+  removeShellHook: mocks.removeShellHook,
 }))
 
 vi.mock('../lib/worktree.ts', () => ({ detectWorktree: mocks.detectWorktree }))
@@ -124,6 +135,7 @@ describe('install + uninstall round-trip', () => {
     mocks.configExists.mockReturnValue(false)
     mocks.execAsync.mockResolvedValue({ stdout: '' })
     mocks.execPrivileged.mockResolvedValue({ stdout: '' })
+    mocks.detectShell.mockReturnValue(null)
   })
 
   afterEach(() => {

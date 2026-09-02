@@ -37,9 +37,9 @@ export const COMMAND_GUIDE: CommandGuideEntry[] = [
   {
     command: 'port install',
     category: 'recommended',
-    description: 'Set up DNS for wildcard domain (default from config)',
-    how: 'Run once per machine (or when changing domain/IP).',
-    why: 'Configures wildcard DNS so branch domains resolve locally.',
+    description: 'Set up DNS and the shell hook for the wildcard domain (default from config)',
+    how: 'Run once per machine (or when changing domain/IP). Add --no-shell-hook to skip the shell profile change, or --shell-hook-only to skip DNS.',
+    why: 'Configures wildcard DNS so branch domains resolve locally, and installs the shell hook so port enter/exit can change directories.',
     agentGuidance:
       'Ask before running because this can require administrator privileges and changes machine DNS.',
     privileged: true,
@@ -67,7 +67,7 @@ export const COMMAND_GUIDE: CommandGuideEntry[] = [
     cliName: 'shell-hook',
     category: 'recommended',
     description: 'Print shell integration code for automatic cd',
-    how: 'Add eval "$(port shell-hook bash)" to your shell profile (one-time setup).',
+    how: 'Usually installed for you by port install; otherwise add eval "$(port shell-hook bash)" to your shell profile.',
     why: 'Enables port enter/exit to change your shell directory automatically.',
     agentGuidance:
       'Recommend this for interactive users; without it, enter/exit prints cd commands.',
@@ -224,7 +224,7 @@ export const COMMAND_GUIDE: CommandGuideEntry[] = [
     category: 'additional',
     description: 'Remove DNS configuration for wildcard domain used by this repo',
     how: 'Run when the user explicitly wants to remove Port DNS setup for a domain.',
-    why: 'Removes machine-level DNS configuration created by port install.',
+    why: 'Removes machine-level DNS configuration and the shell hook created by port install.',
     agentGuidance:
       'Ask before running because this can require administrator privileges and changes machine DNS.',
     privileged: true,

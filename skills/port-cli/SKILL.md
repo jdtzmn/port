@@ -67,10 +67,10 @@ Print recommended workflow and command usage guide
 
 ### `port install` (privileged)
 
-Set up DNS for wildcard domain (default from config)
+Set up DNS and the shell hook for the wildcard domain (default from config)
 
-- **How**: Run once per machine (or when changing domain/IP).
-- **Why**: Configures wildcard DNS so branch domains resolve locally.
+- **How**: Run once per machine (or when changing domain/IP). Add --no-shell-hook to skip the shell profile change, or --shell-hook-only to skip DNS.
+- **Why**: Configures wildcard DNS so branch domains resolve locally, and installs the shell hook so port enter/exit can change directories.
 - **Agent guidance**: Ask before running because this can require administrator privileges and changes machine DNS.
 
 ### `port list`
@@ -94,7 +94,7 @@ Show service status across all worktrees
 
 Print shell integration code for automatic cd
 
-- **How**: Add eval "$(port shell-hook bash)" to your shell profile (one-time setup).
+- **How**: Usually installed for you by port install; otherwise add eval "$(port shell-hook bash)" to your shell profile.
 - **Why**: Enables port enter/exit to change your shell directory automatically.
 - **Agent guidance**: Recommend this for interactive users; without it, enter/exit prints cd commands.
 
@@ -234,7 +234,7 @@ Delete archived branches created by port remove
 Remove DNS configuration for wildcard domain used by this repo
 
 - **How**: Run when the user explicitly wants to remove Port DNS setup for a domain.
-- **Why**: Removes machine-level DNS configuration created by port install.
+- **Why**: Removes machine-level DNS configuration and the shell hook created by port install.
 - **Agent guidance**: Ask before running because this can require administrator privileges and changes machine DNS.
 
 ## Troubleshooting Checklist
