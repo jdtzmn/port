@@ -302,7 +302,7 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port up [services...]`                                             | Start docker-compose services in current worktree                   |
 | `port open`                                                         | Re-run the `post-up` hook in the current repo/worktree context      |
 | `port down [services...]`                                           | Stop docker-compose services and host processes selectively         |
-| `port run <port> -- <command...>`                                   | Run a host process with Traefik routing                             |
+| `port run <port> [-d] -- <command...>`                              | Run a host process with Traefik routing (`-d` detaches)             |
 | `port kill [port]`                                                  | Stop host services (optionally by logical port)                     |
 | `port remove <branch> [--force] [--keep-branch] [--cleanup-images]` | Remove worktree, archive branch, clean up Docker resources          |
 | `port prune [--dry-run] [--force] [--cleanup-images]`               | Remove worktrees for merged branches, clean up Docker resources     |
@@ -477,6 +477,17 @@ port run 3000 -- npm run dev
 4. Cleans up when the process exits (Ctrl+C, crash, etc.)
 
 Most frameworks (Express, Next.js, Vite, etc.) respect the `PORT` environment variable automatically.
+
+**Detached mode:**
+
+```bash
+port run 3000 -d -- npm run dev
+# CLI exits immediately; output goes to .port/logs/<branch>-<port>.log
+tail -f .port/logs/feature-1-3000.log
+port kill 3000  # stop the detached process
+```
+
+Detached processes survive closing the terminal, so they are cleaned up by `port kill` instead of Ctrl+C.
 
 ### Docker Cleanup
 

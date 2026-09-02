@@ -225,9 +225,10 @@ program
   .allowUnknownOption()
   .allowExcessArguments()
   .argument('[command...]', 'Command to run (receives PORT env var)')
-  .action(async (port: string, command: string[]) => {
+  .option('-d, --detached', 'Run the process in detached mode (similar to docker run -d)')
+  .action(async (port: string, command: string[], options: { detached?: boolean }) => {
     const portNum = parseInt(port, 10)
-    await run(portNum, command)
+    await run(portNum, command, options)
   })
 
 // port kill [port]

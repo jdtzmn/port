@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'child_process'
+import { readFile } from 'fs/promises'
 import { join, resolve } from 'path'
 import { execPortAsync, fetchWithTimeout, prepareSample } from './utils'
 import { afterEach, describe, test, expect } from 'vitest'
@@ -92,6 +93,54 @@ describe('port run integration', () => {
     },
     TIMEOUT
   )
+
+  test(
+    'detached run keeps serving after the CLI exits and stops with port kill',
+    async () => {
+      const sample = await prepareSample('simple-server', {
+        initWithConfig: true,
+      })
+
+      await execPortAsync(['enter', 'run-detached'], sample.dir)
+      const worktreeDir = join(sample.dir, '.port/trees/run-detached')
+      const url = 'http://run-detached.port:3000'
+
+      try {
+        // The CLI returns as soon as the process is detached, instead of
+        // blocking until the host process exits.
+        const { stdout, stderr } = await execPortAsync(
+          ['run', '3000', '-d', '--', 'bun', 'index.ts'],
+          worktreeDir
+        )
+        expect(`${stdout}${stderr}`).toContain('detached mode')
+
+        const response = await pollUntilReady(url)
+        const data = (await response.json()) as { actualPort: number }
+        expect(data.actualPort).not.toEqual(3000)
+
+        // Detached output is captured in a per-service log file
+        const logFile = join(sample.dir, '.port/logs/run-detached-3000.log')
+        const logContents = await pollUntil(
+          () => readFile(logFile, 'utf8'),
+          contents => contents.includes('Server listening on port')
+        )
+        expect(logContents).toContain(`Server listening on port ${data.actualPort}`)
+
+        // The detached process stays registered as a running host service
+        const status = await execPortAsync(['status'], worktreeDir)
+        expect(`${status.stdout}${status.stderr}`).toContain(`run-detached:3000`)
+
+        await execPortAsync(['kill', '3000'], worktreeDir)
+        await pollUntilUnreachable(url)
+      } finally {
+        await execPortAsync(['kill', '3000'], worktreeDir).catch(() => {
+          /* already stopped */
+        })
+        await sample.cleanup()
+      }
+    },
+    TIMEOUT
+  )
 })
 
 /**
@@ -124,4 +173,51 @@ async function pollUntilReady(url: string, timeoutMs = 30000): Promise<Response>
   }
 
   throw new Error(`Timeout waiting for ${url} to respond`)
+}
+
+/**
+ * Poll a URL until it stops responding with status 200
+ */
+async function pollUntilUnreachable(url: string, timeoutMs = 15000): Promise<void> {
+  const startTime = Date.now()
+
+  while (Date.now() - startTime < timeoutMs) {
+    try {
+      const response = await fetchWithTimeout(url, 1000)
+      if (response.status !== 200) {
+        return
+      }
+    } catch {
+      return
+    }
+    await new Promise(r => setTimeout(r, 200))
+  }
+
+  throw new Error(`Timeout waiting for ${url} to stop responding`)
+}
+
+/**
+ * Poll an async producer until its value satisfies a predicate
+ */
+async function pollUntil<T>(
+  produce: () => Promise<T>,
+  predicate: (value: T) => boolean,
+  timeoutMs = 15000
+): Promise<T> {
+  const startTime = Date.now()
+  let lastError: unknown
+
+  while (Date.now() - startTime < timeoutMs) {
+    try {
+      const value = await produce()
+      if (predicate(value)) {
+        return value
+      }
+    } catch (error) {
+      lastError = error
+    }
+    await new Promise(r => setTimeout(r, 200))
+  }
+
+  throw lastError ?? new Error('Timeout waiting for condition')
 }
