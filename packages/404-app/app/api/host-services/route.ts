@@ -57,7 +57,7 @@ export async function GET() {
 
     for (const service of registry.hostServices) {
       const worktreeName = service.branch
-      const serviceName = service.command?.trim() || `port ${service.logicalPort}`
+      const serviceName = service.command?.trim() || `port run service on ${service.logicalPort}`
       const port = service.logicalPort
       const url = `http://${service.branch}.${domain}:${port}`
 
