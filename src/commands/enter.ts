@@ -18,6 +18,7 @@ import { writeOverrideFile, parseComposeFile } from '../lib/compose.ts'
 import { buildProjectName as getProjectName } from '../lib/projectName.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import { hookExists, runPostCreateHook } from '../lib/hooks.ts'
+import { markWorktreeRegistered } from '../lib/worktreeRegistration.ts'
 import { mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import { basename } from 'path'
@@ -210,6 +211,13 @@ export async function enter(branch: string): Promise<void> {
     }
 
     output.success('Post-create hook completed')
+  }
+
+  // Mark this worktree as registered immediately so the opportunistic
+  // registration check that runs before every other `port` command does
+  // not treat it as unmanaged and re-run the post-create hook again.
+  if (isNewWorktree) {
+    await markWorktreeRegistered(repoRoot, sanitized)
   }
 
   // Parse docker-compose file and generate override file
