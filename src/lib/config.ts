@@ -89,6 +89,21 @@ export function getTreesDir(repoRoot: string): string {
 }
 
 /**
+ * Get the path to the per-worktree registration lock file.
+ *
+ * Serializes the "check if registered, run post-create hook, register"
+ * sequence (see `worktreeRegistration.ts`) so that two `port` commands
+ * running concurrently in the same brand-new worktree cannot both decide
+ * it is unregistered and both re-run the post-create hook.
+ *
+ * @param repoRoot - The repo root path
+ * @param sanitizedBranch - The sanitized (hostname-safe) branch name
+ */
+export function getRegistrationLockPath(repoRoot: string, sanitizedBranch: string): string {
+  return join(getPortDir(repoRoot), `registration-${sanitizedBranch}.lock`)
+}
+
+/**
  * Check if a .port/config.jsonc file exists
  */
 export function configExists(repoRoot: string): boolean {
