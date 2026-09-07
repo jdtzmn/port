@@ -1,0 +1,11 @@
+FROM docker:27.5.1-cli AS certificates
+FROM postgres:17.4-bookworm
+COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+RUN sed -i 's|http://|https://|g' /etc/apt/sources.list.d/* \
+    && apt-get -o APT::Update::Error-Mode=any update && apt-get install -y --no-install-recommends openssh-server \
+    && rm -rf /var/lib/apt/lists/* /etc/ssh/ssh_host_* \
+    && useradd --create-home --shell /bin/sh fixture && passwd -d fixture \
+    && mkdir -p /run/sshd
+COPY sshd_config /etc/ssh/sshd_config
+COPY remote.sh /fixture/remote.sh
+ENTRYPOINT ["bash", "/fixture/remote.sh"]

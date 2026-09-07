@@ -1,0 +1,13 @@
+Port 22
+HostKey /run/ssh-host-key
+AuthorizedKeysFile .ssh/authorized_keys
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+UsePAM no
+AllowUsers fixture
+AllowTcpForwarding local
+PermitOpen 127.0.0.1:5432
+X11Forwarding no
+PrintMotd no
+LogLevel ERROR

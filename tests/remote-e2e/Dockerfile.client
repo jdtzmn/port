@@ -1,0 +1,11 @@
+FROM docker:27.5.1-cli AS docker-cli
+FROM debian:12.10-slim
+# Bootstrap verified HTTPS before the Debian ca-certificates package is installed.
+COPY --from=docker-cli /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get -o APT::Update::Error-Mode=any update && apt-get install -y --no-install-recommends \
+      python3 openssh-client dnsmasq postgresql-client ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+COPY client.sh harness.py ssh_config /fixture/
+ENTRYPOINT ["bash", "/fixture/client.sh"]

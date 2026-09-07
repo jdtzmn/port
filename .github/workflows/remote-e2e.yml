@@ -1,0 +1,25 @@
+name: Remote E2E Feasibility
+
+on: push
+
+permissions:
+  contents: read
+
+jobs:
+  remote-e2e:
+    name: Linux SSH and same-port networking
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run isolated feasibility harness
+        run: bash tests/remote-e2e/run.sh
+      - name: Upload safe diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: remote-e2e-diagnostics
+          path: .remote-e2e-artifacts/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7

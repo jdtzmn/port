@@ -1,0 +1,9 @@
+# Allowlist the build context: never send incidental secrets or artifacts.
+*
+!Dockerfile.client
+!Dockerfile.remote
+!client.sh
+!remote.sh
+!harness.py
+!ssh_config
+!sshd_config
