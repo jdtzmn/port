@@ -49,10 +49,10 @@ HTTPS support must be explicitly designed and tested before being claimed. Do no
 
 ### Default and explicit addresses
 
-| Destination | Service address | Port-based address |
-| --- | --- | --- |
-| Automatic, when unique | `ui.my-feature.port` | `my-feature.port:3000` |
-| Explicit local | `ui.my-feature.local.port` | `my-feature.local.port:3000` |
+| Destination              | Service address            | Port-based address           |
+| ------------------------ | -------------------------- | ---------------------------- |
+| Automatic, when unique   | `ui.my-feature.port`       | `my-feature.port:3000`       |
+| Explicit local           | `ui.my-feature.local.port` | `my-feature.local.port:3000` |
 | Explicit remote `127.od` | `ui.my-feature.127.od.ssh` | `my-feature.127.od.ssh:3000` |
 | Explicit remote `devbox` | `ui.my-feature.devbox.ssh` | `my-feature.devbox.ssh:3000` |
 
@@ -199,25 +199,25 @@ Install the intended integration in an isolated shell profile. Drive a real inte
 
 ### Required acceptance cases
 
-| Case | Required evidence |
-| --- | --- |
-| One remote | Both default URL forms reach correct worktree |
-| Two worktrees on one remote | Same HTTP and PostgreSQL ports independently reachable |
-| Local versus remote collision | HTTP 409 lists alternatives; explicit aliases target each owner |
-| Two remote collision | Same checks without local owner |
-| Three-way collision | No priority-based implicit selection |
-| Partial service sets | No cross-machine UI/API composition under unqualified namespace |
-| PostgreSQL | psql uses 5432 for each explicit owner and reads correct identity |
-| Ambiguous raw TCP | Reject before contacting any database backend |
-| Explicit missing service/owner | Unavailable, never another backend |
-| HTTP semantics | Host, redirects, cookies, origin behavior, POST non-forwarding |
-| WebSockets | Upgrade, bidirectional HMR-style traffic, safe connection closure |
-| Multiple SSH sessions | Shared resources survive one session closing |
-| Last session/network loss | Owned access removed/disabled, remote services remain running |
-| Reconnect/remote restart | Fresh snapshot replaces stale service state |
-| Missing/incompatible Port | Ordinary SSH still works |
-| Changed SSH host key | Verification rejects connection normally |
-| Bridge restart | Owned route cleanup and reconciliation |
+| Case                           | Required evidence                                                 |
+| ------------------------------ | ----------------------------------------------------------------- |
+| One remote                     | Both default URL forms reach correct worktree                     |
+| Two worktrees on one remote    | Same HTTP and PostgreSQL ports independently reachable            |
+| Local versus remote collision  | HTTP 409 lists alternatives; explicit aliases target each owner   |
+| Two remote collision           | Same checks without local owner                                   |
+| Three-way collision            | No priority-based implicit selection                              |
+| Partial service sets           | No cross-machine UI/API composition under unqualified namespace   |
+| PostgreSQL                     | psql uses 5432 for each explicit owner and reads correct identity |
+| Ambiguous raw TCP              | Reject before contacting any database backend                     |
+| Explicit missing service/owner | Unavailable, never another backend                                |
+| HTTP semantics                 | Host, redirects, cookies, origin behavior, POST non-forwarding    |
+| WebSockets                     | Upgrade, bidirectional HMR-style traffic, safe connection closure |
+| Multiple SSH sessions          | Shared resources survive one session closing                      |
+| Last session/network loss      | Owned access removed/disabled, remote services remain running     |
+| Reconnect/remote restart       | Fresh snapshot replaces stale service state                       |
+| Missing/incompatible Port      | Ordinary SSH still works                                          |
+| Changed SSH host key           | Verification rejects connection normally                          |
+| Bridge restart                 | Owned route cleanup and reconciliation                            |
 
 Assert backend counters/logs as well as client errors: a 409 alone does not prove a POST was not forwarded. Do not inject client DNS overrides or Playwright hostname mappings in primary tests; requests must traverse actual Port DNS.
 
