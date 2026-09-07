@@ -182,6 +182,12 @@ describe('isEligibleSshConfig', () => {
     expect(isEligibleSshConfig(safeOutput.toUpperCase().replaceAll('\n', '\r\n'))).toBe(true)
     expect(isEligibleSshConfig(safeOutput.trimEnd())).toBe(true)
     expect(isEligibleSshConfig(safeOutput.replace('controlpath none\n', ''))).toBe(true)
+    // OpenSSH omits both fields when no control path or remote command is set.
+    expect(
+      isEligibleSshConfig(
+        safeOutput.replace('controlpath none\n', '').replace('remotecommand none\n', '')
+      )
+    ).toBe(true)
   })
 
   test.each(['auto', 'yes', 'force'])('accepts requesttty %s and alternate safe values', tty => {
@@ -196,7 +202,7 @@ describe('isEligibleSshConfig', () => {
   })
 
   test.each(safeLines)('rejects missing required or duplicate policy field %s', line => {
-    if (!line.startsWith('controlpath ')) {
+    if (!line.startsWith('controlpath ') && !line.startsWith('remotecommand ')) {
       expect(isEligibleSshConfig(safeOutput.replace(line + '\n', ''))).toBe(false)
     }
     expect(isEligibleSshConfig(safeOutput + line + '\n')).toBe(false)

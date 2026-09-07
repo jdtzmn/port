@@ -72,8 +72,8 @@ const CONFIG_POLICY: Readonly<Record<string, readonly string[]>> = {
 }
 
 /**
- * Validate effective `ssh -G` stdout, not a config file. Unknown well-formed
- * fields are expected; policy fields must be unique and present (except controlpath).
+ * Validate effective `ssh -G` stdout, not a config file; allow unknown fields.
+ * Policy fields must be unique; OpenSSH may omit unset controlpath/remotecommand.
  * The caller must enforce a real TTY, successful subprocess exit, timeout and
  * output cap. `ssh -G` can rerun Match exec: evaluating config is NOT side-effect-free.
  * This pure predicate neither executes SSH nor makes config evaluation safe.
@@ -92,5 +92,7 @@ export function isEligibleSshConfig(output: string): boolean {
     seen.add(key)
     if (!CONFIG_POLICY[key]!.includes(match[2]!.toLowerCase())) return false
   }
-  return Object.keys(CONFIG_POLICY).every(key => key === 'controlpath' || seen.has(key))
+  return Object.keys(CONFIG_POLICY).every(
+    key => key === 'controlpath' || key === 'remotecommand' || seen.has(key)
+  )
 }
