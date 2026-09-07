@@ -54,4 +54,5 @@ step 30 smoke-copy "${compose[@]}" cp "$image_dir/smoke.tar" docker:/smoke.tar
 step 60 smoke-load "${compose[@]}" exec -T docker docker image load --input /smoke.tar
 step 10 smoke-remove "${compose[@]}" exec -T docker rm -f /smoke.tar
 step 150 proof "${compose[@]}" exec -T client python3 /fixture/harness.py
+step 90 multiplexing "${compose[@]}" exec -T client python3 /fixture/mux.py
 printf 'remote-e2e: infrastructure proof passed (not product integration)\n'

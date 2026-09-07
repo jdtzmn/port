@@ -94,6 +94,16 @@ COMPOSE_DISABLE_ENV_FILE=1 docker compose --env-file /dev/null \
   -p remote-e2e-config-check -f tests/remote-e2e/compose.yaml config --quiet
 ```
 
+## Multiplexing lifecycle gate
+
+`mux.py` additionally probes a private mode-0700 ControlPath and bounded
+ControlPersist. A clean companion invocation reuses the authenticated master
+without replaying login configuration; `ProxyCommand=false` prevents transport
+fallback when the socket is absent. The interactive primary must return exit
+status 7 promptly while the companion is still active. Explicit master shutdown
+must reap the companion and remove the socket. These are transport feasibility
+assertions, not a shipped SSH wrapper. See `multiplexing.log` for bounded results.
+
 These checks do not prove runtime feasibility. Run the full entrypoint on a
 Docker-capable runner to establish that. `.github/workflows/remote-e2e.yml` runs
 this same entrypoint on GitHub's Ubuntu runner on every push and uploads bounded

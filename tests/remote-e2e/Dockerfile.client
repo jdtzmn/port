@@ -7,5 +7,5 @@ RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.l
       python3 openssh-client dnsmasq postgresql-client ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
-COPY client.sh harness.py ssh_config /fixture/
+COPY client.sh harness.py mux.py ssh_config /fixture/
 ENTRYPOINT ["bash", "/fixture/client.sh"]

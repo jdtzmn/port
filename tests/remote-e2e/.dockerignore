@@ -5,5 +5,6 @@
 !client.sh
 !remote.sh
 !harness.py
+!mux.py
 !ssh_config
 !sshd_config
