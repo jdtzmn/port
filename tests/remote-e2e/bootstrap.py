@@ -344,15 +344,19 @@ def private_forward(shell, directory):
             raise RuntimeError('invalid private forward response') from None
         require(isinstance(ready, dict) and set(ready) == {'status', 'address', 'port'},
                 'unexpected private forward response fields')
-        require(ready['status'] == 'ready' and ready['address'] == '127.0.0.1'
-                and type(ready['port']) is int and 0 < ready['port'] <= 65535,
-                'invalid private forward listener')
-        port = ready['port']
+        require(ready['status'] == 'ready' and isinstance(ready['address'], str)
+                and re.fullmatch(r'/tmp/port-stream-query-[A-Za-z0-9]{6}', ready['address']) is not None
+                and type(ready['port']) is int and ready['port'] == 5432,
+                'invalid private stream listener')
+        query_directory = Path(ready['address'])
+        info = query_directory.lstat()
+        require(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid()
+                and stat.S_IMODE(info.st_mode) == 0o700, 'query directory is not private and owned')
         # Plain libpq is ONLY inside the encrypted private SSH transport, never
         # the shared-hostname Traefik baseline or public plaintext support (#149).
         database = subprocess.Popen(
             ['psql', '-X', '-w', '-A', '-t', '-F', '|',
-             f'host=127.0.0.1 port={port} user=postgres dbname=remote_a '
+             f'host={query_directory} port=5432 user=postgres dbname=remote_a '
              'connect_timeout=3 sslmode=disable', '-v', 'ON_ERROR_STOP=1', '-c',
              'SELECT current_database(), system_identifier FROM pg_control_system()'],
             env={'PATH': os.environ['PATH'], 'HOME': '/tmp/forward-probe-empty-home', 'LC_ALL': 'C'},
@@ -375,16 +379,29 @@ def private_forward(shell, directory):
             raise RuntimeError('invalid private forward close response') from None
         require(closed == {'status': 'closed'}, 'private forward did not acknowledge close')
         require(helper.wait(timeout=3) == 0, 'private forward helper failed')
-        try:
-            with socket.create_connection(('127.0.0.1', port), timeout=2):
-                raise RuntimeError('private forward listener survived close')
-        except ConnectionRefusedError:
-            pass
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(2)
+            try:
+                connection.connect(str(query_directory / '.s.PGSQL.5432'))
+            except OSError as exc:
+                require(exc.errno in (errno.ENOENT, errno.ECONNREFUSED),
+                        'unexpected private stream connection failure after close')
+            else:
+                raise RuntimeError('private stream listener survived close')
+        require(not query_directory.exists(), 'private stream query directory survived close')
         # Cancellation must leave the SAME interactive master/login usable.
         shell.marker('test -t 0 && test "$(id -un)" = fixture && true')
-        print('PASS private transport component: actual openRemoteForward -> remote_a SQL; '
+        print('PASS private Unix transport component: actual openRemoteStream -> remote_a SQL; '
               'idempotent cancel refuses new connections and preserves login', flush=True)
     finally:
+        # Allow bounded owned-stream cleanup before escalating to process reaping.
+        if helper.poll() is None and helper.stdin is not None:
+            try:
+                helper.stdin.write(b'close\n')
+                helper.stdin.flush()
+                helper.wait(timeout=10)
+            except (BrokenPipeError, OSError, subprocess.TimeoutExpired):
+                pass
         stop_process(helper)
 
 

@@ -40,16 +40,25 @@ handshake without breaking login. No remote install or special output occurs.
 
 Inside the first plain `ssh remote-a` login, `bootstrap.py` launches the compiled
 `forward-probe.js` on the **client**, with only the original owned session directory.
-The helper calls the actual `openRemoteForward(directory, {address: '127.0.0.1',
-port: 5432})` API, which uses owned mux `-O forward` / `-O cancel` without new
-authentication. No test-built `ssh -L` bypass is used for this component gate.
-Its bounded JSON response supplies a private `127.0.0.1` ephemeral listener to
-real `psql`, which checks `current_database() = remote_a` and a numeric cluster
-system identifier. This gate does not compare identifiers between remotes.
+The helper calls the actual `openRemoteStream(directory, {address: '127.0.0.1',
+port: 5432})` API, which uses an owned Unix socket and mux `-O forward` / `-O cancel`
+without new authentication. No test-built `ssh -L` bypass or intermediate TCP
+bridge is used for this component gate. A fixture-only mode-0700 directory from
+`mkdtempSync('/tmp/port-stream-query-')` contains `.s.PGSQL.5432`, a symlink to
+`stream.path`, solely to adapt libpq's socket naming. The bounded JSON response
+is `{status: 'ready', address: queryDirectory, port: 5432}`. Python strictly
+validates the directory prefix/suffix, ownership and permissions before real
+`psql` uses `host=<queryDirectory> port=5432`. SQL checks
+`current_database() = remote_a` and a numeric cluster system identifier.
+This gate does not compare identifiers between remotes.
 
-The fixed stdin `close` command makes the helper await `close()` twice before
-acknowledging closure. New TCP connections to the old listener must be refused;
-a normal marker command through the original interactive shell then proves mux
+The bounded fixed stdin `close` command makes the helper await `close()` twice
+and require `stream.connect() === null` before acknowledging closure. Cleanup,
+including SIGINT/SIGTERM handling, cancels the original owned stream and removes
+only the helper's own symlink and temporary directory. After helper exit, Python
+attempts an AF_UNIX connection to the former `.s.PGSQL.5432` path and requires
+ENOENT or connection refusal, with no fallback. A normal marker command through
+the original interactive shell then proves mux
 cancellation did not kill the master/login. Existing live-discovery/corruption
 checks, first-login exit status 7, and session cleanup continue unchanged.
 Helper/SQL output reads and waits are bounded, stderr is discarded rather than
@@ -67,8 +76,10 @@ After live discovery finds and directly probes the remote-a workload, **before**
 registry corruption or workload stop, `proxy-probe.js` runs on CLIENT with only the
 owned SSH session directory. It reads a bounded, private `ready` cache and uses
 `parseRemoteSnapshot` to select `feature.port` / `ui` / logical port 3000. The actual
-`openRemoteForward(directory, endpoint.target)` forwards to the discovered Docker
-IP:8080. Fixture sshd permits `*:8080` in addition to its existing specific targets;
+`openRemoteForward(directory, endpoint.target)` still forwards to the discovered Docker
+IP:8080. This HTTP component intentionally retains the legacy TCP-forward path
+pending TLS migration; only the private PostgreSQL component above uses the new
+Unix-stream API. Fixture sshd permits `*:8080` in addition to its existing specific targets;
 this does not permit all ports or bypass the library's private-IP validation.
 
 A separate nested `traefik:v3.6` container runs on CLIENT's namespace-local DinD
