@@ -1,5 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { X509Certificate } from 'node:crypto'
+import { beforeAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
+import { createRemoteRelayIdentity } from './remoteRelayIdentity.ts'
 import { renderRemoteRouteConfig } from './remoteRouteConfig.ts'
 import {
   compileRemoteRoutePlan,
@@ -33,8 +35,19 @@ const source = (id = 'remote', logicalPort = 3000, name = 'ui'): RemoteRouteSour
     ],
   },
 })
-const target = { address: '127.0.0.1', port: 41000 }
-const guardTarget = { address: '172.20.0.2', port: 42000 }
+let tls: { serverName: string; certificatePem: string }
+let rotatedTls: typeof tls
+let target: { address: string; port: number; tls: typeof tls }
+let guardTarget: typeof target
+beforeAll(async () => {
+  const identity = await createRemoteRelayIdentity()
+  const rotated = await createRemoteRelayIdentity()
+  tls = { serverName: identity.serverName, certificatePem: identity.certificatePem }
+  rotatedTls = { serverName: rotated.serverName, certificatePem: rotated.certificatePem }
+  target = { address: '127.0.0.1', port: 41000, tls }
+  guardTarget = { address: '172.20.0.2', port: 42000, tls }
+})
+afterEach(() => vi.restoreAllMocks())
 type Options = Parameters<typeof renderRemoteRouteConfig>[1]
 const options = () => ({
   backend: vi.fn<Options['backend']>(() => target),
@@ -55,8 +68,15 @@ type Config = Record<
     routers: Record<string, Router>
     services: Record<
       string,
-      { loadBalancer: { passHostHeader?: boolean; servers: { url?: string; address?: string }[] } }
+      {
+        loadBalancer: {
+          serversTransport: string
+          passHostHeader?: boolean
+          servers: { url?: string; address?: string; tls?: boolean }[]
+        }
+      }
     >
+    serversTransports: Record<string, unknown>
   }
 >
 const decode = (content: string): Config => parse(content) as Config
@@ -88,10 +108,21 @@ describe('renderRemoteRouteConfig', () => {
       expect(router.priority).toBeGreaterThan(rule.length) // Generated Docker rules use implicit rule length.
       expect(router.service).toBe(name)
       expect(router.tls).toEqual(http ? undefined : {})
-      expect(section.services[name]!.loadBalancer).toEqual(
-        http
-          ? { passHostHeader: true, servers: [{ url: 'http://127.0.0.1:41000' }] }
-          : { servers: [{ address: '127.0.0.1:41000' }] }
+      const transportName = section.services[name]!.loadBalancer.serversTransport
+      expect(transportName).toMatch(/^port-remote-transport-[a-f0-9]{64}$/)
+      expect(section.services[name]!.loadBalancer).toEqual({
+        serversTransport: transportName,
+        ...(http
+          ? { passHostHeader: true, servers: [{ url: 'https://127.0.0.1:41000' }] }
+          : { servers: [{ address: '127.0.0.1:41000', tls: true }] }),
+      })
+      const trust = {
+        serverName: tls.serverName,
+        rootCAs: [tls.certificatePem],
+        insecureSkipVerify: false,
+      }
+      expect(section.serversTransports[transportName]).toEqual(
+        http ? { ...trust, disableHTTP2: true } : { tls: trust }
       )
       expect(
         opts.backend.mock.calls.some(
@@ -102,6 +133,10 @@ describe('renderRemoteRouteConfig', () => {
     expect(opts.guard).not.toHaveBeenCalled()
     expect(result.content).not.toContain('10.99.99.99')
     expect(result.content).not.toContain('49999')
+    expect(result.content).not.toContain('http://')
+    expect(result.content).not.toContain('insecureSkipVerify: true')
+    expect(result.content).not.toContain('PRIVATE KEY')
+    expect(result.content).not.toContain('proxyProtocol')
   })
 
   it('keeps conflicting and explicitly missing services guarded without endpoint lookup or local fallback', () => {
@@ -128,8 +163,8 @@ describe('renderRemoteRouteConfig', () => {
       expect(router.priority).toBe(100000)
       expect(section.services[router.service]!.loadBalancer.servers).toEqual(
         plan.transport === 'http'
-          ? [{ url: 'http://172.20.0.2:42000' }]
-          : [{ address: '172.20.0.2:42000' }]
+          ? [{ url: 'https://172.20.0.2:42000' }]
+          : [{ address: '172.20.0.2:42000', tls: true }]
       )
     }
     const onlyGuards = options()
@@ -162,7 +197,7 @@ describe('renderRemoteRouteConfig', () => {
     expect(input).toEqual(before)
     const changed = decode(
       renderRemoteRouteConfig(input, {
-        backend: () => ({ address: '10.0.0.2', port: 1 }),
+        backend: () => ({ address: '10.0.0.2', port: 1, tls }),
         guard: () => target,
       }).content
     )
@@ -198,8 +233,8 @@ describe('renderRemoteRouteConfig', () => {
     const opts = options()
     const result = renderRemoteRouteConfig([], opts)
     expect(decode(result.content)).toEqual({
-      http: { routers: {}, services: {} },
-      tcp: { routers: {}, services: {} },
+      http: { routers: {}, services: {}, serversTransports: {} },
+      tcp: { routers: {}, services: {}, serversTransports: {} },
     })
     expect(result.ports).toEqual([])
     expect(opts.backend).not.toHaveBeenCalled()
@@ -276,7 +311,7 @@ describe('renderRemoteRouteConfig', () => {
   ])('rejects unsafe backend and guard targets with fixed errors: %j', unsafe => {
     for (const transport of ['http', 'tls-sni'] as const) {
       const input = plans().filter(p => p.transport === transport)
-      const bad = unsafe as typeof target
+      const bad = (unsafe ? { ...unsafe, tls } : unsafe) as typeof target
       expect(() =>
         renderRemoteRouteConfig(input, { backend: () => bad, guard: () => guardTarget })
       ).toThrow(error)
@@ -291,12 +326,85 @@ describe('renderRemoteRouteConfig', () => {
     address => {
       expect(() =>
         renderRemoteRouteConfig(plans(), {
-          backend: () => ({ address, port: 65535 }),
+          backend: () => ({ address, port: 65535, tls }),
           guard: () => guardTarget,
         })
       ).not.toThrow()
     }
   )
+
+  it('rejects absent, invalid, mismatched and noncanonical TLS on backends and guards', () => {
+    const invalid = [
+      undefined,
+      null,
+      {},
+      { ...tls, serverName: 'wrong.port-relay.invalid' },
+      { ...tls, serverName: tls.serverName.toUpperCase() },
+      { ...tls, serverName: `${tls.serverName}.` },
+      { ...tls, certificatePem: '/tmp/certificate.pem' },
+      {
+        ...tls,
+        certificatePem: '-----BEGIN CERTIFICATE-----\ninvalid\n-----END CERTIFICATE-----\n',
+      },
+      { ...tls, certificatePem: 'x'.repeat(16 * 1024 + 1) },
+      { ...tls, certificatePem: tls.certificatePem + tls.certificatePem },
+      { ...tls, certificatePem: tls.certificatePem + '-----BEGIN PRIVATE KEY-----\n' },
+    ]
+    for (const descriptor of invalid) {
+      for (const transport of ['http', 'tls-sni'] as const) {
+        const input = plans().filter(p => p.transport === transport)
+        const bad = { ...target, tls: descriptor } as typeof target
+        const guard = vi.fn(() => guardTarget)
+        expect(() => renderRemoteRouteConfig(input, { backend: () => bad, guard })).toThrow(error)
+        expect(guard).not.toHaveBeenCalled() // Invalid ready targets never fall back.
+        expect(() =>
+          renderRemoteRouteConfig(input, { backend: () => undefined, guard: () => bad })
+        ).toThrow(error)
+      }
+    }
+  })
+
+  it.each(['expired', 'not-yet-valid'])('rejects %s certificates for both callbacks', state => {
+    const certificate = new X509Certificate(tls.certificatePem)
+    vi.spyOn(Date, 'now').mockReturnValue(
+      state === 'expired' ? Date.parse(certificate.validTo) : Date.parse(certificate.validFrom) - 1
+    )
+    expect(() => renderRemoteRouteConfig(plans(), options())).toThrow(error)
+    expect(() =>
+      renderRemoteRouteConfig(plans(), { backend: () => undefined, guard: () => guardTarget })
+    ).toThrow(error)
+  })
+
+  it('separates route pools and publishes rotated endpoint and trust together', () => {
+    const original = decode(renderRemoteRouteConfig(plans(), options()).content)
+    const rotated = decode(
+      renderRemoteRouteConfig(plans(), {
+        backend: () => ({ address: '10.0.0.3', port: 43000, tls: rotatedTls }),
+        guard: () => guardTarget,
+      }).content
+    )
+    const names = new Set<string>()
+    for (const protocol of ['http', 'tcp'] as const) {
+      expect(rotated[protocol].routers).toEqual(original[protocol].routers)
+      for (const [name, service] of Object.entries(rotated[protocol].services)) {
+        const transportName = service.loadBalancer.serversTransport
+        expect(names.has(transportName)).toBe(false)
+        names.add(transportName)
+        expect(transportName).not.toBe(
+          original[protocol].services[name]!.loadBalancer.serversTransport
+        )
+        expect(JSON.stringify(service)).toContain('10.0.0.3:43000')
+        const trust = {
+          serverName: rotatedTls.serverName,
+          rootCAs: [rotatedTls.certificatePem],
+          insecureSkipVerify: false,
+        }
+        expect(rotated[protocol].serversTransports[transportName]).toEqual(
+          protocol === 'http' ? { ...trust, disableHTTP2: true } : { tls: trust }
+        )
+      }
+    }
+  })
 
   it('sanitizes callback failures and undefined guard targets', () => {
     expect(() =>

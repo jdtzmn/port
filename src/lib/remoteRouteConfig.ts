@@ -1,9 +1,13 @@
-import { createHash } from 'node:crypto'
+import { createHash, X509Certificate } from 'node:crypto'
 import { isIPv4 } from 'node:net'
 import { stringify as yamlStringify } from 'yaml'
 import type { RemoteRoutePlan } from './remoteRoutePlan.ts'
 
-type Target = { address: string; port: number }
+type Target = {
+  address: string
+  port: number
+  tls: { serverName: string; certificatePem: string }
+}
 type Options = {
   /** Pure lookup of already-ready local/relay resources; never create resources here. */
   backend: (
@@ -89,7 +93,32 @@ function checkedTarget(v: unknown): Target {
   const [a, b] = v.address.split('.').map(Number)
   if (!(a === 10 || a === 127 || (a === 172 && b! >= 16 && b! <= 31) || (a === 192 && b === 168)))
     return fail()
-  return { address: v.address, port: v.port }
+  if (!object(v.tls) || !hostname(v.tls.serverName)) return fail()
+  const { serverName, certificatePem } = v.tls
+  // Exactly one bounded public certificate; never accept paths, chains or private keys.
+  if (
+    typeof certificatePem !== 'string' ||
+    Buffer.byteLength(certificatePem) > 16 * 1024 ||
+    !/^-----BEGIN CERTIFICATE-----\r?\n[A-Za-z0-9+/=\r\n]+\r?\n-----END CERTIFICATE-----\r?\n?$/.test(
+      certificatePem
+    )
+  )
+    return fail()
+  const certificate = new X509Certificate(certificatePem)
+  const startsAt = Date.parse(certificate.validFrom)
+  const expiresAt = Date.parse(certificate.validTo)
+  const now = Date.now()
+  if (
+    certificate.checkHost(serverName, { subject: 'never', wildcards: false }) !== serverName ||
+    !Number.isFinite(startsAt) ||
+    !Number.isFinite(expiresAt) ||
+    startsAt > now ||
+    expiresAt <= now ||
+    certificate.subject !== certificate.issuer ||
+    !certificate.verify(certificate.publicKey)
+  )
+    return fail()
+  return { address: v.address, port: v.port, tls: { serverName, certificatePem } }
 }
 
 /**
@@ -111,8 +140,13 @@ export function renderRemoteRouteConfig(
   }))
   if (new Set(keyed.map(({ key }) => key)).size !== keyed.length) return fail()
   keyed.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
-  const http = { routers: {} as Record<string, unknown>, services: {} as Record<string, unknown> }
-  const tcp = { routers: {} as Record<string, unknown>, services: {} as Record<string, unknown> }
+  const section = () => ({
+    routers: {} as Record<string, unknown>,
+    services: {} as Record<string, unknown>,
+    serversTransports: {} as Record<string, unknown>,
+  })
+  const http = section()
+  const tcp = section()
   const ports = new Set<number>()
   try {
     for (const { plan, key } of keyed) {
@@ -134,10 +168,26 @@ export function renderRemoteRouteConfig(
         service: name,
         ...(isHttp ? {} : { tls: {} }),
       }
+      // Rotate connection pools with the trust incarnation, not merely the route hostname.
+      const transportName = `port-remote-transport-${createHash('sha256')
+        .update(JSON.stringify([key, target.tls.serverName, target.tls.certificatePem]))
+        .digest('hex')}`
+      const tls = {
+        serverName: target.tls.serverName,
+        rootCAs: [target.tls.certificatePem],
+        insecureSkipVerify: false,
+      }
+      section.serversTransports[transportName] = isHttp ? { ...tls, disableHTTP2: true } : { tls }
       section.services[name] = {
-        loadBalancer: isHttp
-          ? { passHostHeader: true, servers: [{ url: `http://${target.address}:${target.port}` }] }
-          : { servers: [{ address: `${target.address}:${target.port}` }] },
+        loadBalancer: {
+          serversTransport: transportName,
+          ...(isHttp
+            ? {
+                passHostHeader: true,
+                servers: [{ url: `https://${target.address}:${target.port}` }],
+              }
+            : { servers: [{ address: `${target.address}:${target.port}`, tls: true }] }),
+        },
       }
       if (plan.port !== 80) ports.add(plan.port)
     }

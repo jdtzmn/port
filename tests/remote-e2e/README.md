@@ -21,7 +21,8 @@ Docker-in-Docker must be supported (Docker Desktop or a suitable Linux runner).
 The build/pull stages need registry and Debian package mirror access. All base
 and smoke images use explicit version tags, not `latest`; tags are not digest
 locks. Bun and checkout dependencies (`bun install --frozen-lockfile`) are needed
-to build Port. No runner DNS setup is required. Only fresh build artifacts and
+to build Port. OpenSSL/LibreSSL is required for local relay identity creation;
+missing identity support fails closed, never falling back to plaintext. No runner DNS setup is required. Only fresh build artifacts and
 package metadata are copied into fixtures, not the repository or secret files.
 
 ## Experimental bootstrap scope
@@ -76,10 +77,9 @@ After live discovery finds and directly probes the remote-a workload, **before**
 registry corruption or workload stop, `proxy-probe.js` runs on CLIENT with only the
 owned SSH session directory. It reads a bounded, private `ready` cache and uses
 `parseRemoteSnapshot` to select `feature.port` / `ui` / logical port 3000. The actual
-`openRemoteForward(directory, endpoint.target)` still forwards to the discovered Docker
-IP:8080. This HTTP component intentionally retains the legacy TCP-forward path
-pending TLS migration; only the private PostgreSQL component above uses the new
-Unix-stream API. Fixture sshd permits `*:8080` in addition to its existing specific targets;
+`openRemoteStream(directory, endpoint.target)` forwards through an owned Unix socket
+to the discovered Docker IP:8080. Both components use the Unix-stream API, without
+an intermediate loopback TCP listener. Fixture sshd permits `*:8080` in addition to its existing specific targets;
 this does not permit all ports or bypass the library's private-IP validation.
 
 A separate nested `traefik:v3.6` container runs on CLIENT's namespace-local DinD
@@ -89,12 +89,16 @@ The runner seeds the version-tagged image into **only** this daemon with bounded
 save/copy/load/remove operations through its root filesystem, not DinD's private
 `/tmp`, and never shares a host socket. The helper inspects only the bridge driver,
 gateway, and selected container IP. Both addresses must be RFC1918; the actual
-`startRemoteRelay` also verifies local ownership of the gateway. Its only allowed
-peer is that exact Traefik IP; its only upstream is the returned private loopback
-forward port. A direct CLIENT connection to the relay must be rejected.
+`startSecureRemoteRelay` also verifies local ownership of the gateway. Its only allowed
+peer is that exact Traefik IP; its only upstream is the returned owned Unix stream.
+The private Traefik-to-relay hop uses TLS pinned to this listener's public certificate
+and SAN server name, with verification enabled for both HTTP and TCP transports.
+Endpoint and trust are published in the same YAML; certificate rotation changes
+transport names to separate connection pools. No private key is serialized.
+A direct CLIENT connection to the relay must be rejected.
 
 The nested container initially waits for a fixed start file. The helper copies
-explicit JSON file-provider routes into it (no cross-filesystem bind mount), then
+explicit YAML file-provider routes into it (no cross-filesystem bind mount), then
 starts Traefik on web 80 and logical 3000, published only on CLIENT loopback.
 Python `HTTPConnection` uses real hostname DNS and its default Host header to test:
 
@@ -104,19 +108,20 @@ Python `HTTPConnection` uses real hostname DNS and its default Host header to te
 - `http://feature.remote-a.ssh:3000/`
 
 Every URL must return exactly `remote-a-snapshot-fixture`, through real Traefik,
-real peer-filtered relay, and the real SSH forward. Exact Host routes preserve the
+real peer-filtered TLS-pinned relay, and the real Unix-socket SSH forward. Exact Host routes preserve the
 Host header (`passHostHeader: true`). Client dnsmasq defaults `.port` and `.ssh` to
 loopback; specific phase-0 DB answers and baseline `addn-hosts` overrides remain.
 The outer baseline Traefik lives in a separate port namespace and is unchanged.
 
 Setup is bounded to 45 seconds and HTTP readiness to 10 seconds. The bounded
 stdin close protocol removes only the owned nested proxy container, closes relay
-and forward, and removes only its own temporary JSON directory. Finally blocks
+before the forward, and removes only its own temporary YAML directory. Finally blocks
 reap the helper; the original interactive SSH login must still work afterward.
 The fixture now uses the production route planner and YAML renderer. HTTPS probes
 on port 3000 also verify the compiled TLS/SNI routes for default and qualified
 hostnames. Certificate verification is disabled for this disposable self-signed
-fixture; certificate trust is not proven. This is **component forwarding**, not an automatic coordinator
+public fixture; public certificate trust is not proven. Private-hop certificate pinning
+remains enabled. This is the **full positive component path**, not an automatic coordinator
 or full `port up`. PostgreSQL through the combined path, conflict behavior, and
 automatic coordination remain pending.
 

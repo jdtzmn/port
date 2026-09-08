@@ -1,5 +1,7 @@
 import * as net from 'node:net'
 import * as os from 'node:os'
+import * as tls from 'node:tls'
+import { createRemoteRelayIdentity } from './remoteRelayIdentity'
 
 export interface RemoteRelayOptions {
   targetPort: number
@@ -45,7 +47,15 @@ function validateBind(bind: RemoteRelayOptions['bind']): string {
   return bind.address
 }
 
-/** Internal TCP transport only, not an authentication boundary against local users/root.
+function allowedPeer(address: string | undefined, peerAddress: string | undefined): boolean {
+  const peer = normalizePeer(address)
+  return peerAddress !== undefined
+    ? peer === peerAddress
+    : net.isIP(peer) === 4 && peer.startsWith('127.')
+}
+
+/** UNSAFE for persistent publication. Legacy internal TCP transport only,
+ * not an authentication boundary against local users/root.
  * Bridge callers must supply the exact locally inspected Traefik container IP.
  * No idle deadline: database sessions may remain idle indefinitely.
  */
@@ -68,11 +78,7 @@ export async function startRemoteRelay(options: RemoteRelayOptions): Promise<Rem
   const connections = new Set<() => void>()
   let closing = false
   const server = net.createServer({ allowHalfOpen: true }, client => {
-    const peer = normalizePeer(client.remoteAddress)
-    const allowed =
-      peerAddress !== undefined
-        ? peer === peerAddress
-        : net.isIP(peer) === 4 && peer.startsWith('127.')
+    const allowed = allowedPeer(client.remoteAddress, peerAddress)
     // Never contact the backend or send protocol bytes for rejected peers.
     if (closing || !allowed || connections.size >= maxConnections) {
       client.on('error', () => {})
@@ -135,4 +141,140 @@ export async function startRemoteRelay(options: RemoteRelayOptions): Promise<Rem
   })
   const bound = server.address() as net.AddressInfo
   return { address, port: bound.port, close }
+}
+
+/** One fresh pinned TLS identity per listener; stream is the sole backend capability.
+ * expiresAt is Unix milliseconds. No idle timeout after upstream connection.
+ */
+export async function startSecureRemoteRelay(options: {
+  bind: RemoteRelayOptions['bind']
+  stream: { connect(): net.Socket | null }
+  maxConnections?: number
+}): Promise<
+  RemoteRelay & { tls: { serverName: string; certificatePem: string }; expiresAt: number }
+> {
+  const address = validateBind(options.bind)
+  const peerAddress = options.bind.kind === 'docker-bridge' ? options.bind.peerAddress : undefined
+  const maxConnections = options.maxConnections ?? 256
+  if (!Number.isInteger(maxConnections) || maxConnections < 1 || maxConnections > 4096) {
+    throw new Error('Relay maxConnections must be an integer between 1 and 4096')
+  }
+  if (typeof options.stream?.connect !== 'function')
+    throw new Error('Relay stream.connect required')
+  const connect = options.stream.connect.bind(options.stream)
+  const identity = await createRemoteRelayIdentity()
+  const server = tls.createServer({
+    cert: identity.certificatePem,
+    key: identity.keyPem,
+    handshakeTimeout: 5000,
+    ALPNProtocols: ['http/1.1'],
+    allowHalfOpen: true,
+  })
+  type Connection = {
+    sockets: Set<net.Socket>
+    destroy(): void
+    timer: ReturnType<typeof setTimeout>
+  }
+  const connections = new Map<string, Connection>()
+  // Both raw and TLS sockets expose the same peer tuple; no private TLS internals.
+  const key = (socket: net.Socket) => `${socket.remoteAddress}:${socket.remotePort}`
+  let closing = false
+  let closePromise: Promise<void> | undefined
+  function close(): Promise<void> {
+    if (!closePromise) {
+      closing = true
+      closePromise = new Promise<void>((resolve, reject) => {
+        server.close(error => (error ? reject(error) : resolve()))
+        for (const connection of connections.values()) connection.destroy()
+      })
+    }
+    return closePromise
+  }
+  server.on('connection', (raw: net.Socket) => {
+    raw.on('error', () => {})
+    if (
+      closing ||
+      !allowedPeer(raw.remoteAddress, peerAddress) ||
+      connections.size >= maxConnections
+    ) {
+      raw.destroy()
+      return
+    }
+    const id = key(raw)
+    const connection: Connection = {
+      sockets: new Set([raw]),
+      destroy() {
+        clearTimeout(connection.timer)
+        // Tear down TLS before its raw transport (they share the native handle).
+        for (const socket of [...connection.sockets].reverse()) socket.destroy()
+      },
+      timer: setTimeout(() => connection.destroy(), 5000),
+    }
+    connection.timer.unref()
+    connections.set(id, connection)
+    raw.once('close', () => {
+      connection.sockets.delete(raw)
+      if (connection.sockets.size === 0) {
+        clearTimeout(connection.timer)
+        connections.delete(id)
+      }
+    })
+  })
+  server.on('secureConnection', client => {
+    const id = key(client)
+    const connection = connections.get(id)
+    if (closing || !connection) {
+      client.on('error', () => {})
+      client.destroy()
+      return
+    }
+    function own(socket: net.Socket) {
+      connection!.sockets.add(socket)
+      socket.on('error', connection!.destroy)
+      socket.once('close', () => {
+        if (!socket.readableEnded || !socket.writableFinished) connection!.destroy()
+        connection!.sockets.delete(socket)
+        if (connection!.sockets.size === 0) {
+          clearTimeout(connection!.timer)
+          connections.delete(id)
+        }
+      })
+    }
+    own(client)
+    clearTimeout(connection.timer)
+    connection.timer = setTimeout(() => connection.destroy(), 5000)
+    connection.timer.unref()
+    try {
+      const upstream = connect()
+      if (!upstream) {
+        connection.destroy()
+        return
+      }
+      own(upstream)
+      if (upstream.connecting) upstream.once('connect', () => clearTimeout(connection.timer))
+      else clearTimeout(connection.timer)
+      client.pipe(upstream)
+      upstream.pipe(client)
+    } catch {
+      connection.destroy()
+    }
+  })
+  server.on('tlsClientError', (_error, socket) => socket.destroy())
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen({ host: address, port: 0, exclusive: true }, () => {
+      server.removeListener('error', reject)
+      resolve()
+    })
+  })
+  server.on('error', () => {
+    void close().catch(() => {})
+  })
+  return {
+    address,
+    port: (server.address() as net.AddressInfo).port,
+    close,
+    tls: { serverName: identity.serverName, certificatePem: identity.certificatePem },
+    expiresAt: identity.expiresAt,
+  }
 }

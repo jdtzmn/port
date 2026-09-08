@@ -12,8 +12,8 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { isIP } from 'node:net'
-import { openRemoteForward } from '../../src/lib/remoteSession.ts'
-import { startRemoteRelay } from '../../src/lib/remoteRelay.ts'
+import { openRemoteStream } from '../../src/lib/remoteSession.ts'
+import { startSecureRemoteRelay } from '../../src/lib/remoteRelay.ts'
 import { parseRemoteSnapshot } from '../../src/lib/remoteSnapshot.ts'
 import { compileRemoteRoutePlan } from '../../src/lib/remoteRoutePlan.ts'
 import { renderRemoteRouteConfig } from '../../src/lib/remoteRouteConfig.ts'
@@ -118,8 +118,8 @@ async function main() {
   process.on('SIGTERM', interrupt)
   process.on('SIGINT', interrupt)
   let owned = false
-  let forward: Awaited<ReturnType<typeof openRemoteForward>> = null
-  let relay: Awaited<ReturnType<typeof startRemoteRelay>> | undefined
+  let forward: Awaited<ReturnType<typeof openRemoteStream>> = null
+  let relay: Awaited<ReturnType<typeof startSecureRemoteRelay>> | undefined
   try {
     if (!docker(['network', 'ls', '--format', '{{.Name}}']).split('\n').includes(network))
       docker(['network', 'create', network])
@@ -157,15 +157,15 @@ async function main() {
         container,
       ])
     )
-    forward = await openRemoteForward(process.argv[2]!, target.endpoint.target)
+    forward = await openRemoteStream(process.argv[2]!, target.endpoint.target)
     if (!forward || interrupted || Date.now() >= deadline) throw new Error('forward unavailable')
-    relay = await startRemoteRelay({
-      targetPort: forward.port,
+    relay = await startSecureRemoteRelay({
+      stream: forward,
       bind: { kind: 'docker-bridge', address: gateway, peerAddress },
     })
     const owner = { id: 'fixture-remote-a', kind: 'ssh' as const, label: 'remote-a' }
     const plans = compileRemoteRoutePlan([{ owner, alias: 'remote-a', snapshot: target.snapshot }])
-    const readyTarget = { address: gateway, port: relay.port }
+    const readyTarget = { address: gateway, port: relay.port, tls: relay.tls }
     const routes = renderRemoteRouteConfig(plans, {
       backend: ref => {
         if (
