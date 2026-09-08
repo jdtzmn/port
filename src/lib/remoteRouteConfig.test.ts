@@ -82,6 +82,34 @@ type Config = Record<
 const decode = (content: string): Config => parse(content) as Config
 
 describe('renderRemoteRouteConfig', () => {
+  it('accepts only the exact Docker host alias, still requiring a valid pinned certificate', () => {
+    const local = { ...target, address: 'host.docker.internal' }
+    const opts = { backend: () => local, guard: () => local }
+    expect(renderRemoteRouteConfig(plans(), opts).content).toContain('host.docker.internal:41000')
+    for (const address of [
+      'HOST.DOCKER.INTERNAL',
+      'host.docker.internal.',
+      'evil.internal',
+      '8.8.8.8',
+      '0.250.250.254',
+    ]) {
+      expect(() =>
+        renderRemoteRouteConfig(plans(), { ...opts, backend: () => ({ ...local, address }) })
+      ).toThrow()
+    }
+    expect(() =>
+      renderRemoteRouteConfig(plans(), {
+        ...opts,
+        backend: () => ({ ...local, tls: { ...tls, certificatePem: 'invalid' } }),
+      })
+    ).toThrow()
+    expect(() =>
+      renderRemoteRouteConfig(plans(), {
+        ...opts,
+        backend: () => ({ ...local, tls: { ...tls, serverName: 'wrong.internal' } }),
+      })
+    ).toThrow()
+  })
   it('renders compiled HTTP, TLS and aliases with exact rules, private lookup targets and original entrypoints', () => {
     const input = plans()
     const opts = options()

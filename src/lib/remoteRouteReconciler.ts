@@ -22,6 +22,7 @@ export interface RemoteRouteLease {
 }
 export interface RemoteRouteProxy {
   id: string
+  targetAddress: string
   bind: RemoteRelayOptions['bind']
 }
 export interface RemoteRouteReconcilerDependencies {
@@ -101,6 +102,7 @@ export function createRemoteRouteReconciler(deps: RemoteRouteReconcilerDependenc
       )
       const proxyKey = [
         proxy.id,
+        proxy.targetAddress,
         proxy.bind.kind,
         proxy.bind.kind === 'docker-bridge' ? [proxy.bind.address, proxy.bind.peerAddress] : null,
       ]

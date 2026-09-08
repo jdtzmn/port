@@ -88,10 +88,15 @@ function validPlan(v: unknown): v is RemoteRoutePlan {
 }
 
 function checkedTarget(v: unknown): Target {
-  if (!object(v) || typeof v.address !== 'string' || !isIPv4(v.address) || !port(v.port))
-    return fail()
+  if (!object(v) || typeof v.address !== 'string' || !port(v.port)) return fail()
   const [a, b] = v.address.split('.').map(Number)
-  if (!(a === 10 || a === 127 || (a === 172 && b! >= 16 && b! <= 31) || (a === 192 && b === 168)))
+  if (
+    v.address !== 'host.docker.internal' &&
+    !(
+      isIPv4(v.address) &&
+      (a === 10 || a === 127 || (a === 172 && b! >= 16 && b! <= 31) || (a === 192 && b === 168))
+    )
+  )
     return fail()
   if (!object(v.tls) || !hostname(v.tls.serverName)) return fail()
   const { serverName, certificatePem } = v.tls

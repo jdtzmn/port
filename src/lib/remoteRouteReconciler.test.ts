@@ -71,6 +71,7 @@ function harness() {
     now: () => clock,
     prepareProxy: vi.fn<RemoteRouteReconcilerDependencies['prepareProxy']>(async () => ({
       id: 'proxy-1',
+      targetAddress: '127.0.0.1',
       bind: { kind: 'loopback' },
     })),
     createBackend: vi.fn<RemoteRouteReconcilerDependencies['createBackend']>(async () => lease()),
@@ -92,6 +93,19 @@ function harness() {
 }
 
 describe('remote route reconciler', () => {
+  it('invalidates reuse when only the proxy target address changes', async () => {
+    const h = harness()
+    await h.reconciler.reconcile([source()])
+    h.deps.prepareProxy.mockResolvedValue({
+      id: 'proxy-1',
+      bind: { kind: 'loopback' },
+      targetAddress: 'host.docker.internal',
+    })
+    await h.reconciler.reconcile([source()])
+    expect(h.deps.createBackend).toHaveBeenCalledTimes(2)
+    expect(h.leases[0]!.close).toHaveBeenCalledTimes(1)
+    await h.reconciler.close()
+  })
   it('replaces an unexpired dead lease using the captured bound capability', async () => {
     const h = harness()
     const first = h.lease()
@@ -203,10 +217,15 @@ describe('remote route reconciler', () => {
       if (change === 'target') input.snapshot.worktrees[0]!.endpoints[0]!.target.port++
       if (change === 'session') input.selectedSessionId = 'session-2'
       if (change === 'proxy')
-        h.deps.prepareProxy.mockResolvedValue({ id: 'proxy-2', bind: { kind: 'loopback' } })
+        h.deps.prepareProxy.mockResolvedValue({
+          id: 'proxy-2',
+          targetAddress: '127.0.0.1',
+          bind: { kind: 'loopback' },
+        })
       if (change === 'bind')
         h.deps.prepareProxy.mockResolvedValue({
           id: 'proxy-1',
+          targetAddress: '172.20.0.1',
           bind: { kind: 'docker-bridge', address: '172.20.0.1', peerAddress: '172.20.0.2' },
         })
       if (change === 'expiry') h.advance(60_000)
