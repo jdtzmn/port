@@ -30,6 +30,39 @@ function freeze<T>(value: T): T {
   return value
 }
 
+describe('protocol selection', () => {
+  const tls = { ...db, logicalPort: ui.logicalPort }
+  it('preserves unfiltered ambiguity and selects capabilities only with a protocol', () => {
+    const resolve = createRouteResolver([routes(local, [ui, tls])])
+    const query = { ...request, service: { port: ui.logicalPort } }
+    expect(resolve(query).status).toBe('conflict')
+    expect(resolve({ ...query, protocol: 'http' })).toMatchObject({
+      status: 'resolved',
+      service: ui,
+    })
+    expect(resolve({ ...query, protocol: 'tcp' })).toMatchObject({
+      status: 'resolved',
+      service: tls,
+    })
+  })
+  it('does not conceal ownership conflicts between disjoint capabilities', () => {
+    const resolve = createRouteResolver([routes(local, [ui]), routes(remote, [tls])])
+    const query = { ...request, service: { port: ui.logicalPort } }
+    for (const protocol of ['http', 'tcp'] as const) {
+      expect(resolve({ ...query, protocol }).status).toBe('conflict')
+    }
+    expect(resolve({ ...query, ownerId: local.id, protocol: 'tcp' })).toEqual({
+      status: 'unavailable',
+    })
+    expect(resolve({ ...query, ownerId: remote.id, protocol: 'http' })).toEqual({
+      status: 'unavailable',
+    })
+    expect(resolve({ ...query, protocol: 'udp' } as unknown as RouteRequest)).toEqual({
+      status: 'invalid',
+    })
+  })
+})
+
 describe('createRouteResolver', () => {
   it('captures inputs once and queries independent namespaces', () => {
     const services = [{ ...ui }]

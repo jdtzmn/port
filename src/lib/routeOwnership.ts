@@ -22,6 +22,7 @@ export interface WorktreeRoutes {
 export interface RouteRequest {
   namespace: string
   ownerId?: string
+  protocol?: RouteService['protocol']
   service: { name: string } | { port: number }
 }
 
@@ -44,6 +45,8 @@ const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
 function validRequest(value: unknown): value is RouteRequest {
   if (!object(value) || !text(value.namespace) || !object(value.service)) return false
   if (value.ownerId !== undefined && !text(value.ownerId)) return false
+  if (value.protocol !== undefined && value.protocol !== 'http' && value.protocol !== 'tcp')
+    return false
   const service = value.service
   return (
     ('name' in service && !('port' in service) && text(service.name)) ||
@@ -158,7 +161,7 @@ export function createRouteResolver(
       request.ownerId === undefined
         ? candidates
         : candidates.filter(candidate => candidate.owner.id === request.ownerId)
-    return selectRoute(eligible, request.service)
+    return selectRoute(eligible, request.service, request.protocol)
   }
 }
 
@@ -172,15 +175,18 @@ function copyCandidate(candidate: RouteCandidate): RouteCandidate {
 
 function selectRoute(
   candidates: readonly RouteCandidate[],
-  selector: RouteRequest['service']
+  selector: RouteRequest['service'],
+  protocol?: RouteRequest['protocol']
 ): RouteResolution {
   if (candidates.length > 1) {
     return { status: 'conflict', candidates: candidates.map(copyCandidate) }
   }
   const candidate = candidates[0]
   if (!candidate) return { status: 'unavailable' }
-  const matches = candidate.services.filter(service =>
-    'name' in selector ? service.name === selector.name : service.logicalPort === selector.port
+  const matches = candidate.services.filter(
+    service =>
+      (protocol === undefined || service.protocol === protocol) &&
+      ('name' in selector ? service.name === selector.name : service.logicalPort === selector.port)
   )
   if (matches.length > 1) {
     return { status: 'conflict', candidates: [copyCandidate({ ...candidate, services: matches })] }
