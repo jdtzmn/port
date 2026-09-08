@@ -51,6 +51,7 @@ image_dir=$(mktemp -d "${TMPDIR:-/tmp}/remote-e2e-image.XXXXXXXX")
 mkdir -p "$image_dir/app"
 step 120 port-build bun build "$root/src/index.ts" --outdir "$image_dir/app/dist" --target bun --splitting
 step 120 snapshot-fixture-build bun build "$here/snapshot-workload.ts" --outdir "$image_dir/app/fixtures" --target bun
+step 120 forward-probe-build bun build "$here/forward-probe.ts" --outdir "$image_dir/app/fixtures" --target bun
 cp "$root/package.json" "$image_dir/app/package.json"
 chmod -R a+rX "$image_dir/app"
 step 60 smoke-save docker image save --output "$image_dir/smoke.tar" busybox:1.37.0
@@ -68,4 +69,4 @@ step 90 baseline "${compose[@]}" exec -T client python3 /fixture/baseline.py
 # Remove only the disposable fixture's CLI, after gates that need both remotes.
 step 10 missing-port "${compose[@]}" exec -T remote-b mv /usr/local/bin/port /usr/local/bin/port-unavailable
 step 150 bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py
-printf 'remote-e2e: transport feasibility, Traefik baseline and product handshake/live-discovery gates passed (fixture seed only; product routing not claimed)\n'
+printf 'remote-e2e: transport feasibility, Traefik baseline and product handshake/private-transport/live-discovery gates passed (component/fixture seed only; product routing not claimed)\n'

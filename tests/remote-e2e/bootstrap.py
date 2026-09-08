@@ -10,6 +10,7 @@ import pty
 import select
 import shutil
 import signal
+import socket
 import subprocess
 import stat
 import time
@@ -200,6 +201,99 @@ def live_discovery(shell, directory):
           flush=True)
 
 
+def bounded_line(process, timeout=10, limit=1024):
+    """Read one pipe line without buffered-read blocking or unlimited diagnostics."""
+    end = time.monotonic() + timeout
+    output = bytearray()
+    while time.monotonic() < end:
+        remaining = max(0, end - time.monotonic())
+        if not select.select([process.stdout], [], [], remaining)[0]:
+            break
+        chunk = os.read(process.stdout.fileno(), 1)
+        require(chunk, 'component probe closed before its response')
+        if chunk == b'\n':
+            return bytes(output)
+        output.extend(chunk)
+        require(len(output) <= limit, 'component probe response too large')
+    raise TimeoutError('component probe response timed out')
+
+
+def stop_process(process):
+    """Only signal this still-live child; always reap with bounded waits."""
+    try:
+        if process.poll() is None:
+            process.terminate()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=2)
+    finally:
+        for stream in (process.stdin, process.stdout):
+            if stream is not None:
+                stream.close()
+
+
+def private_forward(shell, directory):
+    # Runs on CLIENT while the original foreground remote-a login owns the mux.
+    # No hand-built SSH forward or fallback login may replace the actual API.
+    helper = subprocess.Popen(
+        ['/usr/local/bin/bun', '/opt/port/fixtures/forward-probe.js', str(directory)],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        bufsize=0,
+    )
+    try:
+        try:
+            ready = json.loads(bounded_line(helper))
+        except (ValueError, UnicodeDecodeError):
+            raise RuntimeError('invalid private forward response') from None
+        require(isinstance(ready, dict) and set(ready) == {'status', 'address', 'port'},
+                'unexpected private forward response fields')
+        require(ready['status'] == 'ready' and ready['address'] == '127.0.0.1'
+                and type(ready['port']) is int and 0 < ready['port'] <= 65535,
+                'invalid private forward listener')
+        port = ready['port']
+        # Plain libpq is ONLY inside the encrypted private SSH transport, never
+        # the shared-hostname Traefik baseline or public plaintext support (#149).
+        database = subprocess.Popen(
+            ['psql', '-X', '-w', '-A', '-t', '-F', '|',
+             f'host=127.0.0.1 port={port} user=postgres dbname=remote_a '
+             'connect_timeout=3 sslmode=disable', '-v', 'ON_ERROR_STOP=1', '-c',
+             'SELECT current_database(), system_identifier FROM pg_control_system()'],
+            env={'PATH': os.environ['PATH'], 'HOME': '/tmp/forward-probe-empty-home', 'LC_ALL': 'C'},
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            bufsize=0,
+        )
+        try:
+            row = bounded_line(database, timeout=7)
+            require(database.wait(timeout=2) == 0, 'private forward SQL failed')
+            require(re.fullmatch(rb'remote_a\|[0-9]+', row) is not None,
+                    'private forward reached the wrong database')
+        finally:
+            stop_process(database)
+        assert helper.stdin is not None
+        helper.stdin.write(b'close\n')
+        helper.stdin.flush()
+        try:
+            closed = json.loads(bounded_line(helper))
+        except (ValueError, UnicodeDecodeError):
+            raise RuntimeError('invalid private forward close response') from None
+        require(closed == {'status': 'closed'}, 'private forward did not acknowledge close')
+        require(helper.wait(timeout=3) == 0, 'private forward helper failed')
+        try:
+            with socket.create_connection(('127.0.0.1', port), timeout=2):
+                raise RuntimeError('private forward listener survived close')
+        except ConnectionRefusedError:
+            pass
+        # Cancellation must leave the SAME interactive master/login usable.
+        shell.marker('test -t 0 && test "$(id -un)" = fixture && true')
+        print('PASS private transport component: actual openRemoteForward -> remote_a SQL; '
+              'idempotent cancel refuses new connections and preserves login', flush=True)
+    finally:
+        stop_process(helper)
+
+
 def main():
     # Install the fixture's normal SSH config, not command-specific test options.
     shutil.copyfile('/fixture/ssh_config', '/root/.ssh/config')
@@ -225,6 +319,7 @@ def main():
         require(len(owned) == 1, 'expected exactly one owned session')
         print('PASS plain ssh + actual Port shell hook + remote CLI handshake', flush=True)
         directory = private_session(before)
+        private_forward(shell, directory)
         try:
             live_discovery(shell, directory)
         except Exception:

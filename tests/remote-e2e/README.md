@@ -36,6 +36,31 @@ is not universally side-effect-free. Authentication stays with foreground SSH;
 the companion cannot start fallback transport. Missing remote Port disables the
 handshake without breaking login. No remote install or special output occurs.
 
+### Private transport component gate (not public routing)
+
+Inside the first plain `ssh remote-a` login, `bootstrap.py` launches the compiled
+`forward-probe.js` on the **client**, with only the original owned session directory.
+The helper calls the actual `openRemoteForward(directory, {address: '127.0.0.1',
+port: 5432})` API, which uses owned mux `-O forward` / `-O cancel` without new
+authentication. No test-built `ssh -L` bypass is used for this component gate.
+Its bounded JSON response supplies a private `127.0.0.1` ephemeral listener to
+real `psql`, which checks `current_database() = remote_a` and a numeric cluster
+system identifier. This gate does not compare identifiers between remotes.
+
+The fixed stdin `close` command makes the helper await `close()` twice before
+acknowledging closure. New TCP connections to the old listener must be refused;
+a normal marker command through the original interactive shell then proves mux
+cancellation did not kill the master/login. Existing live-discovery/corruption
+checks, first-login exit status 7, and session cleanup continue unchanged.
+Helper/SQL output reads and waits are bounded, stderr is discarded rather than
+logging transport/auth details, and finally blocks reap only owned child processes.
+The build joins the existing artifact-only copy loop; no source enters fixtures.
+
+`sslmode=disable` is used **only inside this encrypted private SSH transport**.
+This is not a user-facing port, public plaintext support / #149, shared-hostname
+routing, or full route acceptance. The Traefik TLS baseline is unchanged; automatic
+product transport coordination and `port up` routing are still not claimed.
+
 ### Live-discovery collector gate (explicit fixture seed)
 
 Within the first foreground plain `ssh remote-a` session, the client waits for a
