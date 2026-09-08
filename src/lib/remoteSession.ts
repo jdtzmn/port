@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import {
   closeSync,
   constants,
@@ -8,13 +9,14 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
+  readdirSync,
   renameSync,
   rmdirSync,
   unlinkSync,
   writeFileSync,
   type Stats,
 } from 'node:fs'
-import { createServer, isIPv4 } from 'node:net'
+import { createConnection, createServer, isIPv4, type Socket } from 'node:net'
 import { classifySshInvocation, isEligibleSshConfig } from './sshInvocation.ts'
 import { parseRemoteSnapshot, type RemoteSnapshot } from './remoteSnapshot.ts'
 
@@ -303,6 +305,7 @@ function forwardPort(): Promise<number> {
 }
 
 /**
+ * Legacy: unsafe for persistent route publication (the TCP port can be reused).
  * Private internal transport through the existing owned master, not public ingress.
  * Success proves only that SSH created a loopback listener, NOT backend readiness.
  */
@@ -375,6 +378,117 @@ export async function openRemoteForward(
     /* Optional transport: allocation or ownership failure stays unavailable. */
   }
   return null
+}
+
+function privateStream(stat: Stats): boolean {
+  return stat.isSocket() && stat.uid === process.getuid?.() && (stat.mode & 0o7777) === 0o600
+}
+
+/** A pinned Unix listener owned by the existing master; never a TCP fallback. */
+export async function openRemoteStream(
+  directory: string,
+  target: { address: string; port: number }
+): Promise<{ path: string; connect(): Socket | null; close(): Promise<void> } | null> {
+  try {
+    const { address, port } = target
+    if (typeof address !== 'string' || !isIPv4(address)) return null
+    const [a, b] = address.split('.').map(Number)
+    if (!(a === 127 || a === 10 || (a === 172 && b! >= 16 && b! <= 31) || (a === 192 && b === 168)))
+      return null
+    if (!Number.isInteger(port) || port < 1 || port > 65535) return null
+    const original = session(directory)
+    const control = socket(directory, original)
+    if (!control) return null
+    const path = `${directory}/f-${randomBytes(16).toString('hex')}`
+    if (Buffer.byteLength(path) >= 100) return null
+    // A collision is unavailable, not permission to unlink or reuse a pathname.
+    try {
+      lstatSync(path)
+      return null
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return null
+    }
+    let pinned: Stats | undefined
+    const valid = (): boolean => {
+      try {
+        if (!sameInode(session(directory), original) || !sameSocket(directory, original, control))
+          return false
+        if (!pinned) return true
+        const current = lstatSync(path)
+        return privateStream(current) && sameInode(current, pinned)
+      } catch {
+        return false
+      }
+    }
+    const spec = `${path}:${address}:${port}`
+    const command = async (operation: 'forward' | 'cancel'): Promise<boolean> => {
+      if (!valid()) return false
+      try {
+        return (
+          (await ssh(
+            [
+              ...companion(directory),
+              '-o',
+              'StreamLocalBindUnlink=no',
+              '-o',
+              'StreamLocalBindMask=0177',
+              '-o',
+              'ExitOnForwardFailure=yes',
+              '-O',
+              operation,
+              '-L',
+              spec,
+              'dummy',
+            ],
+            3000,
+            8192
+          )) !== null
+        )
+      } catch {
+        return false
+      }
+    }
+    const remove = (): void => {
+      if (!pinned) return
+      try {
+        unchanged(directory, original)
+        const current = lstatSync(path)
+        if (privateStream(current) && sameInode(current, pinned)) unlinkSync(path)
+      } catch {
+        /* Preserve unknown replacements and moved directories. */
+      }
+    }
+    const forwarded = await command('forward')
+    try {
+      unchanged(directory, original)
+      const current = lstatSync(path)
+      if (privateStream(current)) pinned = current
+    } catch {
+      /* Failure may still have installed a listener; cancel only our master. */
+    }
+    if (!forwarded || !pinned || !valid()) {
+      await command('cancel')
+      remove()
+      return null
+    }
+    let closed = false
+    return {
+      path,
+      connect() {
+        if (closed || !valid()) return null
+        return createConnection({ path })
+      },
+      async close() {
+        if (closed) return
+        closed = true
+        await command('cancel')
+        remove()
+      },
+    }
+  } catch {
+    /* Optional capability; ownership and allocation failures stay unavailable. */
+    return null
+  }
 }
 
 export async function prepareRemoteSession(argv: string[]): Promise<string | null> {
@@ -453,6 +567,16 @@ export async function observeRemoteSession(directory: string, signal?: AbortSign
 }
 
 function removeKnownFiles(directory: string, original: Stats): void {
+  unchanged(directory, original)
+  for (const name of readdirSync(directory)) {
+    if (!/^f-[a-f0-9]{24,}$/.test(name)) continue
+    unchanged(directory, original)
+    try {
+      if (privateStream(lstatSync(`${directory}/${name}`))) unlinkSync(`${directory}/${name}`)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+  }
   for (const name of [
     'metadata.json',
     'metadata.json.tmp',
