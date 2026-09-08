@@ -121,8 +121,13 @@ function parseContainer(line: string, ids: Set<string>, contexts: Map<string, Wo
   if (Object.keys(labels).length > 512 || Object.values(labels).some(v => typeof v !== 'string'))
     return fail()
   const project = labels[PROJECT_LABEL]
-  const context = typeof project === 'string' ? contexts.get(project) : undefined
-  if (!context || labels['traefik.enable'] !== 'true') return fail()
+  const context = contexts.get(value.id)
+  if (
+    !context ||
+    project !== buildProjectName(context.repo, context.branch) ||
+    labels['traefik.enable'] !== 'true'
+  )
+    return fail()
   // The template uses an empty sentinel to avoid trailing-comma JSON.
   delete value.networks['']
   if (Object.keys(value.networks).length > 64) return fail()
@@ -216,33 +221,44 @@ export async function collectRemoteSnapshot(instanceId: string, revision: number
     }
     // Registry projects have no Docker/host discriminator (even ports=[] is
     // registered on enter). Only an actually empty project list can skip Docker.
-    const names = [...contexts.keys()]
-    const seen = new Set<string>()
-    for (const name of names) {
-      // Label filters are conjunctive; query one exact project at a time.
-      const batchContexts = new Map([[name, contexts.get(name)!]])
-      const ids = lines(
+    if (contexts.size) {
+      const seen = new Set<string>()
+      const selected = new Map<string, WorktreeContext>()
+      const rows = lines(
         await query([
           'ps',
           '--no-trunc',
-          '--quiet',
           '--filter',
           'label=traefik.enable=true',
-          '--filter',
-          `label=${PROJECT_LABEL}=${name}`,
+          '--format',
+          '{"id":{{json .ID}},"project":{{json (.Label "com.docker.compose.project")}}}',
         ])
       )
-      for (const id of ids) {
-        if (!/^[a-f0-9]{64}$/.test(id) || seen.has(id) || seen.size >= LIMIT) return fail()
-        seen.add(id)
+      for (const row of rows) {
+        const value: unknown = JSON.parse(row)
+        if (
+          !record(value) ||
+          typeof value.id !== 'string' ||
+          !/^[a-f0-9]{64}$/.test(value.id) ||
+          typeof value.project !== 'string' ||
+          value.project.length > 4096 ||
+          seen.has(value.id) ||
+          seen.size >= LIMIT
+        )
+          return fail()
+        seen.add(value.id)
+        const context = contexts.get(value.project)
+        // Unknown projects never reach inspect, even though Traefik is enabled.
+        if (context) selected.set(value.id, context)
       }
+      const ids = [...selected.keys()]
       for (let j = 0; j < ids.length; j += BATCH) {
         const batch = ids.slice(j, j + BATCH)
         const pending = new Set(batch)
         const output = lines(
           await query(['inspect', '--type', 'container', '--format', TEMPLATE, ...batch])
         )
-        for (const line of output) docker.push(parseContainer(line, pending, batchContexts))
+        for (const line of output) docker.push(parseContainer(line, pending, selected))
         if (pending.size) return fail()
       }
     }

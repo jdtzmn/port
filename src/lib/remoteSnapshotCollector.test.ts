@@ -66,6 +66,7 @@ const container = () => ({
   networks: { 'traefik-network': { IPAddress: '172.20.0.2' }, '': { IPAddress: '' } },
 })
 const json = (value: unknown) => JSON.stringify(value) + '\n'
+const ps = (containerId = id, name = 'app-main') => json({ id: containerId, project: name })
 function replies(...values: (string | Error)[]) {
   vi.mocked(execFile).mockImplementation(((
     _file: string,
@@ -106,6 +107,65 @@ beforeEach(() => {
 })
 
 describe('collectRemoteSnapshot', () => {
+  it.each([0, 1, 33])(
+    'uses one ps across many registered projects with %i containers',
+    async count => {
+      const projects = Array.from({ length: 100 }, (_, i) => ({
+        ...project,
+        repo: `/repos/app${i}`,
+      }))
+      vi.mocked(loadRegistry).mockResolvedValue({ projects })
+      const ids = Array.from({ length: count }, (_, i) => i.toString(16).padStart(64, '0'))
+      const outputs = [ids.map((id, i) => ps(id, `app${i}-main`)).join('')]
+      for (let offset = 0; offset < ids.length; offset += 32) {
+        outputs.push(
+          ids
+            .slice(offset, offset + 32)
+            .map((id, index) => {
+              const value = container()
+              value.id = id
+              value.labels['com.docker.compose.project'] = `app${offset + index}-main`
+              return json(value)
+            })
+            .join('')
+        )
+      }
+      replies(...outputs)
+      const snapshot = await collectRemoteSnapshot('machine', 0)
+      expect(snapshot.worktrees).toHaveLength(count)
+      const calls = vi.mocked(execFile).mock.calls
+      expect(calls.filter(call => call[1]?.[0] === 'ps')).toHaveLength(1)
+      expect(calls).toHaveLength(1 + Math.ceil(count / 32))
+      for (const call of calls.slice(1))
+        expect((call[1] as string[]).slice(5).length).toBeLessThanOrEqual(32)
+    }
+  )
+  it('ignores unknown Traefik projects before inspection', async () => {
+    replies(ps('b'.repeat(64), 'unknown') + ps(), json(container()))
+    const snapshot = await collectRemoteSnapshot('machine', 0)
+    expect(snapshot.worktrees).toHaveLength(1)
+    expect((vi.mocked(execFile).mock.calls[1]?.[1] as string[]).slice(5)).toEqual([id])
+    expect(JSON.stringify(snapshot)).not.toContain('unknown')
+  })
+  it('does not inspect when only unknown projects are listed', async () => {
+    replies(ps(id, 'unknown'))
+    expect((await collectRemoteSnapshot('machine', 0)).worktrees).toEqual([])
+    expect(execFile).toHaveBeenCalledTimes(1)
+  })
+  it('rejects duplicate unknown IDs too', async () => {
+    replies(ps(id, 'unknown') + ps(id, 'unknown'))
+    await rejects()
+    expect(execFile).toHaveBeenCalledTimes(1)
+  })
+  it('rejects inspect ownership switching to a different known project', async () => {
+    vi.mocked(loadRegistry).mockResolvedValue({
+      projects: [project, { ...project, repo: '/repos/other' }],
+    })
+    const value = container()
+    value.labels['com.docker.compose.project'] = 'other-main'
+    replies(ps(), json(value))
+    await rejects()
+  })
   it('reads valid registry through partial reads and always closes', async () => {
     const file = registryFile(json({ projects: [], hostServices: [host] }), 7)
     expect((await collectRemoteSnapshot('machine', 0)).worktrees).toHaveLength(1)
@@ -176,7 +236,7 @@ describe('collectRemoteSnapshot', () => {
   it('enforces the shared Docker deadline', async () => {
     const clock = vi.spyOn(Date, 'now')
     clock.mockReturnValueOnce(0).mockReturnValueOnce(0).mockReturnValue(10001)
-    replies(id + '\n')
+    replies(ps())
     try {
       await rejects()
       expect(execFile).toHaveBeenCalledTimes(1)
@@ -196,11 +256,11 @@ describe('collectRemoteSnapshot', () => {
         value.networks,
         Object.fromEntries(Array.from({ length: 65 }, (_, i) => [`net${i}`, { IPAddress: '' }]))
       )
-    replies(id + '\n', json(value))
+    replies(ps(), json(value))
     await rejects()
   })
   it('maps authoritative context and domain, selecting only safe Docker fields', async () => {
-    replies(id + '\n', json(container()))
+    replies(ps(), json(container()))
     const snapshot = await collectRemoteSnapshot('machine', 2)
     expect(snapshot.revision).toBe(2)
     expect(snapshot.worktrees[0]?.namespace).toBe('main.custom.test')
@@ -214,11 +274,10 @@ describe('collectRemoteSnapshot', () => {
     expect(calls[0]?.[1]).toEqual([
       'ps',
       '--no-trunc',
-      '--quiet',
       '--filter',
       'label=traefik.enable=true',
-      '--filter',
-      'label=com.docker.compose.project=app-main',
+      '--format',
+      '{"id":{{json .ID}},"project":{{json (.Label "com.docker.compose.project")}}}',
     ])
     const args = calls[1]?.[1] as string[]
     expect(args[4]).toContain('.Config.Labels')
@@ -249,7 +308,7 @@ describe('collectRemoteSnapshot', () => {
   it('omits stopped hosts and containers', async () => {
     vi.mocked(loadRegistry).mockResolvedValue({ projects: [project], hostServices: [host] })
     vi.mocked(isProcessRunning).mockReturnValue(false)
-    replies(id + '\n', json({ ...container(), stateRunning: false }))
+    replies(ps(), json({ ...container(), stateRunning: false }))
     expect((await collectRemoteSnapshot('machine', 2)).worktrees).toEqual([])
   })
   it('treats only absent registry as empty without writes', async () => {
@@ -270,13 +329,19 @@ describe('collectRemoteSnapshot', () => {
     replies(error)
     await rejects()
   })
-  it.each(['short\n', id, id + '\n' + id + '\n', '\n'])(
-    'rejects invalid ps output %j',
-    async output => {
-      replies(output)
-      await rejects()
-    }
-  )
+  it.each([
+    'short\n',
+    ps().trimEnd(),
+    ps() + ps(),
+    '\n',
+    json({ id: 'short', project: 'app-main' }),
+    json({ id }),
+    json({ id, project: null }),
+    json([]),
+  ])('rejects invalid ps output %j', async output => {
+    replies(output)
+    await rejects()
+  })
   it.each([
     '',
     '{\n',
@@ -284,17 +349,17 @@ describe('collectRemoteSnapshot', () => {
     json([]),
     json({ ...container(), id: 'b'.repeat(64) }),
   ])('rejects incomplete or invalid inspect output', async output => {
-    replies(id + '\n', output)
+    replies(ps(), output)
     await rejects()
   })
   it('rejects inspect failure instead of returning empty state', async () => {
-    replies(id + '\n', new Error('timeout secret'))
+    replies(ps(), new Error('timeout secret'))
     await rejects()
   })
   it('rejects unknown compose membership even with plausible working dir', async () => {
     const value = container()
     value.labels['com.docker.compose.project'] = 'other-main'
-    replies(id + '\n', json(value))
+    replies(ps(), json(value))
     await rejects()
   })
   it('bounds registry and Docker counts', async () => {
@@ -302,9 +367,7 @@ describe('collectRemoteSnapshot', () => {
     await rejects()
     expect(execFile).not.toHaveBeenCalled()
     vi.mocked(loadRegistry).mockResolvedValue({ projects: [project] })
-    replies(
-      Array.from({ length: 1025 }, (_, i) => i.toString(16).padStart(64, '0')).join('\n') + '\n'
-    )
+    replies(Array.from({ length: 1025 }, (_, i) => ps(i.toString(16).padStart(64, '0'))).join(''))
     await rejects()
     expect(execFile).toHaveBeenCalledTimes(1)
   })
@@ -323,14 +386,14 @@ describe('collectRemoteSnapshot', () => {
       active--
       return { domain: 'custom.test', compose: 'compose.yml' }
     })
-    replies(...projects.map(() => ''))
+    replies('')
     await collectRemoteSnapshot('machine', 0)
     expect(peak).toBe(4)
   })
   it('batches inspect to at most 32 IDs', async () => {
     const ids = Array.from({ length: 33 }, (_, i) => i.toString(16).padStart(64, '0'))
     replies(
-      ids.join('\n') + '\n',
+      ids.map(id => ps(id)).join(''),
       ids
         .slice(0, 32)
         .map(id => json({ ...container(), id }))
