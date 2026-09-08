@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
 import { generateOverrideContent } from './compose.ts'
-import { buildRemoteSnapshot, type SafeContainer, type SafeHost } from './remoteSnapshot.ts'
+import {
+  buildRemoteSnapshot,
+  parseRemoteSnapshot,
+  type SafeContainer,
+  type SafeHost,
+} from './remoteSnapshot.ts'
 
 const context = { repo: '/private/repos/my-app', branch: 'feature-one', domain: 'port' }
 // Exact generateTraefikLabels layout: published 8080 -> container 3000,
@@ -261,5 +266,189 @@ describe('buildRemoteSnapshot', () => {
     expect(() => snapshot([], [host(), { ...host(), actualPort: 49101 }])).toThrow()
     source.networks['traefik-network']!.IPAddress = '10.0.0.2'
     expect(one.worktrees[0]!.endpoints[0]!.target.address).toBe('172.18.0.2')
+  })
+})
+
+describe('parseRemoteSnapshot', () => {
+  const invalid = (value: unknown) =>
+    expect(() => parseRemoteSnapshot(JSON.stringify(value))).toThrow(
+      /^Invalid remote snapshot metadata$/
+    )
+  const fixture = () => {
+    const root = snapshot()
+    const tree = root.worktrees[0]!
+    const endpoint = tree.endpoints[0]!
+    return { root, tree, endpoint }
+  }
+
+  it('roundtrips builder output, including empty snapshots and namespace conflicts', () => {
+    const other = { ...host(), repo: '/another' }
+    for (const original of [snapshot([], []), snapshot(), snapshot([], [host(), other])]) {
+      const parsed = parseRemoteSnapshot(JSON.stringify(original))
+      expect(parsed).toEqual(original)
+      expect(parsed).not.toBe(original)
+      expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype)
+      for (const tree of parsed.worktrees) {
+        expect(Object.getPrototypeOf(tree)).toBe(Object.prototype)
+        for (const endpoint of tree.endpoints) {
+          expect(Object.getPrototypeOf(endpoint)).toBe(Object.prototype)
+          expect(Object.getPrototypeOf(endpoint.target)).toBe(Object.prototype)
+        }
+      }
+    }
+  })
+
+  it('rejects extra keys and missing required keys at every object boundary', () => {
+    for (const key of ['Env', 'repo', '__proto__']) {
+      for (const level of ['root', 'tree', 'endpoint', 'target'] as const) {
+        const { root, tree, endpoint } = fixture()
+        const objects = { root, tree, endpoint, target: endpoint.target }
+        Object.defineProperty(objects[level], key, { value: '/secret/path', enumerable: true })
+        invalid(root)
+      }
+    }
+    const sample = fixture()
+    for (const level of ['root', 'tree', 'endpoint', 'target'] as const) {
+      const objects = { ...sample, target: sample.endpoint.target }
+      for (const key of Object.keys(objects[level])) {
+        if (key === 'name' || key === 'aliasTransports') continue
+        const fresh = fixture()
+        const selected = { ...fresh, target: fresh.endpoint.target }
+        Reflect.deleteProperty(selected[level], key)
+        invalid(fresh.root)
+      }
+    }
+  })
+
+  it('rejects malformed root fields and worktree metadata', () => {
+    for (const value of [null, [], 'secret', 1]) invalid(value)
+    for (const patch of [
+      { version: 2 },
+      { version: '1' },
+      { kind: 'unexpected' },
+      { instanceId: '' },
+      { instanceId: 'x'.repeat(129) },
+      { instanceId: '\ud800' },
+      { revision: -1 },
+      { revision: 0.5 },
+      { revision: Number.MAX_SAFE_INTEGER + 1 },
+      { worktrees: {} },
+    ])
+      invalid({ ...snapshot(), ...patch })
+    for (const patch of [
+      { worktreeId: 'A'.repeat(64) },
+      { worktreeId: 'a'.repeat(63) },
+      { namespace: 'UPPER.port' },
+      { namespace: 'bad..port' },
+      { namespace: '127.0.0.1' },
+      { namespace: 'http://evil.port' },
+      { namespace: 'x'.repeat(254) },
+      { endpoints: [] },
+      { endpoints: null },
+    ]) {
+      const { root, tree } = fixture()
+      Object.assign(tree, patch)
+      invalid(root)
+    }
+  })
+
+  it('enforces endpoint transports and HTTP-only named aliases', () => {
+    for (const patch of [
+      { id: 'not-a-hash' },
+      { transports: [] },
+      { transports: ['http', 'http'] },
+      { transports: ['http', 'tls-sni', 'http'] },
+      { transports: ['tcp'] },
+      { transports: 'http' },
+      { transports: ['tls-sni'] },
+      { name: 'bad.name' },
+      { name: null },
+      { aliasTransports: ['http', 'tls-sni'] },
+      { aliasTransports: ['tls-sni'] },
+      { aliasTransports: null },
+    ]) {
+      const { root, endpoint } = fixture()
+      Object.assign(endpoint, patch)
+      invalid(root)
+    }
+    for (const key of ['name', 'aliasTransports'] as const) {
+      const { root, endpoint } = fixture()
+      delete endpoint[key]
+      invalid(root)
+    }
+    const { root, endpoint } = fixture()
+    delete endpoint.name
+    delete endpoint.aliasTransports
+    endpoint.transports = ['tls-sni']
+    expect(parseRemoteSnapshot(JSON.stringify(root))).toEqual(root)
+  })
+
+  it('rejects invalid ports and non-private literal IPv4 targets', () => {
+    for (const value of [NaN, Infinity, 0, -1, 65536, 1.5, '80']) {
+      for (const key of ['logicalPort', 'port']) {
+        const { root, endpoint } = fixture()
+        Object.assign(key === 'port' ? endpoint.target : endpoint, { [key]: value })
+        invalid(root)
+      }
+    }
+    for (const address of [
+      '8.8.8.8',
+      '169.254.169.254',
+      '172.32.0.1',
+      'localhost',
+      '127.0.0.1.evil.port',
+      'http://127.0.0.1:80',
+      '10.0.0.01',
+      '::1',
+    ]) {
+      const { root, endpoint } = fixture()
+      endpoint.target.address = address
+      invalid(root)
+    }
+  })
+
+  it('rejects duplicate identities but permits endpoint IDs in distinct worktrees', () => {
+    const { root, tree, endpoint } = fixture()
+    tree.endpoints.push({ ...endpoint })
+    invalid(root)
+    tree.endpoints.pop()
+    root.worktrees.push({ ...tree })
+    invalid(root)
+    root.worktrees[1] = { ...tree, worktreeId: '0'.repeat(64) }
+    expect(parseRemoteSnapshot(JSON.stringify(root))).toEqual(root)
+  })
+
+  it('bounds worktrees and total endpoints, allowing 4096 nonempty trees', () => {
+    const { root, tree, endpoint } = fixture()
+    root.worktrees = Array.from({ length: 4096 }, (_, i) => ({
+      ...tree,
+      worktreeId: i.toString(16).padStart(64, '0'),
+    }))
+    expect(parseRemoteSnapshot(JSON.stringify(root)).worktrees).toHaveLength(4096)
+    root.worktrees.push({ ...tree, worktreeId: 'f'.repeat(64) })
+    invalid(root)
+    root.worktrees.pop()
+    root.worktrees[0] = {
+      ...root.worktrees[0]!,
+      endpoints: [endpoint, { ...endpoint, id: '0'.repeat(64) }],
+    }
+    invalid(root)
+    root.worktrees = [{ ...tree, endpoints: Array(4097).fill(endpoint) }]
+    invalid(root)
+  })
+
+  it('bounds strings and UTF-8 bytes before parsing and redacts syntax errors', () => {
+    const encoded = JSON.stringify(snapshot([], []))
+    const limit = 4 * 1024 * 1024
+    expect(parseRemoteSnapshot(encoded.padEnd(limit))).toEqual(snapshot([], []))
+    for (const text of [
+      encoded.padEnd(limit + 1),
+      `"${'é'.repeat(limit / 2)}"`,
+      '{"secret":"do-not-leak"',
+      'NaN',
+      'SSH banner\n' + encoded,
+    ]) {
+      expect(() => parseRemoteSnapshot(text)).toThrow(/^Invalid remote snapshot metadata$/)
+    }
   })
 })

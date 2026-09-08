@@ -81,6 +81,127 @@ function privateAddress(value: string): string {
   return value
 }
 
+function snapshotObject(
+  value: unknown,
+  required: readonly string[],
+  optional: readonly string[] = []
+): Record<string, unknown> {
+  if (!record(value)) return fail()
+  if (
+    required.some(key => !Object.hasOwn(value, key)) ||
+    Object.keys(value).some(key => !required.includes(key) && !optional.includes(key))
+  )
+    fail()
+  return value
+}
+
+function snapshotId(value: unknown): string {
+  if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) return fail()
+  return value
+}
+
+function snapshotEndpoint(value: unknown): RemoteEndpoint {
+  const item = snapshotObject(
+    value,
+    ['id', 'logicalPort', 'transports', 'target'],
+    ['name', 'aliasTransports']
+  )
+  const id = snapshotId(item.id)
+  const logicalPort = port(item.logicalPort)
+  if (!Array.isArray(item.transports) || !item.transports.length || item.transports.length > 2)
+    return fail()
+  const transports: RemoteTransport[] = item.transports.map((transport: unknown) => {
+    if (transport !== 'http' && transport !== 'tls-sni') return fail()
+    return transport
+  })
+  if (new Set(transports).size !== transports.length) fail()
+  const target = snapshotObject(item.target, ['address', 'port'])
+  if (typeof target.address !== 'string') return fail()
+  const endpoint: RemoteEndpoint = {
+    id,
+    logicalPort,
+    transports,
+    target: { address: privateAddress(target.address), port: port(target.port) },
+  }
+  if (Object.hasOwn(item, 'name')) {
+    if (
+      typeof item.name !== 'string' ||
+      !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(item.name) ||
+      !Array.isArray(item.aliasTransports) ||
+      item.aliasTransports.length !== 1 ||
+      item.aliasTransports[0] !== 'http' ||
+      !transports.includes('http')
+    )
+      return fail()
+    endpoint.name = item.name.toLowerCase()
+    endpoint.aliasTransports = ['http']
+  } else if (Object.hasOwn(item, 'aliasTransports')) fail()
+  return endpoint
+}
+
+/** Parse untrusted SSH stdout into detached, allowlisted service metadata. */
+export function parseRemoteSnapshot(encoded: string): RemoteSnapshot {
+  // Bound both JS allocation size and UTF-8 wire size before parsing anything.
+  const maxBytes = 4 * 1024 * 1024
+  if (
+    typeof encoded !== 'string' ||
+    encoded.length > maxBytes ||
+    Buffer.byteLength(encoded, 'utf8') > maxBytes
+  )
+    return fail()
+  let decoded: unknown
+  try {
+    decoded = JSON.parse(encoded)
+  } catch {
+    return fail()
+  }
+  const root = snapshotObject(decoded, ['version', 'kind', 'instanceId', 'revision', 'worktrees'])
+  if (
+    root.version !== 1 ||
+    root.kind !== 'port-service-snapshot' ||
+    typeof root.instanceId !== 'string' ||
+    !/^[a-zA-Z0-9_-]{1,128}$/.test(root.instanceId) ||
+    typeof root.revision !== 'number' ||
+    !Number.isSafeInteger(root.revision) ||
+    root.revision < 0 ||
+    !Array.isArray(root.worktrees) ||
+    root.worktrees.length > 4096
+  )
+    return fail()
+  const worktreeIds = new Set<string>()
+  let endpointCount = 0
+  const worktrees = root.worktrees.map((value: unknown) => {
+    const tree = snapshotObject(value, ['worktreeId', 'namespace', 'endpoints'])
+    const worktreeId = snapshotId(tree.worktreeId)
+    if (worktreeIds.has(worktreeId)) fail()
+    worktreeIds.add(worktreeId)
+    if (
+      typeof tree.namespace !== 'string' ||
+      dns(tree.namespace) !== tree.namespace ||
+      !Array.isArray(tree.endpoints) ||
+      !tree.endpoints.length
+    )
+      return fail()
+    endpointCount += tree.endpoints.length
+    if (endpointCount > 4096) fail()
+    const endpointIds = new Set<string>()
+    const endpoints = tree.endpoints.map((value: unknown) => {
+      const endpoint = snapshotEndpoint(value)
+      if (endpointIds.has(endpoint.id)) fail()
+      endpointIds.add(endpoint.id)
+      return endpoint
+    })
+    return { worktreeId, namespace: tree.namespace, endpoints }
+  })
+  return {
+    version: 1,
+    kind: 'port-service-snapshot',
+    instanceId: root.instanceId,
+    revision: root.revision,
+    worktrees,
+  }
+}
+
 /**
  * Pure, all-or-error extraction. No labels, paths, process commands or URLs escape.
  * Generated routers describe transports, NOT application protocols: Compose emits
