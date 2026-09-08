@@ -15,6 +15,8 @@ import { isIP } from 'node:net'
 import { openRemoteForward } from '../../src/lib/remoteSession.ts'
 import { startRemoteRelay } from '../../src/lib/remoteRelay.ts'
 import { parseRemoteSnapshot } from '../../src/lib/remoteSnapshot.ts'
+import { compileRemoteRoutePlan } from '../../src/lib/remoteRoutePlan.ts'
+import { renderRemoteRouteConfig } from '../../src/lib/remoteRouteConfig.ts'
 
 const container = 'port-http-component-traefik'
 const network = 'traefik-network'
@@ -73,7 +75,7 @@ function cachedTarget(directory: string) {
       tree.endpoints.filter(item => item.name === 'ui' && item.logicalPort === 3000)
     )
     if (trees.length !== 1 || endpoints.length !== 1) throw new Error('missing unique endpoint')
-    return endpoints[0]!.target
+    return { snapshot, worktreeId: trees[0]!.worktreeId, endpoint: endpoints[0]! }
   } finally {
     closeSync(fd)
   }
@@ -142,7 +144,7 @@ async function main() {
       '/bin/sh',
       'traefik:v3.6',
       '-c',
-      'while [ ! -f /tmp/port-http-start ]; do sleep 0.1; done; exec traefik --entrypoints.web.address=:80 --entrypoints.logical.address=:3000 --providers.file.filename=/tmp/routes.yml',
+      'while [ ! -f /tmp/port-http-start ]; do sleep 0.1; done; exec traefik --entrypoints.web.address=:80 --entrypoints.port3000.address=:3000 --providers.file.filename=/tmp/routes.yml',
     ])
     if (!/^[a-f0-9]{64}$/.test(id)) throw new Error('invalid container identity')
     owned = true
@@ -155,38 +157,32 @@ async function main() {
         container,
       ])
     )
-    forward = await openRemoteForward(process.argv[2]!, target)
+    forward = await openRemoteForward(process.argv[2]!, target.endpoint.target)
     if (!forward || interrupted || Date.now() >= deadline) throw new Error('forward unavailable')
     relay = await startRemoteRelay({
       targetPort: forward.port,
       bind: { kind: 'docker-bridge', address: gateway, peerAddress },
     })
-    const routes = {
-      http: {
-        routers: {
-          alias: {
-            entryPoints: ['web'],
-            rule: 'Host(`ui.feature.port`) || Host(`ui.feature.remote-a.ssh`)',
-            service: 'remote',
-          },
-          logical: {
-            entryPoints: ['logical'],
-            rule: 'Host(`feature.port`) || Host(`feature.remote-a.ssh`)',
-            service: 'remote',
-          },
-        },
-        services: {
-          remote: {
-            loadBalancer: {
-              passHostHeader: true,
-              servers: [{ url: `http://${gateway}:${relay.port}` }],
-            },
-          },
-        },
+    const owner = { id: 'fixture-remote-a', kind: 'ssh' as const, label: 'remote-a' }
+    const plans = compileRemoteRoutePlan([{ owner, alias: 'remote-a', snapshot: target.snapshot }])
+    const readyTarget = { address: gateway, port: relay.port }
+    const routes = renderRemoteRouteConfig(plans, {
+      backend: ref => {
+        if (
+          ref.ownerId !== owner.id ||
+          ref.worktreeId !== target.worktreeId ||
+          ref.endpointId !== target.endpoint.id
+        )
+          throw new Error('Unexpected endpoint reference')
+        return readyTarget
       },
-    }
-    // JSON is valid YAML, but Traefik selects its decoder by the supported extension.
-    writeFileSync(`${temporary}/routes.yml`, JSON.stringify(routes), { mode: 0o600, flag: 'wx' })
+      guard: () => {
+        throw new Error('Unexpected guard in unique-owner component')
+      },
+    })
+    if (routes.ports.length !== 1 || routes.ports[0] !== 3000)
+      throw new Error('Unexpected entrypoints')
+    writeFileSync(`${temporary}/routes.yml`, routes.content, { mode: 0o600, flag: 'wx' })
     docker(['cp', `${temporary}/routes.yml`, `${container}:/tmp/routes.yml`])
     docker(['exec', container, 'touch', '/tmp/port-http-start'])
     if (Date.now() >= deadline) throw new Error('setup deadline exceeded')

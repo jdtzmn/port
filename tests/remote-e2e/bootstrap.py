@@ -12,6 +12,7 @@ import select
 import shutil
 import signal
 import socket
+import ssl
 import subprocess
 import tempfile
 import stat
@@ -282,6 +283,20 @@ def http_component(shell, directory):
                 finally:
                     connection.close()
                 time.sleep(0.05)
+        # Fixture-only generated certificate: prove SNI routing, not public trust.
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        for host in ('feature.port', 'feature.remote-a.ssh'):
+            connection = http.client.HTTPSConnection(host, 3000, timeout=3, context=context)
+            try:
+                connection.request('GET', '/')
+                response = connection.getresponse()
+                require(response.status == 200 and response.read(1024) == b'remote-a-snapshot-fixture',
+                        'compiled TLS/SNI route reached the wrong endpoint')
+            finally:
+                connection.close()
+        print('PASS compiled HTTP/TLS-SNI route configuration through actual Traefik', flush=True)
         # A local client is NOT the inspected Traefik peer, even on the bridge gateway.
         try:
             with socket.create_connection((ready['address'], ready['port']), timeout=2) as direct:

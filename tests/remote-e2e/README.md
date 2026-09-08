@@ -102,9 +102,12 @@ Setup is bounded to 45 seconds and HTTP readiness to 10 seconds. The bounded
 stdin close protocol removes only the owned nested proxy container, closes relay
 and forward, and removes only its own temporary JSON directory. Finally blocks
 reap the helper; the original interactive SSH login must still work afterward.
-This proves **actual HTTP component forwarding**, not an automatic coordinator,
-automatic route publication, or full `port up`. TLS end-to-end through the relay,
-conflict behavior, and automatic coordination remain pending.
+The fixture now uses the production route planner and YAML renderer. HTTPS probes
+on port 3000 also verify the compiled TLS/SNI routes for default and qualified
+hostnames. Certificate verification is disabled for this disposable self-signed
+fixture; certificate trust is not proven. This is **component forwarding**, not an automatic coordinator
+or full `port up`. PostgreSQL through the combined path, conflict behavior, and
+automatic coordination remain pending.
 
 ### Live-discovery collector gate (explicit fixture seed)
 
