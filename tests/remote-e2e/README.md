@@ -51,8 +51,12 @@ Additional gates exercise ProxyJump via remote-b and an encrypted fixture key:
 the interactive login must prompt exactly once, establish the companion handshake,
 preserve the requested exit status, and clean up. Only the disposable test key is
 encrypted with a test-only passphrase; no user keys are used or collected.
-Password authentication, job-control suspend/resume, and broader disconnect cases
-remain release gates before treating the experimental hook as production-ready.
+**Accepted limitation:** OpenSSH multiplexing disables the local `~Ctrl-Z`
+suspension escape. Use `command ssh` to bypass integration when needed. Jacob
+accepted this narrow limitation; revisit it if users need suspension. It does not
+relax Ctrl-C, terminal restoration, or exit-status requirements.
+Password authentication and broader disconnect cases remain release gates before
+treating the experimental hook as production-ready.
 
 ## What is actually exercised
 

@@ -131,6 +131,10 @@ Decide connection multiplexing, ControlMaster ownership, repeated authentication
 
 Missing remote Port must not break login. Missing local integration means ordinary SSH only, not magical discovery. Document one-time setup and the initial supported shell matrix. Experimental commands are test-only scaffolding with a removal gate; no shipped `port ssh` fallback.
 
+### Accepted terminal exception
+
+Jacob explicitly accepted that the opt-in multiplexed SSH integration disables OpenSSH's local `~Ctrl-Z` suspension escape. Preserve the other SSH behavior above; this is not permission to change Ctrl-C or general terminal handling. `command ssh` bypasses the integration when suspension is needed. Keep broad SSH compatibility and single-login authentication rather than requiring a version-specific channel parser; revisit this narrow limitation if users report a need.
+
 ## 6. Discovery contract
 
 Use a narrow versioned structured protocol, not raw internal registry copying.
