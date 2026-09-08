@@ -8,7 +8,7 @@ import {
   lstatSync,
   mkdtempSync,
   openSync,
-  readFileSync,
+  readSync,
   readdirSync,
   renameSync,
   rmdirSync,
@@ -17,6 +17,11 @@ import {
   type Stats,
 } from 'node:fs'
 import { createConnection, createServer, isIPv4, type Socket } from 'node:net'
+import {
+  isSshConnectionIdentity,
+  parseSshConnectionIdentity,
+  type SshConnectionIdentity,
+} from './sshConnectionIdentity.ts'
 import { classifySshInvocation, isEligibleSshConfig } from './sshInvocation.ts'
 import { parseRemoteSnapshot, type RemoteSnapshot } from './remoteSnapshot.ts'
 
@@ -236,8 +241,14 @@ async function observeSnapshots(
   }
 }
 
-function session(directory: string): Stats {
+function readSession(directory: string): {
+  original: Stats
+  destination: string
+  connectionIdentity?: SshConnectionIdentity
+} {
   const original = ownedDirectory(directory)
+  const before = lstatSync(`${directory}/metadata.json`)
+  if (!privateFile(before)) throw new Error('Invalid metadata')
   const fd = openSync(
     `${directory}/metadata.json`,
     constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK
@@ -245,18 +256,53 @@ function session(directory: string): Stats {
   try {
     unchanged(directory, original)
     const stat = fstatSync(fd)
-    if (!privateFile(stat) || stat.size > 8192) throw new Error('Invalid metadata')
-    const value = JSON.parse(readFileSync(fd, 'utf8'))
+    if (!privateFile(stat) || !sameInode(before, stat) || stat.size > 8192)
+      throw new Error('Invalid metadata')
+    const buffer = Buffer.alloc(8193)
+    let size = 0
+    while (size < buffer.length) {
+      const count = readSync(fd, buffer, size, buffer.length - size, null)
+      if (!count) break
+      size += count
+    }
+    unchanged(directory, original)
+    const after = lstatSync(`${directory}/metadata.json`)
+    if (size > 8192 || !privateFile(after) || !sameInode(stat, after) || after.size !== size)
+      throw new Error('Invalid metadata')
+    const value = JSON.parse(buffer.subarray(0, size).toString('utf8'))
     if (
-      value?.version !== 1 ||
+      !value ||
+      (value.version !== 1 && value.version !== 2) ||
+      (value.version === 2 && !isSshConnectionIdentity(value.connectionIdentity)) ||
+      (value.version === 1 && Object.hasOwn(value, 'connectionIdentity')) ||
       typeof value.destination !== 'string' ||
       !classifySshInvocation([value.destination])
     )
       throw new Error('Invalid metadata')
+    return {
+      original,
+      destination: value.destination,
+      ...(value.version === 2 ? { connectionIdentity: value.connectionIdentity } : {}),
+    }
   } finally {
     closeSync(fd)
   }
-  return original
+}
+
+function session(directory: string): Stats {
+  return readSession(directory).original
+}
+
+/** Legacy sessions cannot establish an addressing identity from a typed alias. */
+export function readRemoteSessionIdentity(
+  directory: string
+): { destination: string; connectionIdentity: SshConnectionIdentity } | null {
+  try {
+    const { destination, connectionIdentity } = readSession(directory)
+    return connectionIdentity ? { destination, connectionIdentity } : null
+  } catch {
+    return null
+  }
 }
 
 function socket(directory: string, original: Stats): Stats | null {
@@ -498,11 +544,14 @@ export async function prepareRemoteSession(argv: string[]): Promise<string | nul
     if (!invocation) return null
     const config = await ssh(['-G', ...argv], 3000, 65536)
     if (config === null || !isEligibleSshConfig(config)) return null
+    const connectionIdentity = parseSshConnectionIdentity(config)
+    if (!connectionIdentity) return null
     directory = mkdtempSync('/tmp/port-ssh-')
     const original = ownedDirectory(directory)
     publish(directory, original, 'metadata.json', {
-      version: 1,
+      version: 2,
       destination: invocation.destination,
+      connectionIdentity,
     })
     return directory
   } catch {

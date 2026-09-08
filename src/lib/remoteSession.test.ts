@@ -14,6 +14,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { createServer, type Server } from 'node:net'
+import * as fs from 'node:fs'
 import { execFile } from 'node:child_process'
 import {
   cleanupRemoteSession,
@@ -21,12 +22,16 @@ import {
   openRemoteForward,
   prepareRemoteSession,
   remoteHandshake,
+  readRemoteSessionIdentity,
 } from './remoteSession.ts'
 
 vi.mock('node:child_process', () => ({ execFile: vi.fn() }))
+vi.mock('node:fs', async importOriginal => ({
+  ...(await importOriginal<typeof import('node:fs')>()),
+}))
 const execute = vi.mocked(execFile)
 const safeConfig =
-  'controlmaster false\ncontrolpersist no\nsessiontype default\nstdinnull no\nforkafterauthentication no\nrequesttty auto\n'
+  'hostname example.com\nport 22\nuser Alice\ncontrolmaster false\ncontrolpersist no\nsessiontype default\nstdinnull no\nforkafterauthentication no\nrequesttty auto\n'
 const directories: string[] = []
 const servers: Server[] = []
 
@@ -239,6 +244,77 @@ describe('private remote forwards', () => {
   })
 })
 
+describe('session addressing metadata', () => {
+  test('refuses metadata replaced during a bounded read', async () => {
+    const directory = await prepare()
+    const path = `${directory}/metadata.json`
+    const contents = readFileSync(path, 'utf8')
+    const originalRead = fs.readSync
+    vi.spyOn(fs, 'readSync').mockImplementationOnce(((...args: Parameters<typeof fs.readSync>) => {
+      renameSync(path, `${directory}/old`)
+      writeFileSync(path, contents, { mode: 0o600 })
+      return originalRead(...args)
+    }) as typeof fs.readSync)
+    expect(readRemoteSessionIdentity(directory)).toBeNull()
+  })
+  test('alternate aliases agree and proxy secrets never reach metadata', async () => {
+    const first = await prepare()
+    respond(safeConfig)
+    const second = (await prepareRemoteSession(['alternate']))!
+    directories.push(second)
+    expect(readRemoteSessionIdentity(first)?.connectionIdentity).toEqual(
+      readRemoteSessionIdentity(second)?.connectionIdentity
+    )
+    respond(safeConfig + 'proxycommand proxy --password=hidden-secret\n')
+    const proxied = (await prepareRemoteSession(['alternate']))!
+    directories.push(proxied)
+    expect(readRemoteSessionIdentity(proxied)?.connectionIdentity).not.toEqual(
+      readRemoteSessionIdentity(first)?.connectionIdentity
+    )
+    expect(readFileSync(`${proxied}/metadata.json`, 'utf8')).not.toContain('hidden-secret')
+  })
+
+  test('legacy metadata has no inferred identity and still supports forwarding', async () => {
+    const directory = await withSocket()
+    writeFileSync(
+      `${directory}/metadata.json`,
+      JSON.stringify({ version: 1, destination: 'legacy' })
+    )
+    expect(readRemoteSessionIdentity(directory)).toBeNull()
+    respond('')
+    const forward = await openRemoteForward(directory, { address: '127.0.0.1', port: 80 })
+    expect(forward).not.toBeNull()
+    respond('')
+    await forward!.close()
+  })
+
+  test.each(['symlink', 'mode', 'hardlink', 'oversize', 'identity', 'version', 'directory'])(
+    'refuses unsafe %s metadata',
+    async kind => {
+      const directory = await prepare()
+      const path = `${directory}/metadata.json`
+      if (kind === 'symlink') {
+        renameSync(path, `${directory}/old`)
+        symlinkSync(`${directory}/old`, path)
+      }
+      if (kind === 'mode') chmodSync(path, 0o644)
+      if (kind === 'hardlink') linkSync(path, `${directory}/old`)
+      if (kind === 'oversize') writeFileSync(path, ' '.repeat(8193))
+      if (kind === 'identity')
+        writeFileSync(
+          path,
+          JSON.stringify({ version: 2, destination: 'host', connectionIdentity: {} })
+        )
+      if (kind === 'version')
+        writeFileSync(path, JSON.stringify({ version: 3, destination: 'host' }))
+      if (kind === 'directory') chmodSync(directory, 0o755)
+      expect(readRemoteSessionIdentity(directory)).toBeNull()
+      await observeRemoteSession(directory)
+      expect(execute).not.toHaveBeenCalled()
+    }
+  )
+})
+
 describe('remote session preflight', () => {
   test('rejects ineligible argv without executing', async () => {
     expect(await prepareRemoteSession(['-N', 'host'])).toBeNull()
@@ -248,6 +324,8 @@ describe('remote session preflight', () => {
   test.each([
     '',
     'garbage',
+    safeConfig.replace('hostname example.com\n', ''),
+    safeConfig + 'user duplicate\n',
     safeConfig + 'controlpath /tmp/existing\n',
     safeConfig.replace('controlmaster false', 'controlmaster auto'),
   ])('rejects invalid effective config %j', async config => {
@@ -270,7 +348,7 @@ describe('remote session preflight', () => {
     expect(await prepareRemoteSession(['host'])).toBeNull()
   })
 
-  test('stores only destination and version in private state, preserving argv', async () => {
+  test('stores addressing identity in private state, preserving argv', async () => {
     const args = ['-i', '/private/key name', 'user@alias']
     respond(safeConfig)
     const directory = (await prepareRemoteSession(args))!
@@ -279,8 +357,13 @@ describe('remote session preflight', () => {
     expect(lstatSync(directory).mode & 0o777).toBe(0o700)
     expect(lstatSync(`${directory}/metadata.json`).mode & 0o777).toBe(0o600)
     expect(JSON.parse(readFileSync(`${directory}/metadata.json`, 'utf8'))).toEqual({
-      version: 1,
+      version: 2,
       destination: 'user@alias',
+      connectionIdentity: expect.objectContaining({
+        hostname: 'example.com',
+        port: 22,
+        user: 'Alice',
+      }),
     })
   })
 })
