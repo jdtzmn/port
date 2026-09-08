@@ -8,6 +8,7 @@ import pty
 import select
 import shutil
 import signal
+import stat
 import time
 import uuid
 
@@ -28,10 +29,17 @@ class LocalShell:
     def send(self, text):
         os.write(self.fd, text.encode())
 
-    def marker(self, command):
+    def marker(self, command, check=None):
         marker = "BOOTSTRAP_" + uuid.uuid4().hex
-        self.send(command + " && printf '\\n%s\\n' '" + marker + "'\n")
-        self.wait_for(lambda: marker.encode() in self.output.replace(b"\r", b"").split(b"\n"))
+        # Split the token so even a wrapped/echoed command cannot match it.
+        self.send(command + " && printf '\\n%s%s\\n' '" + marker[:16] + "' '" + marker[16:] + "'\n")
+
+        def completed():
+            if check is not None:
+                check()
+            return marker.encode() in self.output.replace(b"\r", b"").split(b"\n")
+
+        self.wait_for(completed)
 
     def wait_for(self, predicate, timeout=20):
         end = time.monotonic() + timeout
@@ -70,6 +78,34 @@ class LocalShell:
             os.close(self.fd)
 
 
+def session_directories():
+    return set(Path('/tmp').glob('port-ssh-*'))
+
+
+def private_session(before):
+    owned = session_directories() - before
+    require(len(owned) == 1, 'expected exactly one owned session')
+    directory = next(iter(owned))
+    info = directory.lstat()
+    require(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid()
+            and stat.S_IMODE(info.st_mode) == 0o700, 'session directory is not private and owned')
+    return directory
+
+
+def observer_finished(directory):
+    # This program runs only in the disposable client fixture. Never read environ
+    # or print command lines; match exact argv entries, not substring lookalikes.
+    for path in Path('/proc').glob('[0-9]*/cmdline'):
+        try:
+            argv = path.read_bytes().split(b'\0')
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        if any(argv[index:index + 2] == [b'__remote-observe', os.fsencode(directory)]
+               for index in range(len(argv) - 1)):
+            return False
+    return True
+
+
 def main():
     # Install the fixture's normal SSH config, not command-specific test options.
     shutil.copyfile('/fixture/ssh_config', '/root/.ssh/config')
@@ -98,6 +134,27 @@ def main():
         shell.wait_for(lambda: all(not path.exists() for path in owned))
         shell.marker('test "$?" -eq 7')
         print('PASS product shell preserves status 7 and removes session state', flush=True)
+
+        shell.send('ssh remote-b\n')
+        shell.marker('test -t 0 && test "$(id -un)" = fixture && ! command -v port')
+        directory = private_session(before)
+        shell.wait_for(lambda: observer_finished(directory))
+        require(directory.exists(), 'missing-Port login lost its session prematurely')
+        require(not (directory / 'handshake.json').exists(), 'missing Port produced a handshake')
+        shell.send('exit 9\n')
+        shell.wait_for(lambda: not directory.exists())
+        shell.marker('test "$?" -eq 9')
+        require(session_directories() == before, 'missing-Port login leaked session state')
+        print('PASS missing remote Port: interactive login, no handshake, status 9, cleanup', flush=True)
+
+        def no_new_sessions():
+            require(session_directories() == before, 'noninteractive SSH created session state')
+
+        no_new_sessions()
+        shell.marker("ssh remote-a 'test ! -t 0 && test \"$(id -un)\" = fixture || exit 99; exit 23'; "
+                     'test "$?" -eq 23', check=no_new_sessions)
+        no_new_sessions()
+        print('PASS noninteractive SSH passthrough preserves status 23 without session state', flush=True)
     finally:
         shell.close()
         print('--- local bootstrap PTY (last 16 KiB) ---', flush=True)

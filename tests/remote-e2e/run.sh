@@ -63,5 +63,7 @@ step 60 smoke-load "${compose[@]}" exec -T docker docker image load --input /smo
 step 10 smoke-remove "${compose[@]}" exec -T docker rm -f /smoke.tar
 step 150 proof "${compose[@]}" exec -T client python3 /fixture/harness.py
 step 90 multiplexing "${compose[@]}" exec -T client python3 /fixture/mux.py
+# Remove only the disposable fixture's CLI, after gates that need both remotes.
+step 10 missing-port "${compose[@]}" exec -T remote-b mv /usr/local/bin/port /usr/local/bin/port-unavailable
 step 90 bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py
 printf 'remote-e2e: networking and product handshake gates passed (service routing not implemented)\n'

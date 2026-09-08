@@ -2,7 +2,8 @@
 
 The networking proof uses explicit test-only `ssh -L` arguments. Separately,
 `bootstrap.py` exercises the actual built Port CLI, opt-in Bash shell hook, and
-a plain `ssh remote-a` login with an automatic remote handshake. **Automatic
+a plain `ssh remote-a` login with an automatic remote handshake, missing-Port
+`ssh remote-b` login, and ordinary noninteractive SSH passthrough. **Automatic
 service discovery/routing is not implemented or claimed by these tests.**
 
 ## Run
@@ -35,7 +36,18 @@ the companion cannot start fallback transport. Missing remote Port disables the
 handshake without breaking login. No remote install or special output occurs.
 
 The product test checks an actual private handshake file, exit status 7, and
-session cleanup. It does not yet cover password/passphrase prompts, ProxyJump,
+session cleanup on remote-a. After networking and multiplexing pass, `run.sh`
+renames `/usr/local/bin/port` to `/usr/local/bin/port-unavailable` only on the
+disposable remote-b fixture. The same local Bash hook and plain `ssh remote-b`
+must still give the fixture user an interactive login with no Port on PATH.
+The test checks a locally owned mode-0700 session, waits boundedly for its exact
+`__remote-observe` process to disappear using only client-fixture `/proc/*/cmdline`
+(no environment reads or command-line dumps), then requires no handshake,
+exit status 9, and removal of all owned session state. No code under test is patched.
+An ordinary remote command from the same local shell also checks noninteractive
+SSH passthrough, exact exit status 23, and no new local session directories during
+its completion checks or afterward. All aliases use the fixture's normal SSH config.
+It does not yet cover password/passphrase prompts, ProxyJump,
 job-control suspend/resume, or all disconnect failure cases; those remain release
 gates before treating the experimental hook as production-ready.
 
