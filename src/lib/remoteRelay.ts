@@ -30,7 +30,7 @@ function normalizePeer(address: string | undefined): string {
   return value.startsWith('::ffff:') ? value.slice(7) : value
 }
 
-function validateBind(bind: RemoteRelayOptions['bind']): string {
+export function validateBind(bind: RemoteRelayOptions['bind']): string {
   if (bind?.kind === 'loopback') return '127.0.0.1'
   if (
     bind?.kind !== 'docker-bridge' ||
@@ -47,7 +47,7 @@ function validateBind(bind: RemoteRelayOptions['bind']): string {
   return bind.address
 }
 
-function allowedPeer(address: string | undefined, peerAddress: string | undefined): boolean {
+export function allowedPeer(address: string | undefined, peerAddress: string | undefined): boolean {
   const peer = normalizePeer(address)
   return peerAddress !== undefined
     ? peer === peerAddress

@@ -4,6 +4,10 @@ import {
   type ServerResponse,
 } from 'node:http'
 import { createServer as createTcpServer, type Socket } from 'node:net'
+import { createServer as createHttpsServer } from 'node:https'
+import { createServer as createTlsServer, type TLSSocket } from 'node:tls'
+import { allowedPeer, validateBind, type RemoteRelayOptions } from './remoteRelay'
+import { createRemoteRelayIdentity } from './remoteRelayIdentity'
 import type { RemoteRoutePlan } from './remoteRoutePlan.ts'
 
 type Status = 'conflict' | 'unavailable'
@@ -71,18 +75,8 @@ function snapshot(plan: RemoteRoutePlan, status: Status) {
   return { hostname: plan.hostname.toLowerCase(), port: plan.port, transport: plan.transport, body }
 }
 
-/**
- * Private, ephemeral rejection backends only: no target input and no outbound sockets.
- * TLS-SNI is a raw TCP sink behind TLS-terminating Traefik. Closing this application
- * connection does not necessarily fail the client's frontend TLS handshake.
- */
-export async function startRemoteRouteGuard(
-  plan: RemoteRoutePlan,
-  status: Status
-): Promise<{ address: '127.0.0.1'; port: number; close(): Promise<void> }> {
-  // All caller-owned metadata is copied and validated before listening (and before await).
-  const config = snapshot(plan, status)
-  const respond = (request: IncomingMessage, response: ServerResponse) => {
+function httpResponder(config: ReturnType<typeof snapshot>, status: Status) {
+  return (request: IncomingMessage, response: ServerResponse) => {
     const hosts: string[] = []
     for (let i = 0; i < request.rawHeaders.length; i += 2) {
       if (request.rawHeaders[i]?.toLowerCase() === 'host') hosts.push(request.rawHeaders[i + 1]!)
@@ -104,6 +98,18 @@ export async function startRemoteRouteGuard(
     // Never consume the request body, including POST and Expect: 100-continue.
     response.end(body)
   }
+}
+
+/**
+ * UNSAFE for persistent publication. Legacy ephemeral plaintext rejection backend.
+ * TLS-SNI is a raw TCP sink behind TLS-terminating Traefik.
+ */
+export async function startRemoteRouteGuard(
+  plan: RemoteRoutePlan,
+  status: Status
+): Promise<{ address: '127.0.0.1'; port: number; close(): Promise<void> }> {
+  const config = snapshot(plan, status)
+  const respond = httpResponder(config, status)
   const server =
     config.transport === 'http'
       ? createHttpServer(
@@ -153,5 +159,127 @@ export async function startRemoteRouteGuard(
       })
       return closing
     },
+  }
+}
+
+/** Direct pinned TLS rejection listener; no plaintext hop or outbound capability. */
+export async function startSecureRemoteRouteGuard(
+  plan: RemoteRoutePlan,
+  status: Status,
+  bind: RemoteRelayOptions['bind'] = { kind: 'loopback' }
+): Promise<{
+  address: string
+  port: number
+  tls: { serverName: string; certificatePem: string }
+  expiresAt: number
+  close(): Promise<void>
+}> {
+  const config = snapshot(plan, status)
+  const address = validateBind(bind)
+  const peerAddress = bind.kind === 'docker-bridge' ? bind.peerAddress : undefined
+  const identity = await createRemoteRelayIdentity()
+  const options = {
+    cert: identity.certificatePem,
+    key: identity.keyPem,
+    handshakeTimeout: TIMEOUT,
+    ALPNProtocols: ['http/1.1'],
+  }
+  const respond = httpResponder(config, status)
+  const server =
+    config.transport === 'http'
+      ? createHttpsServer(
+          {
+            ...options,
+            maxHeaderSize: 16 * 1024,
+            headersTimeout: TIMEOUT,
+            requestTimeout: TIMEOUT,
+          },
+          respond
+        )
+      : createTlsServer(options)
+  if ('maxHeadersCount' in server) {
+    server.maxHeadersCount = 0
+    server.on('checkContinue', respond)
+    server.on('checkExpectation', respond)
+  }
+  type Connection = { sockets: Set<Socket>; destroy(): void }
+  const connections = new Map<string, Connection>()
+  const key = (socket: Socket) => `${socket.remoteAddress}:${socket.remotePort}`
+  let closing: Promise<void> | undefined
+  function close(): Promise<void> {
+    closing ??= new Promise<void>((resolve, reject) => {
+      server.close(error => (error ? reject(error) : resolve()))
+      for (const connection of connections.values()) connection.destroy()
+    })
+    return closing
+  }
+  // Prepend admission so raw peers are counted/denied before TLS processing.
+  server.prependListener('connection', (raw: Socket) => {
+    raw.on('error', () => {})
+    if (
+      closing ||
+      !allowedPeer(raw.remoteAddress, peerAddress) ||
+      connections.size >= MAX_CONNECTIONS
+    ) {
+      raw.destroy()
+      return
+    }
+    const id = key(raw)
+    let destroyed = false
+    const connection: Connection = {
+      sockets: new Set([raw]),
+      destroy() {
+        if (destroyed) return
+        destroyed = true
+        clearTimeout(timer)
+        // Bun shares native handles: always destroy TLS before its raw transport.
+        for (const socket of [...connection.sockets].reverse()) socket.destroy()
+      },
+    }
+    const timer = setTimeout(() => connection.destroy(), TIMEOUT)
+    timer.unref()
+    connections.set(id, connection)
+    raw.once('close', () => {
+      clearTimeout(timer)
+      connections.delete(id)
+    })
+  })
+  server.on('secureConnection', (client: TLSSocket) => {
+    const connection = connections.get(key(client))
+    client.on('error', () => {})
+    if (!connection || closing) {
+      client.destroy()
+      return
+    }
+    connection.sockets.add(client)
+    client.on('error', connection.destroy)
+    client.once('close', connection.destroy)
+    if (config.transport === 'tls-sni') connection.destroy()
+  })
+  server.on('tlsClientError', (_error, socket) => {
+    const connection = connections.get(key(socket))
+    if (connection) {
+      connection.sockets.add(socket)
+      connection.destroy()
+    } else socket.destroy()
+  })
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen({ host: address, port: 0, exclusive: true }, () => {
+      server.removeListener('error', reject)
+      resolve()
+    })
+  })
+  server.on('error', () => {
+    void close().catch(() => {})
+  })
+  const bound = server.address()
+  if (!bound || typeof bound === 'string') return invalid()
+  return {
+    address,
+    port: bound.port,
+    tls: { serverName: identity.serverName, certificatePem: identity.certificatePem },
+    expiresAt: identity.expiresAt,
+    close,
   }
 }
