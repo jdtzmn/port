@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   chmodSync,
+  linkSync,
+  mkdirSync,
   existsSync,
   lstatSync,
   mkdtempSync,
@@ -63,6 +65,7 @@ beforeEach(() => {
 })
 afterEach(async () => {
   vi.restoreAllMocks()
+  vi.useRealTimers()
   for (const server of servers.splice(0))
     await new Promise<void>(resolve => server.close(() => resolve()))
   // Test-owned fixtures only; production cleanup deliberately never uses rm recursive.
@@ -138,8 +141,17 @@ describe('private mux observation', () => {
   test('publishes exact handshake privately using clean companion argv', async () => {
     const directory = await withSocket()
     respond('')
-    respond(JSON.stringify(remoteHandshake()) + '\n')
-    await observeRemoteSession(directory)
+    const controller = new AbortController()
+    execute.mockImplementationOnce(((
+      _file: unknown,
+      _args: unknown,
+      _options: unknown,
+      callback: (error: null, stdout: string) => void
+    ) => {
+      controller.abort()
+      callback(null, JSON.stringify(remoteHandshake()) + '\n')
+    }) as typeof execFile)
+    await observeRemoteSession(directory, controller.signal)
     const base = [
       '-F',
       '/dev/null',
@@ -218,6 +230,225 @@ describe('private mux observation', () => {
     }) as typeof execFile)
     await observeRemoteSession(directory)
     expect(existsSync(`${moved}/handshake.json`)).toBe(false)
+  })
+})
+
+function snapshot(revision: number, empty = false, instanceId = 'remote-one') {
+  return {
+    version: 1,
+    kind: 'port-service-snapshot',
+    instanceId,
+    revision,
+    worktrees: empty
+      ? []
+      : [
+          {
+            worktreeId: 'a'.repeat(64),
+            namespace: 'feature.example.test',
+            endpoints: [
+              {
+                id: 'b'.repeat(64),
+                logicalPort: 3000,
+                transports: ['http'],
+                target: { address: '127.0.0.1', port: 4000 },
+              },
+            ],
+          },
+        ],
+  }
+}
+
+function cache(directory: string) {
+  return JSON.parse(readFileSync(`${directory}/snapshot.json`, 'utf8'))
+}
+
+async function startObserver(directory: string) {
+  vi.useFakeTimers()
+  respond('')
+  respond(JSON.stringify(remoteHandshake()))
+  const controller = new AbortController()
+  // Callers queue the first snapshot after this helper, before the handshake resolves.
+  const pending = observeRemoteSession(directory, controller.signal)
+  return { controller, pending }
+}
+
+describe('live private snapshot cache', () => {
+  test('refreshes live revisions, unchanged data and valid empty ownership privately', async () => {
+    const directory = await withSocket()
+    const { controller, pending } = await startObserver(directory)
+    respond(JSON.stringify(snapshot(0)) + '\n')
+    await vi.advanceTimersByTimeAsync(0)
+    const first = cache(directory)
+    expect(first).toEqual({
+      version: 1,
+      kind: 'port-session-snapshot',
+      status: 'ready',
+      observedAt: Date.now(),
+      snapshot: snapshot(0),
+    })
+    expect(execute.mock.calls[2]!.slice(0, 3)).toEqual([
+      'ssh',
+      [...execute.mock.calls[1]![1]!.slice(0, -1), 'port __remote-snapshot 0'],
+      {
+        timeout: 20_000,
+        maxBuffer: 4 * 1024 * 1024 + 1,
+        encoding: 'utf8',
+        signal: controller.signal,
+      },
+    ])
+    respond(JSON.stringify(snapshot(1)))
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(cache(directory).observedAt).toBeGreaterThan(first.observedAt)
+    respond(JSON.stringify(snapshot(2, true)))
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(cache(directory).snapshot.worktrees).toEqual([])
+    expect(cache(directory).status).toBe('ready')
+    expect(lstatSync(`${directory}/snapshot.json`).mode & 0o777).toBe(0o600)
+    expect(existsSync(`${directory}/snapshot.json.tmp`)).toBe(false)
+    controller.abort()
+    await pending
+  })
+
+  test.each(['malformed', 'exec', 'throw', 'revision', 'oversize'])(
+    'retains stale ownership on %s and recovers',
+    async failure => {
+      const directory = await withSocket()
+      const { controller, pending } = await startObserver(directory)
+      respond(JSON.stringify(snapshot(0)))
+      await vi.advanceTimersByTimeAsync(0)
+      if (failure === 'throw')
+        execute.mockImplementationOnce(() => {
+          throw new Error('spawn')
+        })
+      else
+        respond(
+          failure === 'revision'
+            ? JSON.stringify(snapshot(99))
+            : failure === 'oversize'
+              ? ' '.repeat(4 * 1024 * 1024 + 2)
+              : 'bad',
+          failure === 'exec' ? new Error('timeout') : null
+        )
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(cache(directory).status).toBe('unavailable')
+      expect(cache(directory).snapshot).toEqual(snapshot(0))
+      respond(JSON.stringify(snapshot(2)))
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(cache(directory).status).toBe('ready')
+      controller.abort()
+      await pending
+    }
+  )
+
+  test('publishes null on initial failure and pins first validated identity', async () => {
+    const directory = await withSocket()
+    const { pending } = await startObserver(directory)
+    respond('bad')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(cache(directory).snapshot).toBeNull()
+    respond(JSON.stringify(snapshot(1)))
+    await vi.advanceTimersByTimeAsync(2000)
+    respond(JSON.stringify(snapshot(2, true, 'replacement')))
+    await vi.advanceTimersByTimeAsync(2000)
+    await pending
+    expect(cache(directory).status).toBe('unavailable')
+    expect(cache(directory).snapshot).toEqual(snapshot(1))
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(execute).toHaveBeenCalledTimes(5)
+  })
+
+  test('does not overlap slow fetches and honors exec deadline settings', async () => {
+    const directory = await withSocket()
+    const { controller, pending } = await startObserver(directory)
+    execute.mockImplementationOnce(((
+      _file: unknown,
+      _args: unknown,
+      options: { timeout: number },
+      callback: (error: Error) => void
+    ) => {
+      setTimeout(() => callback(new Error('deadline')), options.timeout)
+    }) as typeof execFile)
+    await vi.advanceTimersByTimeAsync(19_999)
+    expect(execute).toHaveBeenCalledTimes(3)
+    expect(existsSync(`${directory}/snapshot.json`)).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(cache(directory).status).toBe('unavailable')
+    controller.abort()
+    await pending
+  })
+
+  test.each(['missing', 'symlink', 'replaced'])(
+    'stops on %s socket without retargeting',
+    async kind => {
+      const directory = await withSocket()
+      const { pending } = await startObserver(directory)
+      respond(JSON.stringify(snapshot(0)))
+      await vi.advanceTimersByTimeAsync(0)
+      renameSync(`${directory}/s`, `${directory}/old-s`)
+      if (kind === 'symlink') symlinkSync(`${directory}/old-s`, `${directory}/s`)
+      if (kind === 'replaced') {
+        const server = createServer()
+        servers.push(server)
+        await new Promise<void>(resolve => server.listen(`${directory}/s`, resolve))
+      }
+      await vi.advanceTimersByTimeAsync(2000)
+      await pending
+      expect(execute).toHaveBeenCalledTimes(3)
+      expect(cache(directory).status).toBe('unavailable')
+      expect(cache(directory).snapshot).toEqual(snapshot(0))
+    }
+  )
+
+  test.each(['missing', 'symlink', 'replacement'])(
+    'never recreates or writes a %s directory',
+    async kind => {
+      const directory = await withSocket()
+      const { pending } = await startObserver(directory)
+      respond(JSON.stringify(snapshot(0)))
+      await vi.advanceTimersByTimeAsync(0)
+      const moved = `${directory}-moved`
+      directories.push(moved)
+      renameSync(directory, moved)
+      if (kind === 'symlink') symlinkSync(moved, directory)
+      if (kind === 'replacement') mkdirSync(directory, { mode: 0o700 })
+      await vi.advanceTimersByTimeAsync(2000)
+      await pending
+      expect(cache(moved).status).toBe('ready')
+      if (kind !== 'symlink') expect(existsSync(`${directory}/snapshot.json`)).toBe(false)
+      expect(execute).toHaveBeenCalledTimes(3)
+    }
+  )
+
+  test.each(['symlink', 'mode', 'hardlink', 'temp'])(
+    'refuses unsafe %s cache output',
+    async kind => {
+      const directory = await withSocket()
+      const { pending } = await startObserver(directory)
+      respond(JSON.stringify(snapshot(0)))
+      await vi.advanceTimersByTimeAsync(0)
+      const output = `${directory}/snapshot.json`
+      if (kind === 'symlink') {
+        unlinkSync(output)
+        symlinkSync('/dev/null', output)
+      }
+      if (kind === 'mode') chmodSync(output, 0o644)
+      if (kind === 'hardlink') linkSync(output, `${directory}/keep`)
+      if (kind === 'temp') symlinkSync('/dev/null', `${output}.tmp`)
+      respond(JSON.stringify(snapshot(1, true)))
+      await vi.advanceTimersByTimeAsync(2000)
+      await pending
+      if (kind === 'symlink') expect(lstatSync(output).isSymbolicLink()).toBe(true)
+      else expect(cache(directory).snapshot).toEqual(snapshot(0))
+      if (kind === 'temp') expect(lstatSync(`${output}.tmp`).isSymbolicLink()).toBe(true)
+    }
+  )
+
+  test('removes only private known snapshot files during cleanup', async () => {
+    const directory = await prepare()
+    for (const name of ['snapshot.json', 'snapshot.json.tmp'])
+      writeFileSync(`${directory}/${name}`, '{}', { mode: 0o600 })
+    await cleanupRemoteSession(directory)
+    expect(existsSync(directory)).toBe(false)
   })
 })
 

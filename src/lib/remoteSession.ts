@@ -15,6 +15,7 @@ import {
   type Stats,
 } from 'node:fs'
 import { classifySshInvocation, isEligibleSshConfig } from './sshInvocation.ts'
+import { parseRemoteSnapshot, type RemoteSnapshot } from './remoteSnapshot.ts'
 
 export interface RemoteHandshake {
   kind: 'port-handshake'
@@ -25,11 +26,21 @@ export function remoteHandshake(): RemoteHandshake {
   return { kind: 'port-handshake', version: 1 }
 }
 
-function ssh(args: string[], timeout: number, maxBuffer: number): Promise<string | null> {
+function ssh(
+  args: string[],
+  timeout: number,
+  maxBuffer: number,
+  signal?: AbortSignal
+): Promise<string | null> {
   return new Promise(resolve => {
-    execFile('ssh', args, { timeout, maxBuffer, encoding: 'utf8' }, (error, stdout) => {
-      resolve(error ? null : stdout)
-    })
+    execFile(
+      'ssh',
+      args,
+      { timeout, maxBuffer, encoding: 'utf8', ...(signal ? { signal } : {}) },
+      (error, stdout) => {
+        resolve(error ? null : stdout)
+      }
+    )
   })
 }
 
@@ -92,6 +103,134 @@ function publish(directory: string, original: Stats, name: string, value: unknow
     return
   }
   throw new Error('Session output already exists')
+}
+
+function sameInode(a: Stats, b: Stats): boolean {
+  return a.dev === b.dev && a.ino === b.ino
+}
+
+/** Only the live cache may replace an existing, private output. */
+function updateSnapshot(directory: string, original: Stats, value: unknown): void {
+  const temporary = `${directory}/snapshot.json.tmp`
+  const output = `${directory}/snapshot.json`
+  let fd: number | undefined
+  let owned: Stats | undefined
+  const checkOutput = (): void => {
+    unchanged(directory, original)
+    try {
+      if (!privateFile(lstatSync(output))) throw new Error('Invalid snapshot output')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+  }
+  try {
+    checkOutput()
+    unchanged(directory, original)
+    fd = openSync(
+      temporary,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      0o600
+    )
+    unchanged(directory, original)
+    owned = fstatSync(fd)
+    unchanged(directory, original)
+    fchmodSync(fd, 0o600)
+    unchanged(directory, original)
+    writeFileSync(fd, JSON.stringify(value) + '\n')
+    checkOutput()
+    unchanged(directory, original)
+    const temp = lstatSync(temporary)
+    if (!privateFile(temp) || !sameInode(temp, owned))
+      throw new Error('Snapshot temporary replaced')
+    unchanged(directory, original)
+    renameSync(temporary, output)
+  } finally {
+    // Closing our descriptor is safe even when the pathname has disappeared.
+    if (fd !== undefined) closeSync(fd)
+    if (owned) {
+      try {
+        unchanged(directory, original)
+        const temp = lstatSync(temporary)
+        if (privateFile(temp) && sameInode(temp, owned)) {
+          unchanged(directory, original)
+          unlinkSync(temporary)
+        }
+      } catch {
+        /* Never clean up an unowned or moved pathname. */
+      }
+    }
+  }
+}
+
+function pause(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  return new Promise(resolve => {
+    if (signal?.aborted) return resolve()
+    const done = (): void => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', done)
+      resolve()
+    }
+    const timer = setTimeout(done, milliseconds)
+    signal?.addEventListener('abort', done, { once: true })
+  })
+}
+
+function sameSocket(directory: string, original: Stats, pinned: Stats): boolean {
+  const current = socket(directory, original)
+  return current !== null && sameInode(current, pinned)
+}
+
+async function observeSnapshots(
+  directory: string,
+  original: Stats,
+  pinned: Stats,
+  signal?: AbortSignal
+): Promise<void> {
+  let last: RemoteSnapshot | null = null
+  let revision = 0
+  const publishStatus = (status: 'ready' | 'unavailable'): void => {
+    updateSnapshot(directory, original, {
+      version: 1,
+      kind: 'port-session-snapshot',
+      status,
+      observedAt: Date.now(),
+      snapshot: last,
+    })
+  }
+  try {
+    while (!signal?.aborted) {
+      if (!sameSocket(directory, original, pinned)) break
+      let candidate: RemoteSnapshot | null = null
+      try {
+        const output = await ssh(
+          [...companion(directory), 'dummy', `port __remote-snapshot ${revision}`],
+          20_000,
+          4 * 1024 * 1024 + 1,
+          signal
+        )
+        if (output !== null) {
+          candidate = parseRemoteSnapshot(output.endsWith('\n') ? output.slice(0, -1) : output)
+          if (candidate.revision !== revision) candidate = null
+        }
+      } catch {
+        /* Transport and validation failures retain the last known ownership. */
+      }
+      if (!sameSocket(directory, original, pinned)) break
+      if (candidate && last && candidate.instanceId !== last.instanceId) break
+      if (candidate) last = candidate
+      publishStatus(candidate ? 'ready' : 'unavailable')
+      if (revision === Number.MAX_SAFE_INTEGER) break
+      revision++
+      await pause(2000, signal)
+    }
+  } catch {
+    /* Local ownership loss is terminal, never retarget or recreate. */
+  }
+  try {
+    publishStatus('unavailable')
+  } catch {
+    /* Only the original private directory may be updated. */
+  }
 }
 
 function session(directory: string): Stats {
@@ -175,19 +314,23 @@ export async function prepareRemoteSession(argv: string[]): Promise<string | nul
   }
 }
 
-export async function observeRemoteSession(directory: string): Promise<void> {
+export async function observeRemoteSession(directory: string, signal?: AbortSignal): Promise<void> {
   try {
     const original = session(directory)
     const deadline = Date.now() + 90_000
-    while (Date.now() < deadline) {
-      if (socket(directory, original)) {
+    let pinned: Stats | undefined
+    while (!signal?.aborted && Date.now() < deadline) {
+      const current = socket(directory, original)
+      if (pinned && (!current || !sameInode(current, pinned))) return
+      if (current) {
+        pinned ??= current
         const ready = await ssh(
           [...companion(directory), '-O', 'check', 'dummy'],
           Math.max(1, Math.min(1000, deadline - Date.now())),
           8192
         )
         if (ready !== null) {
-          if (!socket(directory, original)) return
+          if (!sameSocket(directory, original, pinned)) return
           const output = await ssh(
             [...companion(directory), 'dummy', 'port __remote-handshake'],
             5000,
@@ -204,13 +347,13 @@ export async function observeRemoteSession(directory: string): Promise<void> {
             Object.keys(value).length !== 2
           )
             return
+          if (!sameSocket(directory, original, pinned)) return
           publish(directory, original, 'handshake.json', remoteHandshake())
+          await observeSnapshots(directory, original, pinned, signal)
           return
         }
       }
-      await new Promise(resolve =>
-        setTimeout(resolve, Math.min(250, Math.max(0, deadline - Date.now())))
-      )
+      await pause(Math.min(250, Math.max(0, deadline - Date.now())), signal)
     }
   } catch {
     /* Optional capability: malformed, missing or incompatible helpers stay silent. */
@@ -223,6 +366,8 @@ function removeKnownFiles(directory: string, original: Stats): void {
     'metadata.json.tmp',
     'handshake.json',
     'handshake.json.tmp',
+    'snapshot.json',
+    'snapshot.json.tmp',
   ]) {
     unchanged(directory, original)
     try {
