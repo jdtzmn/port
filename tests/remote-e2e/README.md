@@ -134,12 +134,35 @@ never disabled. Actual Traefik and its original rendered YAML remain unchanged a
 alive throughout both phases. This is **component crash-simulation listener replacement**,
 not automatic coordinator recovery or full cross-owner acceptance.
 
+After both stale-port cases, the bounded `guards` command exercises an **unready
+backend component gate**. The same healthy single-owner plans are rendered with
+`backend: () => undefined`; one production `startSecureRemoteRouteGuard(plan,
+'unavailable', {kind: 'docker-bridge', address: gateway, peerAddress: traefikIP})`
+is precreated per plan. The renderer's guard callback only looks up its ready
+`{address, port, tls}`. These are direct TLS guards, with no plaintext relay hop,
+manual TLS configuration, or disabled private-hop verification. Actual Traefik's
+production Go TLS client exercises the guards; no Bun HTTPS client substitutes for it.
+The wrong-TLS collector is already closed; Traefik and the owned SSH stream stay alive.
+Docker copies the new YAML to a temporary container filename, then `mv` atomically
+replaces the original `/tmp/routes.yml` for the file-provider watcher.
+
+After publication acknowledgement, Python waits for all four HTTP URL forms to
+return **HTTP 503 with JSON `status: unavailable`** to sentinel POSTs; 502 does not
+pass readiness. Only after that reload gate, both public HTTPS/TLS-SNI root routes
+must reject the connection or return no HTTP response. The existing fixture-only
+public certificate context is unchanged. `verify-count` through the original SSH
+login again requires the owned backend count to remain exactly 1. This does not
+fake a second owner or claim cross-VM conflicts or an automatic cross-owner coordinator.
+
 Setup is bounded to 45 seconds and HTTP readiness to 10 seconds. Each protocol wait
-and collector lifetime is bounded to 30 seconds, each negative phase to 20 seconds,
-and the whole helper to 110 seconds before bounded cleanup. Raw and TLS collector
+and collector lifetime is bounded to 30 seconds, each stale-port phase to 20 seconds,
+guard publication to 20 seconds and guard HTTP readiness to 15 seconds,
+and the whole helper to 140 seconds before bounded cleanup. Raw and TLS collector
 sockets are destroyed before listener closure; connections have 1.5-second timeouts.
-The final stdin `close` removes only the owned nested proxy container, closes relay
-before the forward, and removes only its own temporary YAML directory. Finally blocks
+The final stdin `close` closes every direct TLS guard and collector, removes only
+the owned nested proxy container, closes relay before the forward, and removes only
+its own temporary YAML directory. The same cleanup runs on failure, attempting all
+guard closures even if one rejects. Finally blocks
 reap the helper; the original interactive SSH login must still work afterward.
 The fixture now uses the production route planner and YAML renderer. HTTPS probes
 on port 3000 also verify the compiled TLS/SNI routes for default and qualified

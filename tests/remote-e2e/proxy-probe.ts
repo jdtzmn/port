@@ -19,10 +19,11 @@ import { startSecureRemoteRelay } from '../../src/lib/remoteRelay.ts'
 import { parseRemoteSnapshot } from '../../src/lib/remoteSnapshot.ts'
 import { compileRemoteRoutePlan } from '../../src/lib/remoteRoutePlan.ts'
 import { renderRemoteRouteConfig } from '../../src/lib/remoteRouteConfig.ts'
+import { startSecureRemoteRouteGuard } from '../../src/lib/remoteRouteGuard.ts'
 
 const container = 'port-http-component-traefik'
 const network = 'traefik-network'
-const deadline = Date.now() + 45_000
+let deadline = Date.now() + 45_000
 let interrupted = false
 const interrupt = () => {
   interrupted = true
@@ -186,13 +187,21 @@ async function collector(address: string, port: number, wrongTLS: boolean) {
   server.on('error', () => void close().catch(() => {}))
   return { close, stats: () => ({ connections, applicationHits, sentinelHits }) }
 }
+async function closeGuards(guards: Iterable<{ close(): Promise<void> }>) {
+  const results = await Promise.allSettled([...guards].map(guard => guard.close()))
+  if (results.some(result => result.status === 'rejected')) throw new Error('guard cleanup failed')
+}
 async function main() {
   if (process.argv.length !== 3) throw new Error('invalid arguments')
   const target = cachedTarget(process.argv[2]!)
   const temporary = mkdtempSync('/root/port-http-component-')
   process.on('SIGTERM', interrupt)
   process.on('SIGINT', interrupt)
-  const watchdog = setTimeout(() => process.kill(process.pid, 'SIGTERM'), 110_000)
+  const watchdog = setTimeout(() => process.kill(process.pid, 'SIGTERM'), 140_000)
+  const guards = new Map<
+    ReturnType<typeof compileRemoteRoutePlan>[number],
+    Awaited<ReturnType<typeof startSecureRemoteRouteGuard>>
+  >()
   let replacement: Awaited<ReturnType<typeof collector>> | undefined
   let owned = false
   let forward: Awaited<ReturnType<typeof openRemoteStream>> = null
@@ -277,13 +286,43 @@ async function main() {
     await waitCommand('wrong-tls-stats\n')
     await replacement.close()
     console.log(JSON.stringify({ status: 'wrong-tls-stats', ...replacement.stats() }))
+    await waitCommand('guards\n')
+    deadline = Date.now() + 20_000
+    // Keep the healthy single-owner plans; only backend readiness is withdrawn.
+    for (const plan of plans) {
+      if (interrupted || Date.now() >= deadline) throw new Error('guard setup interrupted')
+      guards.set(
+        plan,
+        await startSecureRemoteRouteGuard(plan, 'unavailable', {
+          kind: 'docker-bridge',
+          address: gateway,
+          peerAddress,
+        })
+      )
+    }
+    const unavailable = renderRemoteRouteConfig(plans, {
+      backend: () => undefined,
+      guard: (plan, status) => {
+        const guard = guards.get(plan)
+        if (!guard || status !== 'unavailable') throw new Error('Unexpected guard lookup')
+        return { address: guard.address, port: guard.port, tls: guard.tls }
+      },
+    })
+    writeFileSync(`${temporary}/guards.yml`, unavailable.content, { mode: 0o600, flag: 'wx' })
+    docker(['cp', `${temporary}/guards.yml`, `${container}:/tmp/routes-next.yml`])
+    docker(['exec', container, 'mv', '/tmp/routes-next.yml', '/tmp/routes.yml'])
+    console.log(JSON.stringify({ status: 'guards' }))
     await waitCommand('close\n')
   } finally {
     try {
       try {
         await replacement?.close()
       } finally {
-        if (owned) docker(['rm', '-f', container], true)
+        try {
+          await closeGuards(guards.values())
+        } finally {
+          if (owned) docker(['rm', '-f', container], true)
+        }
       }
     } finally {
       try {

@@ -316,10 +316,11 @@ def http_component(shell, directory):
             connection.close()
         shell.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js verify-count')
 
-        def command(value):
+        def command(value, timeout=10):
+            assert helper.stdin is not None
             helper.stdin.write((value + '\n').encode())
             helper.stdin.flush()
-            return json.loads(bounded_line(helper, timeout=10))
+            return json.loads(bounded_line(helper, timeout=timeout))
 
         for phase in ('plaintext', 'wrong-tls'):
             require(command(phase) == dict(status=phase, address=ready['address'], port=ready['port']),
@@ -357,6 +358,43 @@ def http_component(shell, directory):
             shell.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js verify-count')
             print('PASS stale backend ' + phase + ': connections=' + str(counters['connections'])
                   + ' applicationHits=0 sentinelHits=0 originalCount=1', flush=True)
+        require(command('guards', timeout=25) == {'status': 'guards'},
+                'unready backend guards did not acknowledge publication')
+        # Real Traefik's verified Go TLS client must reach all four direct TLS guards.
+        # A stale 502 is not readiness: require the production guard's JSON 503.
+        guard_end = time.monotonic() + 15
+        for host, port in [('ui.feature.port', 80), ('feature.port', 3000),
+                           ('ui.feature.remote-a.ssh', 80), ('feature.remote-a.ssh', 3000)]:
+            while True:
+                remaining = guard_end - time.monotonic()
+                require(remaining > 0, 'unready backend guard reload timed out')
+                connection = http.client.HTTPConnection(host, port, timeout=min(1, remaining))
+                try:
+                    connection.request('POST', '/cgi-bin/sentinel', body=b'port-stale-sentinel')
+                    response = connection.getresponse()
+                    body = response.read(4096)
+                    if response.status == 503 and json.loads(body).get('status') == 'unavailable':
+                        break
+                except (OSError, http.client.HTTPException, ValueError):
+                    pass
+                finally:
+                    connection.close()
+                time.sleep(0.05)
+        # HTTP readiness establishes reload completion before testing TCP guards.
+        for host in ('feature.port', 'feature.remote-a.ssh'):
+            connection = http.client.HTTPSConnection(host, 3000, timeout=3, context=context)
+            try:
+                connection.request('POST', '/cgi-bin/sentinel', body=b'port-stale-sentinel')
+                connection.getresponse()
+            except (OSError, http.client.HTTPException):
+                pass
+            else:
+                raise RuntimeError('TLS/SNI unready guard returned an HTTP response')
+            finally:
+                connection.close()
+        shell.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js verify-count')
+        print('PASS unready backend guards: four HTTP JSON 503 unavailable routes; '
+              'TLS/SNI roots reject without response; originalCount=1', flush=True)
         helper.stdin.write(b'close\n')
         helper.stdin.flush()
         require(json.loads(bounded_line(helper, timeout=15)) == {'status': 'closed'},
