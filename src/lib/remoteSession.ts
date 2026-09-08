@@ -14,6 +14,7 @@ import {
   writeFileSync,
   type Stats,
 } from 'node:fs'
+import { createServer, isIPv4 } from 'node:net'
 import { classifySshInvocation, isEligibleSshConfig } from './sshInvocation.ts'
 import { parseRemoteSnapshot, type RemoteSnapshot } from './remoteSnapshot.ts'
 
@@ -283,6 +284,97 @@ function companion(directory: string): string[] {
     '-T',
     '-n',
   ]
+}
+
+/** The allocation is only a candidate: SSH must win the unavoidable bind race. */
+function forwardPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer()
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      server.close(error => {
+        if (error) reject(error)
+        else if (!address || typeof address === 'string') reject(new Error('Invalid listener'))
+        else resolve(address.port)
+      })
+    })
+  })
+}
+
+/**
+ * Private internal transport through the existing owned master, not public ingress.
+ * Success proves only that SSH created a loopback listener, NOT backend readiness.
+ */
+export async function openRemoteForward(
+  directory: string,
+  target: { address: string; port: number }
+): Promise<{ address: '127.0.0.1'; port: number; close(): Promise<void> } | null> {
+  try {
+    // Match snapshot restrictions before any filesystem, socket, or SSH I/O.
+    const { address, port } = target
+    if (typeof address !== 'string' || !isIPv4(address)) return null
+    const [a, b] = address.split('.').map(Number)
+    if (!(a === 127 || a === 10 || (a === 172 && b! >= 16 && b! <= 31) || (a === 192 && b === 168)))
+      return null
+    if (!Number.isInteger(port) || port < 1 || port > 65535) return null
+    const original = session(directory)
+    const pinned = socket(directory, original)
+    if (!pinned) return null
+    const valid = (): boolean => {
+      try {
+        return sameInode(session(directory), original) && sameSocket(directory, original, pinned)
+      } catch {
+        return false
+      }
+    }
+    const command = async (operation: 'forward' | 'cancel', spec: string): Promise<boolean> => {
+      if (!valid()) return false
+      try {
+        const output = await ssh(
+          [
+            ...companion(directory),
+            '-o',
+            'ExitOnForwardFailure=yes',
+            '-O',
+            operation,
+            '-L',
+            spec,
+            'dummy',
+          ],
+          3000,
+          8192
+        )
+        return valid() && output !== null
+      } catch {
+        return false
+      }
+    }
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (!valid()) return null
+      const localPort = await forwardPort()
+      const spec = `127.0.0.1:${localPort}:${address}:${port}`
+      if ((await command('forward', spec)) && valid()) {
+        let closed = false
+        return {
+          address: '127.0.0.1',
+          port: localPort,
+          async close() {
+            if (closed) return
+            closed = true
+            await command('cancel', spec)
+          },
+        }
+      }
+      // A timeout/late failure may still have installed a listener. Only the
+      // original master can be asked to cancel it; never touch a replacement.
+      await command('cancel', spec)
+      if (!valid()) return null
+    }
+  } catch {
+    /* Optional transport: allocation or ownership failure stays unavailable. */
+  }
+  return null
 }
 
 export async function prepareRemoteSession(argv: string[]): Promise<string | null> {

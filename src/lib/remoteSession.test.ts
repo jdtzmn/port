@@ -18,6 +18,7 @@ import { execFile } from 'node:child_process'
 import {
   cleanupRemoteSession,
   observeRemoteSession,
+  openRemoteForward,
   prepareRemoteSession,
   remoteHandshake,
 } from './remoteSession.ts'
@@ -70,6 +71,172 @@ afterEach(async () => {
     await new Promise<void>(resolve => server.close(() => resolve()))
   // Test-owned fixtures only; production cleanup deliberately never uses rm recursive.
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true })
+})
+
+describe('private remote forwards', () => {
+  test.each([
+    '127.0.0.1',
+    '127.255.0.2',
+    '10.0.0.1',
+    '172.16.0.1',
+    '172.31.255.254',
+    '192.168.1.2',
+  ])('creates only loopback transport to %s and cancels the exact spec once', async address => {
+    const directory = await withSocket()
+    respond('')
+    const forward = await openRemoteForward(directory, { address, port: 5432 })
+    expect(forward).not.toBeNull()
+    expect(forward!.address).toBe('127.0.0.1')
+    expect(forward!.port).toBeGreaterThan(0)
+    expect(forward!.port).toBeLessThanOrEqual(65535)
+    const spec = `127.0.0.1:${forward!.port}:${address}:5432`
+    const args = [
+      '-F',
+      '/dev/null',
+      '-S',
+      `${directory}/s`,
+      '-o',
+      'ControlMaster=no',
+      '-o',
+      'BatchMode=yes',
+      '-o',
+      'ProxyCommand=false',
+      '-T',
+      '-n',
+      '-o',
+      'ExitOnForwardFailure=yes',
+      '-O',
+      'forward',
+      '-L',
+      spec,
+      'dummy',
+    ]
+    expect(execute.mock.calls[0]!.slice(0, 3)).toEqual([
+      'ssh',
+      args,
+      { timeout: 3000, maxBuffer: 8192, encoding: 'utf8' },
+    ])
+    respond('')
+    await Promise.all([forward!.close(), forward!.close()])
+    await forward!.close()
+    expect(execute).toHaveBeenCalledTimes(2)
+    expect(execute.mock.calls[1]![1]).toEqual(
+      args.map(value => (value === 'forward' ? 'cancel' : value))
+    )
+  })
+
+  test.each([
+    'localhost',
+    '8.8.8.8',
+    '0.0.0.0',
+    '169.254.1.2',
+    '100.64.0.1',
+    '172.15.0.1',
+    '172.32.0.1',
+    '192.169.0.1',
+    '::1',
+    '127.1',
+    '127.00.0.1',
+    '127.0.0.1:80',
+    '127.0.0.1\n',
+    '-L',
+    '',
+  ])('rejects malformed/public target %j before exec', async address => {
+    expect(await openRemoteForward('/invalid', { address, port: 80 })).toBeNull()
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  test.each([0, -1, 65536, 1.5, NaN, Infinity, '80'])(
+    'rejects invalid port %j before exec',
+    async port => {
+      expect(
+        await openRemoteForward('/invalid', { address: '127.0.0.1', port: port as number })
+      ).toBeNull()
+      expect(execute).not.toHaveBeenCalled()
+    }
+  )
+
+  test('bounds failed creation to three attempts and cleans up each exact spec', async () => {
+    const directory = await withSocket()
+    for (let i = 0; i < 3; i++) {
+      respond('', new Error('bind failed or timed out'))
+      respond('')
+    }
+    expect(await openRemoteForward(directory, { address: '10.0.0.1', port: 80 })).toBeNull()
+    expect(execute).toHaveBeenCalledTimes(6)
+    for (let i = 0; i < 6; i += 2) {
+      const forward = execute.mock.calls[i]![1] as string[]
+      expect(execute.mock.calls[i + 1]![1]).toEqual(
+        forward.map(value => (value === 'forward' ? 'cancel' : value))
+      )
+    }
+  })
+
+  test('retries a failed candidate and treats close failure as terminal', async () => {
+    const directory = await withSocket()
+    respond('', new Error('bind race'))
+    respond('')
+    respond('')
+    const forward = await openRemoteForward(directory, { address: '10.0.0.1', port: 80 })
+    expect(forward).not.toBeNull()
+    respond('', new Error('timeout'))
+    await forward!.close()
+    await forward!.close()
+    expect(execute).toHaveBeenCalledTimes(4)
+  })
+
+  test.each(['removed', 'socket', 'symlink', 'directory'])(
+    'refuses %s ownership loss during creation and close',
+    async replacement => {
+      const directory = await withSocket()
+      const replace = (): void => {
+        if (replacement === 'directory') {
+          const moved = `${directory}-moved`
+          renameSync(directory, moved)
+          directories.push(moved)
+          mkdirSync(directory, { mode: 0o700 })
+          writeFileSync(
+            `${directory}/metadata.json`,
+            JSON.stringify({ version: 1, destination: 'host' }),
+            { mode: 0o600 }
+          )
+        } else {
+          renameSync(`${directory}/s`, `${directory}/original-s`)
+          if (replacement === 'socket') writeFileSync(`${directory}/s`, '')
+          if (replacement === 'symlink') symlinkSync(`${directory}/original-s`, `${directory}/s`)
+        }
+      }
+      respond('')
+      const forward = await openRemoteForward(directory, { address: '127.0.0.1', port: 80 })
+      expect(forward).not.toBeNull()
+      replace()
+      await forward!.close()
+      await forward!.close()
+      expect(execute).toHaveBeenCalledTimes(1)
+      expect(await openRemoteForward(directory, { address: '127.0.0.1', port: 80 })).toBeNull()
+      expect(execute).toHaveBeenCalledTimes(1)
+    }
+  )
+
+  test('never publishes or cancels a replaced real mux socket after late success', async () => {
+    const directory = await withSocket()
+    const replacement = createServer()
+    servers.push(replacement)
+    await new Promise<void>(resolve => replacement.listen(`${directory}/replacement`, resolve))
+    execute.mockImplementationOnce(((
+      _file: unknown,
+      _args: unknown,
+      _options: unknown,
+      callback: (error: Error | null, stdout: string) => void
+    ) => {
+      renameSync(`${directory}/s`, `${directory}/original-s`)
+      renameSync(`${directory}/replacement`, `${directory}/s`)
+      callback(null, '')
+    }) as typeof execFile)
+    expect(await openRemoteForward(directory, { address: '127.0.0.1', port: 80 })).toBeNull()
+    expect(execute).toHaveBeenCalledTimes(1)
+    expect(lstatSync(`${directory}/s`).isSocket()).toBe(true)
+  })
 })
 
 describe('remote session preflight', () => {
