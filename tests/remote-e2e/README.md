@@ -1,9 +1,9 @@
-# Remote services: phase-0 infrastructure proof
+# Remote services: infrastructure and SSH bootstrap gates
 
-This is **infrastructure proof, not product integration**. It does not invoke
-Port, install a shell hook, or automatically bootstrap forwarding when `ssh`
-starts. Explicit test-only `ssh -L` arguments establish feasibility. A later
-phase must replace those arguments with product behavior and add product tests.
+The networking proof uses explicit test-only `ssh -L` arguments. Separately,
+`bootstrap.py` exercises the actual built Port CLI, opt-in Bash shell hook, and
+a plain `ssh remote-a` login with an automatic remote handshake. **Automatic
+service discovery/routing is not implemented or claimed by these tests.**
 
 ## Run
 
@@ -18,7 +18,26 @@ Compose v2 supporting `up --wait` and `cp`. Linux containers and privileged
 Docker-in-Docker must be supported (Docker Desktop or a suitable Linux runner).
 The build/pull stages need registry and Debian package mirror access. All base
 and smoke images use explicit version tags, not `latest`; tags are not digest
-locks. No npm dependencies or runner DNS setup are required.
+locks. Bun and checkout dependencies (`bun install --frozen-lockfile`) are needed
+to build Port. No runner DNS setup is required. Only fresh build artifacts and
+package metadata are copied into fixtures, not the repository or secret files.
+
+## Experimental bootstrap scope
+
+Enable with `eval "$(port shell-hook bash --remote-services)"` in Bash. Existing
+SSH aliases/functions are left alone. Other shells retain normal Port hooks but
+currently reject this experimental flag. Unsupported SSH invocations or existing
+multiplexing policies pass through unchanged. `command ssh` bypasses integration.
+
+The preflight uses `ssh -G`, which can evaluate `Match exec` a second time; this
+is not universally side-effect-free. Authentication stays with foreground SSH;
+the companion cannot start fallback transport. Missing remote Port disables the
+handshake without breaking login. No remote install or special output occurs.
+
+The product test checks an actual private handshake file, exit status 7, and
+session cleanup. It does not yet cover password/passphrase prompts, ProxyJump,
+job-control suspend/resume, or all disconnect failure cases; those remain release
+gates before treating the experimental hook as production-ready.
 
 ## What is actually exercised
 

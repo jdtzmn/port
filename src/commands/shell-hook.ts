@@ -1,4 +1,5 @@
 import * as output from '../lib/output.ts'
+import { generateSshIntegrationHook } from '../lib/sshIntegrationHook.ts'
 import { SUPPORTED_SHELLS, type Shell } from '../lib/shell.ts'
 
 /**
@@ -18,14 +19,20 @@ import { SUPPORTED_SHELLS, type Shell } from '../lib/shell.ts'
  * shell commands to that file when appropriate; other commands ignore it.
  * This avoids maintaining a subcommand list in the hook.
  */
-export function shellHook(shell: string): void {
+export function shellHook(shell: string, options: { remoteServices?: boolean } = {}): void {
   if (!SUPPORTED_SHELLS.includes(shell as Shell)) {
     output.error(`Unsupported shell: ${shell}`)
     output.info(`Supported shells: ${SUPPORTED_SHELLS.join(', ')}`)
     process.exit(1)
   }
 
-  const hookCode = shell === 'fish' ? generateFishHook() : generatePosixHook(shell)
+  if (options.remoteServices && shell !== 'bash') {
+    output.error(`Remote services shell integration is unsupported for ${shell}; use bash.`)
+    process.exit(1)
+  }
+
+  let hookCode = shell === 'fish' ? generateFishHook() : generatePosixHook(shell)
+  if (options.remoteServices) hookCode += '\n' + generateSshIntegrationHook()
 
   // Write to stdout so it can be eval'd
   process.stdout.write(hookCode + '\n')

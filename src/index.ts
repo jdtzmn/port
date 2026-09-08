@@ -22,6 +22,10 @@ import { prune } from './commands/prune.ts'
 import { urls } from './commands/urls.ts'
 import { onboard } from './commands/onboard.ts'
 import { shellHook } from './commands/shell-hook.ts'
+import {
+  dispatchRemoteInternalCommand,
+  isRemoteInternalCommand,
+} from './commands/remote-internal.ts'
 import { completion } from './commands/completion.ts'
 import { hook } from './commands/hook.ts'
 import { open } from './commands/open.ts'
@@ -158,6 +162,7 @@ program
 program
   .command('shell-hook <shell>')
   .description('Print shell integration code for automatic cd (bash, zsh, or fish)')
+  .option('--remote-services', 'Opt into the experimental SSH bootstrap bridge (bash only)')
   .action(shellHook)
 
 // port urls [service]
@@ -339,11 +344,15 @@ if (import.meta.main) {
   const entryToken = process.argv[2]
 
   try {
-    if (shouldAutoRegisterWorktree(entryToken)) {
-      await ensureCurrentWorktreeRegistered()
-    }
+    if (isRemoteInternalCommand(entryToken)) {
+      await dispatchRemoteInternalCommand(entryToken!, process.argv.slice(3))
+    } else {
+      if (shouldAutoRegisterWorktree(entryToken)) {
+        await ensureCurrentWorktreeRegistered()
+      }
 
-    await program.parseAsync()
+      await program.parseAsync()
+    }
   } catch (error) {
     handleCliError(error)
   }

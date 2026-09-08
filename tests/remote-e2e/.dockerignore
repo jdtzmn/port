@@ -8,3 +8,5 @@
 !mux.py
 !ssh_config
 !sshd_config
+!port-cli.sh
+!bootstrap.py

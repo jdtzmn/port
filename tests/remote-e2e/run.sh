@@ -47,12 +47,21 @@ step 600 build "${compose[@]}" build
 # via the runner's Docker CLI; never mount a host Docker socket in any fixture.
 step 120 smoke-pull docker pull busybox:1.37.0
 image_dir=$(mktemp -d "${TMPDIR:-/tmp}/remote-e2e-image.XXXXXXXX")
+# Build the actual checkout into a fresh, artifact-only directory; no source or secrets enter fixtures.
+mkdir -p "$image_dir/app"
+step 120 port-build bun build "$root/src/index.ts" --outdir "$image_dir/app/dist" --target bun --splitting
+cp "$root/package.json" "$image_dir/app/package.json"
+chmod -R a+rX "$image_dir/app"
 step 60 smoke-save docker image save --output "$image_dir/smoke.tar" busybox:1.37.0
 step 210 readiness "${compose[@]}" up -d --wait --wait-timeout 150
+for machine in client remote-a remote-b; do
+  step 30 "port-copy-$machine" "${compose[@]}" cp "$image_dir/app/." "$machine:/opt/port/"
+done
 # DinD creates a private /tmp mount; use the root filesystem for docker cp.
 step 30 smoke-copy "${compose[@]}" cp "$image_dir/smoke.tar" docker:/smoke.tar
 step 60 smoke-load "${compose[@]}" exec -T docker docker image load --input /smoke.tar
 step 10 smoke-remove "${compose[@]}" exec -T docker rm -f /smoke.tar
 step 150 proof "${compose[@]}" exec -T client python3 /fixture/harness.py
 step 90 multiplexing "${compose[@]}" exec -T client python3 /fixture/mux.py
-printf 'remote-e2e: infrastructure proof passed (not product integration)\n'
+step 90 bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py
+printf 'remote-e2e: networking and product handshake gates passed (service routing not implemented)\n'
