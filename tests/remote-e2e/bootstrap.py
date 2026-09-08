@@ -8,6 +8,7 @@ import pty
 import select
 import shutil
 import signal
+import subprocess
 import stat
 import time
 import uuid
@@ -134,6 +135,40 @@ def main():
         shell.wait_for(lambda: all(not path.exists() for path in owned))
         shell.marker('test "$?" -eq 7')
         print('PASS product shell preserves status 7 and removes session state', flush=True)
+
+        shell.send('ssh -J remote-b remote-a\n')
+        shell.marker('test -t 0 && test "$(id -un)" = fixture')
+        shell.wait_for(handshake)
+        directory = private_session(before)
+        shell.send('exit 11\n')
+        shell.wait_for(lambda: not directory.exists())
+        shell.marker('test "$?" -eq 11')
+        print('PASS ProxyJump through remote-b preserves handshake, status 11, cleanup', flush=True)
+
+        # Encrypt only this disposable fixture key; exercise foreground auth once.
+        key = '/root/.ssh/id_ed25519'
+        passphrase = 'remote-e2e-generated-key-only'
+        subprocess.run(['ssh-keygen', '-q', '-p', '-P', '', '-N', passphrase, '-f', key],
+                       check=True, capture_output=True, timeout=5)
+        try:
+            shell.output = b''
+            shell.send('ssh -o BatchMode=no remote-a\n')
+            shell.wait_for(lambda: b'Enter passphrase for key' in shell.output)
+            shell.send(passphrase + '\n')
+            # OpenSSH may flush queued terminal input while leaving readpass mode.
+            shell.wait_for(lambda: b'\n$ ' in shell.output.replace(b'\r', b''))
+            shell.marker('test -t 0 && test "$(id -un)" = fixture')
+            shell.wait_for(handshake)
+            require(shell.output.count(b'Enter passphrase for key') == 1,
+                    'companion caused an additional authentication prompt')
+            directory = private_session(before)
+            shell.send('exit 13\n')
+            shell.wait_for(lambda: not directory.exists())
+            shell.marker('test "$?" -eq 13')
+            print('PASS encrypted-key login prompts once, handshakes, and preserves status 13', flush=True)
+        finally:
+            subprocess.run(['ssh-keygen', '-q', '-p', '-P', passphrase, '-N', '', '-f', key],
+                           check=True, capture_output=True, timeout=5)
 
         shell.send('ssh remote-b\n')
         shell.marker('test -t 0 && test "$(id -un)" = fixture && ! command -v port')

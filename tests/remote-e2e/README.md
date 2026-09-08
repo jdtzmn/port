@@ -47,9 +47,12 @@ exit status 9, and removal of all owned session state. No code under test is pat
 An ordinary remote command from the same local shell also checks noninteractive
 SSH passthrough, exact exit status 23, and no new local session directories during
 its completion checks or afterward. All aliases use the fixture's normal SSH config.
-It does not yet cover password/passphrase prompts, ProxyJump,
-job-control suspend/resume, or all disconnect failure cases; those remain release
-gates before treating the experimental hook as production-ready.
+Additional gates exercise ProxyJump via remote-b and an encrypted fixture key:
+the interactive login must prompt exactly once, establish the companion handshake,
+preserve the requested exit status, and clean up. Only the disposable test key is
+encrypted with a test-only passphrase; no user keys are used or collected.
+Password authentication, job-control suspend/resume, and broader disconnect cases
+remain release gates before treating the experimental hook as production-ready.
 
 ## What is actually exercised
 

@@ -7,7 +7,7 @@ PermitRootLogin no
 UsePAM no
 AllowUsers fixture
 AllowTcpForwarding local
-PermitOpen 127.0.0.1:5432
+PermitOpen 127.0.0.1:5432 remote-a:22
 X11Forwarding no
 PrintMotd no
 LogLevel ERROR
