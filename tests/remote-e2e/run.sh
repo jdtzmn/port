@@ -46,15 +46,18 @@ step 600 build "${compose[@]}" build
 # The private DinD network has no registry egress. Seed all three local daemons
 # via the runner's Docker CLI; never mount a host Docker socket in any fixture.
 step 120 smoke-pull docker pull busybox:1.37.0
+step 120 proxy-pull docker pull traefik:v3.6
 image_dir=$(mktemp -d "${TMPDIR:-/tmp}/remote-e2e-image.XXXXXXXX")
 # Build the actual checkout into a fresh, artifact-only directory; no source or secrets enter fixtures.
 mkdir -p "$image_dir/app"
 step 120 port-build bun build "$root/src/index.ts" --outdir "$image_dir/app/dist" --target bun --splitting
 step 120 snapshot-fixture-build bun build "$here/snapshot-workload.ts" --outdir "$image_dir/app/fixtures" --target bun
 step 120 forward-probe-build bun build "$here/forward-probe.ts" --outdir "$image_dir/app/fixtures" --target bun
+step 120 proxy-probe-build bun build "$here/proxy-probe.ts" --outdir "$image_dir/app/fixtures" --target bun
 cp "$root/package.json" "$image_dir/app/package.json"
 chmod -R a+rX "$image_dir/app"
 step 60 smoke-save docker image save --output "$image_dir/smoke.tar" busybox:1.37.0
+step 60 proxy-save docker image save --output "$image_dir/proxy.tar" traefik:v3.6
 step 210 readiness "${compose[@]}" up -d --wait --wait-timeout 150
 for machine in client remote-a remote-b; do
   step 30 "port-copy-$machine" "${compose[@]}" cp "$image_dir/app/." "$machine:/opt/port/"
@@ -65,10 +68,14 @@ for daemon in docker docker-a docker-b; do
   step 60 "smoke-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /smoke.tar
   step 10 "smoke-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /smoke.tar
 done
+# Seed Traefik into ONLY the client's namespace-local daemon; no bind mounts.
+step 30 proxy-copy "${compose[@]}" cp "$image_dir/proxy.tar" docker:/proxy.tar
+step 60 proxy-load "${compose[@]}" exec -T docker docker image load --input /proxy.tar
+step 10 proxy-remove "${compose[@]}" exec -T docker rm -f /proxy.tar
 step 150 proof "${compose[@]}" exec -T client python3 /fixture/harness.py
 step 90 multiplexing "${compose[@]}" exec -T client python3 /fixture/mux.py
 step 90 baseline "${compose[@]}" exec -T client python3 /fixture/baseline.py
 # Remove only the disposable fixture's CLI, after gates that need both remotes.
 step 10 missing-port "${compose[@]}" exec -T remote-b mv /usr/local/bin/port /usr/local/bin/port-unavailable
-step 150 bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py
-printf 'remote-e2e: transport feasibility, Traefik baseline and product handshake/private-transport/live-discovery gates passed (component/fixture seed only; product routing not claimed)\n'
+step 210 bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py
+printf 'remote-e2e: transport feasibility, Traefik baseline and product handshake/private-transport/live-discovery/HTTP-component gates passed (component/fixture seed only; product routing not claimed)\n'

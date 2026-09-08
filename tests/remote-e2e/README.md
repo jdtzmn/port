@@ -61,6 +61,51 @@ This is not a user-facing port, public plaintext support / #149, shared-hostname
 routing, or full route acceptance. The Traefik TLS baseline is unchanged; automatic
 product transport coordination and `port up` routing are still not claimed.
 
+### Actual HTTP component gate (explicit wiring, not automatic publication)
+
+After live discovery finds and directly probes the remote-a workload, **before**
+registry corruption or workload stop, `proxy-probe.js` runs on CLIENT with only the
+owned SSH session directory. It reads a bounded, private `ready` cache and uses
+`parseRemoteSnapshot` to select `feature.port` / `ui` / logical port 3000. The actual
+`openRemoteForward(directory, endpoint.target)` forwards to the discovered Docker
+IP:8080. Fixture sshd permits `*:8080` in addition to its existing specific targets;
+this does not permit all ports or bypass the library's private-IP validation.
+
+A separate nested `traefik:v3.6` container runs on CLIENT's namespace-local DinD
+(`--host tcp://127.0.0.1:2375`), on the ordinary `traefik-network` bridge, never host
+networking. Its fixed fixture-only name is exclusive within that disposable daemon.
+The runner seeds the version-tagged image into **only** this daemon with bounded
+save/copy/load/remove operations through its root filesystem, not DinD's private
+`/tmp`, and never shares a host socket. The helper inspects only the bridge driver,
+gateway, and selected container IP. Both addresses must be RFC1918; the actual
+`startRemoteRelay` also verifies local ownership of the gateway. Its only allowed
+peer is that exact Traefik IP; its only upstream is the returned private loopback
+forward port. A direct CLIENT connection to the relay must be rejected.
+
+The nested container initially waits for a fixed start file. The helper copies
+explicit JSON file-provider routes into it (no cross-filesystem bind mount), then
+starts Traefik on web 80 and logical 3000, published only on CLIENT loopback.
+Python `HTTPConnection` uses real hostname DNS and its default Host header to test:
+
+- `http://ui.feature.port/`
+- `http://feature.port:3000/`
+- `http://ui.feature.remote-a.ssh/`
+- `http://feature.remote-a.ssh:3000/`
+
+Every URL must return exactly `remote-a-snapshot-fixture`, through real Traefik,
+real peer-filtered relay, and the real SSH forward. Exact Host routes preserve the
+Host header (`passHostHeader: true`). Client dnsmasq defaults `.port` and `.ssh` to
+loopback; specific phase-0 DB answers and baseline `addn-hosts` overrides remain.
+The outer baseline Traefik lives in a separate port namespace and is unchanged.
+
+Setup is bounded to 45 seconds and HTTP readiness to 10 seconds. The bounded
+stdin close protocol removes only the owned nested proxy container, closes relay
+and forward, and removes only its own temporary JSON directory. Finally blocks
+reap the helper; the original interactive SSH login must still work afterward.
+This proves **actual HTTP component forwarding**, not an automatic coordinator,
+automatic route publication, or full `port up`. TLS end-to-end through the relay,
+conflict behavior, and automatic coordination remain pending.
+
 ### Live-discovery collector gate (explicit fixture seed)
 
 Within the first foreground plain `ssh remote-a` session, the client waits for a
@@ -101,7 +146,7 @@ successful revisions increase within this one foreground session (no assertion
 across new SSH sessions). Foreground exit removes the entire local session tree
 and observer. The helper supports only `start`, `probe`, `corrupt`, `restore`, and `stop`,
 with fixed paths under `/home/fixture/.port`; no user registry is imported.
-The bootstrap step has a 150-second outer deadline. See `bootstrap.log`.
+The bootstrap step has a 210-second outer deadline. See `bootstrap.log`.
 
 The product test checks an actual private handshake file, exit status 7, and
 session cleanup on remote-a. After transport feasibility, multiplexing, and the Traefik baseline pass, `run.sh`
@@ -203,8 +248,10 @@ deadline and bounded DNS, HTTP, and libpq operations. See `baseline.log`.
 ## Isolation and cleanup
 
 Every run uses a random Compose project with its own `internal: true` network,
-public-key volume, and three independent DinD storage volumes. There are no published ports, fixed container
-names, external networks, or host Docker socket mounts. Only the client rewrites
+public-key volume, and three independent DinD storage volumes. There are no runner-published ports, fixed outer container
+names, external networks, or host Docker socket mounts. The nested HTTP component
+uses a fixed name only inside CLIENT's owned daemon and publishes only CLIENT
+loopback ports 80 and 3000. Only the client rewrites
 its own `/etc/resolv.conf`; the runner's DNS and hosts files are untouched.
 Compose is explicitly passed `/dev/null` as its env file and implicit env-file
 loading is disabled; no `.env` files are read.

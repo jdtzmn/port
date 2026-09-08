@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Actual plain-SSH bootstrap and live discovery with an explicit fixture seed; no routing."""
+"""Actual SSH/discovery and explicit HTTP component wiring; no automatic routing."""
 import errno
+import http.client
 import json
 import ipaddress
 import re
@@ -12,6 +13,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import tempfile
 import stat
 import time
 import uuid
@@ -193,6 +195,7 @@ def live_discovery(shell, directory):
                            shell.output.replace(b'\r', b''), re.MULTILINE)
     require(reachable == [address.encode()],
             'remote SSH namespace did not reach the discovered Docker endpoint identity')
+    http_component(shell, directory)
     since = mutate('corrupt')
     unavailable = wait_cache('unavailable', since, lambda s: bool(s['worktrees']))['snapshot']
     require(unavailable['instanceId'] == initial['instanceId']
@@ -239,6 +242,76 @@ def stop_process(process):
         for stream in (process.stdin, process.stdout):
             if stream is not None:
                 stream.close()
+
+
+def http_component(shell, directory):
+    """Explicit real HTTP wiring from discovered metadata, not a coordinator gate."""
+    diagnostics = tempfile.TemporaryFile()
+    helper = subprocess.Popen(
+        ['/usr/local/bin/bun', '/opt/port/fixtures/proxy-probe.js', str(directory)],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=diagnostics, bufsize=0,
+    )
+    assert helper.stdin is not None
+    try:
+        ready = json.loads(bounded_line(helper, timeout=45))
+        require(isinstance(ready, dict) and set(ready) == {'status', 'address', 'port'},
+                'unexpected HTTP component response')
+        require(ready['status'] == 'ready' and type(ready['port']) is int
+                and 0 < ready['port'] <= 65535, 'invalid HTTP component listener')
+        address = ipaddress.IPv4Address(ready['address'])
+        require(any(address in ipaddress.IPv4Network(cidr) for cidr in
+                    ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')),
+                'HTTP relay is not private')
+        end = time.monotonic() + 10
+        for host, port in [('ui.feature.port', 80), ('feature.port', 3000),
+                           ('ui.feature.remote-a.ssh', 80), ('feature.remote-a.ssh', 3000)]:
+            require(socket.gethostbyname(host) == '127.0.0.1', 'component DNS did not resolve locally')
+            while True:
+                remaining = end - time.monotonic()
+                require(remaining > 0, 'HTTP component readiness timed out')
+                connection = http.client.HTTPConnection(host, port, timeout=min(1, remaining))
+                try:
+                    # Actual hostname resolution and default Host header, no IP/Host override.
+                    connection.request('GET', '/')
+                    response = connection.getresponse()
+                    body = response.read(1024)
+                    if response.status == 200 and body == b'remote-a-snapshot-fixture':
+                        break
+                except (OSError, http.client.HTTPException):
+                    pass
+                finally:
+                    connection.close()
+                time.sleep(0.05)
+        # A local client is NOT the inspected Traefik peer, even on the bridge gateway.
+        try:
+            with socket.create_connection((ready['address'], ready['port']), timeout=2) as direct:
+                direct.settimeout(2)
+                direct.sendall(b'GET / HTTP/1.0\r\n\r\n')
+                require(direct.recv(1024) == b'', 'relay accepted a non-Traefik peer')
+        except (ConnectionResetError, BrokenPipeError):
+            pass
+        helper.stdin.write(b'close\n')
+        helper.stdin.flush()
+        require(json.loads(bounded_line(helper, timeout=15)) == {'status': 'closed'},
+                'HTTP component did not close')
+        require(helper.wait(timeout=3) == 0, 'HTTP component helper failed')
+        shell.marker('test -t 0 && test "$(id -un)" = fixture && true')
+        print('PASS actual HTTP component: DNS -> nested Traefik -> peer-filtered relay -> '
+              'openRemoteForward -> discovered remote-a Docker workload (four URL forms); '
+              'non-Traefik peer rejected; original login preserved', flush=True)
+    finally:
+        # Give the helper its bounded owned-resource cleanup before forced process reaping.
+        if helper.poll() is None:
+            try:
+                helper.stdin.write(b'close\n')
+                helper.stdin.flush()
+                helper.wait(timeout=15)
+            except (BrokenPipeError, OSError, subprocess.TimeoutExpired):
+                pass
+        stop_process(helper)
+        diagnostics.seek(0)
+        print('HTTP_COMPONENT_DIAGNOSTICS=' + diagnostics.read(6000).decode('utf-8', errors='replace'), flush=True)
+        diagnostics.close()
 
 
 def private_forward(shell, directory):

@@ -24,6 +24,7 @@ printf '%s\n' \
   'addn-hosts=/tmp/baseline-hosts' 'pid-file=/tmp/dnsmasq.pid' 'local=/port/' \
   'no-resolv' 'local=/ssh/' 'server=127.0.0.11' 'listen-address=127.0.0.1' 'bind-interfaces' \
   'address=/db-a.ssh/127.77.0.2' 'address=/db-b.ssh/127.77.0.3' \
+  'address=/.port/127.0.0.1' 'address=/.ssh/127.0.0.1' \
   > /tmp/dnsmasq.conf
 dnsmasq --test --conf-file=/tmp/dnsmasq.conf
 dnsmasq --keep-in-foreground --conf-file=/tmp/dnsmasq.conf &
