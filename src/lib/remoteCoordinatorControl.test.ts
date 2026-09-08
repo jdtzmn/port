@@ -61,6 +61,8 @@ async function foreign(reply?: string) {
   const server = createServer({ allowHalfOpen: true }, socket => {
     sockets.push(socket)
     socket.on('error', () => {})
+    // A transport-only probe sends no data; do not retain its half-open socket.
+    socket.once('end', () => socket.end())
     socket.resume()
     socket.once('data', () => {
       if (reply !== undefined) socket.end(reply)
@@ -177,6 +179,43 @@ describe('private coordinator control', () => {
     expect(stdout === 'bun-smoke-ok\n', 'Bun smoke must report the fixed success marker').toBe(true)
     expect(stderr.length, 'Bun smoke must not emit diagnostics').toBe(0)
   }, 10000)
+
+  it('keeps the mutex inode through live probes, close and subsequent startup', async () => {
+    const handle = await start()
+    const database = join(root, 'control.sqlite')
+    const pin = await lstat(database)
+    expect(pin.isFile()).toBe(true)
+    expect(pin.mode & 0o7777).toBe(0o600)
+    expect(await startRemoteCoordinatorControl(root, handlers())).toBeNull()
+    expect((await lstat(database)).ino).toBe(pin.ino)
+    await handle.close()
+    expect((await lstat(database)).ino).toBe(pin.ino)
+    await start()
+    const current = await lstat(database)
+    expect(current.ino).toBe(pin.ino)
+    expect(current.dev).toBe(pin.dev)
+    expect(current.nlink).toBe(1)
+  })
+
+  it.each(['symlink', 'hardlink', 'corrupt', 'writable'])(
+    'sanitizes unsafe %s mutex database failures',
+    async kind => {
+      const database = join(root, 'control.sqlite')
+      const target = join(root, 'sentinel')
+      await writeFile(target, 'private sentinel', { mode: 0o600 })
+      if (kind === 'symlink') await symlink(target, database)
+      if (kind === 'hardlink') await link(target, database)
+      if (kind === 'corrupt') await writeFile(database, 'not SQLite', { mode: 0o600 })
+      if (kind === 'writable') {
+        await writeFile(database, '')
+        await chmod(database, 0o666)
+      }
+      await expect(startRemoteCoordinatorControl(root, handlers())).rejects.toThrow(
+        'Remote coordinator control unavailable'
+      )
+      expect(await readFile(target, 'utf8')).toBe('private sentinel')
+    }
+  )
 
   it('serializes concurrent startup, serves real RPC and checks incarnations', async () => {
     const callbacks = handlers()
@@ -351,8 +390,11 @@ describe('private coordinator control', () => {
   it('takes over a stale owned descriptor only after definitive missing socket', async () => {
     const server = await foreign()
     const old = await descriptor()
+    expect(await startRemoteCoordinatorControl(root, handlers())).toBeNull()
+    const pin = await lstat(join(root, 'control.sqlite'))
     await new Promise<void>(resolve => server.close(() => resolve()))
     const handle = await start()
+    expect((await lstat(join(root, 'control.sqlite'))).ino).toBe(pin.ino)
     expect(handle.incarnation).not.toBe(old.incarnation)
     expect((await requestRemoteCoordinator(root, ping))?.incarnation).toBe(handle.incarnation)
   })

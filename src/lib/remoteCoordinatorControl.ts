@@ -3,7 +3,7 @@ import { constants, type Stats } from 'node:fs'
 import { chmod, link, lstat, mkdir, open, realpath, unlink } from 'node:fs/promises'
 import { createConnection, createServer, type Socket } from 'node:net'
 import { isAbsolute, join, normalize } from 'node:path'
-import { withFileLock } from './state.ts'
+import { withRemoteMutex } from './remoteMutex.ts'
 
 const LIMIT = 8192
 const DEADLINE = 2000
@@ -290,23 +290,9 @@ export async function startRemoteCoordinatorControl(
     }
     const initialRoot = await rootInfo(root)
     if (Buffer.byteLength(join(root, `c-${'0'.repeat(32)}`)) >= 100) unavailable()
-    // withFileLock reads an existing lock: reject special, linked or oversized
-    // entries first. The private directory is the same-UID trust boundary.
-    try {
-      const lock = await lstat(join(root, 'control.lock'))
-      if (
-        !lock.isFile() ||
-        lock.uid !== initialRoot.uid ||
-        lock.nlink !== 1 ||
-        (lock.mode & 0o022) !== 0 ||
-        lock.size > 32
-      )
-        unavailable()
-    } catch (error) {
-      if (code(error) !== 'ENOENT') throw error
-    }
-    return await withFileLock(
-      join(root, 'control.lock'),
+    // The mutex database is permanent, including across close and stale takeover.
+    return await withRemoteMutex(
+      join(root, 'control.sqlite'),
       async () => {
         await checkRoot(root, initialRoot)
         let existing: Snapshot | null = null
@@ -424,7 +410,7 @@ export async function startRemoteCoordinatorControl(
           }
         }
       },
-      { timeoutMs: DEADLINE, staleLockThresholdMs: Number.POSITIVE_INFINITY }
+      { timeoutMs: DEADLINE }
     )
   } catch {
     return unavailable()

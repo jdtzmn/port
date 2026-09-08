@@ -50,7 +50,7 @@ describe('remote owner store', () => {
     expect(await allocateRemoteOwners(root, [])).toEqual(restarted)
     expect((await fs.stat(root)).mode & 0o777).toBe(0o700)
     expect((await fs.stat(path)).mode & 0o777).toBe(0o600)
-    expect(await fs.readdir(root)).toEqual(['owners.json'])
+    expect(await fs.readdir(root)).toEqual(['owners.json', 'owners.sqlite'])
   })
 
   test('deduplicates batches without changing old aliases', async () => {
@@ -98,7 +98,7 @@ describe('remote owner store', () => {
 
   test('empty missing state is a no-op', async () => {
     expect(await allocateRemoteOwners(root, [])).toEqual({ version: 1, records: [] })
-    expect(await fs.readdir(root)).toEqual([])
+    expect(await fs.readdir(root)).toEqual(['owners.sqlite'])
   })
 
   test.each([
@@ -148,23 +148,40 @@ describe('remote owner store', () => {
     await expect(seed()).rejects.toThrow(error)
   })
 
-  test.each(['symlink', 'directory', 'fifo', 'oversized', 'writable', 'hardlink'])(
-    'rejects unsafe %s lock before withFileLock',
+  test.each(['symlink', 'directory', 'fifo', 'corrupt', 'writable', 'hardlink'])(
+    'sanitizes unsafe %s mutex database failures',
     async kind => {
-      await seed()
-      const lock = join(root, 'owners.lock')
+      await put(JSON.stringify(createRemoteOwnerRegistry().serialize()))
+      const before = await fs.readFile(path)
+      const lock = join(root, 'owners.sqlite')
       if (kind === 'symlink') await fs.symlink(path, lock)
       if (kind === 'hardlink') await fs.link(path, lock)
       if (kind === 'directory') await fs.mkdir(lock)
       if (kind === 'fifo') execFileSync('mkfifo', [lock])
-      if (kind === 'oversized') await fs.writeFile(lock, '1'.repeat(33))
+      if (kind === 'corrupt') await fs.writeFile(lock, 'not SQLite', { mode: 0o600 })
       if (kind === 'writable') {
-        await fs.writeFile(lock, String(process.pid))
+        await fs.writeFile(lock, '')
         await fs.chmod(lock, 0o666)
       }
       await expect(seed()).rejects.toThrow(error)
+      expect(await fs.readFile(path)).toEqual(before)
     }
   )
+
+  test('retains the permanent mutex inode across allocations and no-op calls', async () => {
+    await seed()
+    const database = join(root, 'owners.sqlite')
+    const pin = await fs.lstat(database)
+    expect(pin.isFile()).toBe(true)
+    expect(pin.mode & 0o7777).toBe(0o600)
+    for (const batch of [[request('two')], [], [request('three')]]) {
+      await allocateRemoteOwners(root, batch)
+      const current = await fs.lstat(database)
+      expect(current.ino).toBe(pin.ino)
+      expect(current.dev).toBe(pin.dev)
+      expect(current.nlink).toBe(1)
+    }
+  })
 
   test('failed batch validation does not partially save or reveal input', async () => {
     await seed()

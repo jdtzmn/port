@@ -4,7 +4,7 @@ import { lstat, mkdir, open, realpath, rename, unlink } from 'node:fs/promises'
 import { isAbsolute, join, normalize } from 'node:path'
 import { createRemoteOwnerRegistry, type RemoteOwnerRegistryState } from './remoteOwnerRegistry.ts'
 import type { SshConnectionIdentity } from './sshConnectionIdentity.ts'
-import { withFileLock } from './state.ts'
+import { withRemoteMutex } from './remoteMutex.ts'
 
 const MAX_BYTES = 16 * 1024 * 1024
 const unavailable = (): never => {
@@ -170,40 +170,23 @@ export async function allocateRemoteOwners(
       if (code(error) !== 'EEXIST') throw error
     }
     const rootPin = await rootInfo(root)
-    const lockPath = join(root, 'owners.lock')
-    const lock = await optionalStat(lockPath)
-    // withFileLock reads existing locks; reject unsafe entries before entering it.
-    // Its own locks use the process umask, so allow 0644 but never shared writes.
-    if (
-      lock &&
-      (!lock.isFile() ||
-        lock.uid !== rootPin.uid ||
-        lock.nlink !== 1 ||
-        (lock.mode & 0o7022) !== 0 ||
-        lock.size > 32)
-    )
-      unavailable()
-    await checkRoot(root, rootPin)
-    return await withFileLock(
-      lockPath,
-      async () => {
+    // Keep the mutex inode permanent; only the JSON state is atomically replaced.
+    return await withRemoteMutex(join(root, 'owners.sqlite'), async () => {
+      await checkRoot(root, rootPin)
+      const path = join(root, 'owners.json')
+      const { pin, state } = await load(path)
+      const registry = createRemoteOwnerRegistry(state)
+      for (const request of batch)
+        registry.resolve(request.connectionIdentity, request.instanceId, request.destination)
+      const result = registry.serialize()
+      const serialized = JSON.stringify(result)
+      if (serialized !== JSON.stringify(state)) await save(root, rootPin, pin, serialized)
+      else {
         await checkRoot(root, rootPin)
-        const path = join(root, 'owners.json')
-        const { pin, state } = await load(path)
-        const registry = createRemoteOwnerRegistry(state)
-        for (const request of batch)
-          registry.resolve(request.connectionIdentity, request.instanceId, request.destination)
-        const result = registry.serialize()
-        const serialized = JSON.stringify(result)
-        if (serialized !== JSON.stringify(state)) await save(root, rootPin, pin, serialized)
-        else {
-          await checkRoot(root, rootPin)
-          await checkPin(path, pin)
-        }
-        return result
-      },
-      { staleLockThresholdMs: Number.POSITIVE_INFINITY }
-    )
+        await checkPin(path, pin)
+      }
+      return result
+    })
   } catch {
     return unavailable()
   }
