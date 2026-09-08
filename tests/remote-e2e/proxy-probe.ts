@@ -11,7 +11,9 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { isIP } from 'node:net'
+import { createServer, isIP, type Socket } from 'node:net'
+import { createServer as createTLSServer } from 'node:tls'
+import { createRemoteRelayIdentity } from '../../src/lib/remoteRelayIdentity.ts'
 import { openRemoteStream } from '../../src/lib/remoteSession.ts'
 import { startSecureRemoteRelay } from '../../src/lib/remoteRelay.ts'
 import { parseRemoteSnapshot } from '../../src/lib/remoteSnapshot.ts'
@@ -80,10 +82,11 @@ function cachedTarget(directory: string) {
     closeSync(fd)
   }
 }
-function waitClose(): Promise<void> {
+function waitCommand(expected: string): Promise<void> {
+  if (interrupted) return Promise.reject(new Error('probe interrupted'))
   return new Promise((resolve, reject) => {
     let command = ''
-    const timer = setTimeout(() => finish(false), 20_000)
+    const timer = setTimeout(() => finish(false), 30_000)
     function finish(valid: boolean) {
       clearTimeout(timer)
       process.stdin.off('data', data)
@@ -96,20 +99,92 @@ function waitClose(): Promise<void> {
       else reject(new Error('invalid close'))
     }
     function data(chunk: Buffer) {
-      if (chunk.length > 6 - command.length) return finish(false)
+      if (chunk.length > expected.length - command.length) return finish(false)
       command += chunk.toString('utf8')
-      if (!'close\n'.startsWith(command)) return finish(false)
-      if (command === 'close\n') finish(true)
+      if (!expected.startsWith(command)) return finish(false)
+      if (command === expected) finish(true)
     }
     function end() {
       finish(false)
     }
     process.stdin.on('data', data)
+    process.stdin.resume()
     process.stdin.once('end', end)
     process.stdin.once('error', end)
     process.once('SIGTERM', end)
     process.once('SIGINT', end)
   })
+}
+// Crash simulation only: replace the listener without touching YAML, Traefik or SSH.
+async function collector(address: string, port: number, wrongTLS: boolean) {
+  const identity = wrongTLS ? await createRemoteRelayIdentity() : undefined
+  const server = identity
+    ? createTLSServer({
+        cert: identity.certificatePem,
+        key: identity.keyPem,
+        handshakeTimeout: 1500,
+      })
+    : createServer()
+  const sockets = new Set<Socket>()
+  let connections = 0
+  let applicationHits = 0
+  let sentinelHits = 0
+  function own(socket: Socket) {
+    sockets.add(socket)
+    socket.on('error', () => socket.destroy())
+    socket.setTimeout(1500, () => socket.destroy())
+    socket.once('close', () => sockets.delete(socket))
+  }
+  function capture(socket: Socket, plaintext: boolean) {
+    socket.once('data', (chunk: Buffer) => {
+      // Inspect only a bounded prefix; never retain or print network bytes.
+      const prefix = chunk.subarray(0, 4096)
+      if (!plaintext || prefix[0] !== 22) applicationHits++
+      if (prefix.includes('port-stale-sentinel') || prefix.includes('/cgi-bin/sentinel'))
+        sentinelHits++
+      socket.destroy()
+    })
+  }
+  server.on('connection', (socket: Socket) => {
+    connections++
+    own(socket)
+    if (connections > 128) socket.destroy()
+    else if (!wrongTLS) capture(socket, true)
+  })
+  if (wrongTLS) {
+    server.on('secureConnection', (socket: Socket) => {
+      own(socket)
+      capture(socket, false)
+    })
+    server.on('tlsClientError', (_error, socket: Socket) => socket.destroy())
+  }
+  let closePromise: Promise<void> | undefined
+  function close() {
+    if (!closePromise) {
+      clearTimeout(lifetime)
+      // TLS wrappers before their raw transports; stop all sockets before close.
+      for (const socket of [...sockets].reverse()) socket.destroy()
+      closePromise = new Promise<void>((resolve, reject) => {
+        server.close(error => (error ? reject(error) : resolve()))
+      })
+    }
+    return closePromise
+  }
+  const lifetime = setTimeout(() => void close().catch(() => {}), 30_000)
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen({ host: address, port, exclusive: true }, () => {
+        server.removeListener('error', reject)
+        resolve()
+      })
+    })
+  } catch (error) {
+    clearTimeout(lifetime)
+    throw error
+  }
+  server.on('error', () => void close().catch(() => {}))
+  return { close, stats: () => ({ connections, applicationHits, sentinelHits }) }
 }
 async function main() {
   if (process.argv.length !== 3) throw new Error('invalid arguments')
@@ -117,6 +192,8 @@ async function main() {
   const temporary = mkdtempSync('/root/port-http-component-')
   process.on('SIGTERM', interrupt)
   process.on('SIGINT', interrupt)
+  const watchdog = setTimeout(() => process.kill(process.pid, 'SIGTERM'), 110_000)
+  let replacement: Awaited<ReturnType<typeof collector>> | undefined
   let owned = false
   let forward: Awaited<ReturnType<typeof openRemoteStream>> = null
   let relay: Awaited<ReturnType<typeof startSecureRemoteRelay>> | undefined
@@ -187,16 +264,26 @@ async function main() {
     docker(['exec', container, 'touch', '/tmp/port-http-start'])
     if (Date.now() >= deadline) throw new Error('setup deadline exceeded')
     console.log(JSON.stringify({ status: 'ready', address: relay.address, port: relay.port }))
-    await waitClose()
+    await waitCommand('plaintext\n')
+    await relay.close()
+    replacement = await collector(gateway, readyTarget.port, false)
+    console.log(JSON.stringify({ status: 'plaintext', address: gateway, port: readyTarget.port }))
+    await waitCommand('plaintext-stats\n')
+    await replacement.close()
+    console.log(JSON.stringify({ status: 'plaintext-stats', ...replacement.stats() }))
+    await waitCommand('wrong-tls\n')
+    replacement = await collector(gateway, readyTarget.port, true)
+    console.log(JSON.stringify({ status: 'wrong-tls', address: gateway, port: readyTarget.port }))
+    await waitCommand('wrong-tls-stats\n')
+    await replacement.close()
+    console.log(JSON.stringify({ status: 'wrong-tls-stats', ...replacement.stats() }))
+    await waitCommand('close\n')
   } finally {
     try {
-      if (owned) {
-        try {
-          console.error(docker(['logs', '--tail', '12', container], true))
-        } catch {
-          /* Fixture-only diagnostics. */
-        }
-        docker(['rm', '-f', container], true)
+      try {
+        await replacement?.close()
+      } finally {
+        if (owned) docker(['rm', '-f', container], true)
       }
     } finally {
       try {
@@ -205,6 +292,7 @@ async function main() {
         try {
           await forward?.close()
         } finally {
+          clearTimeout(watchdog)
           process.off('SIGTERM', interrupt)
           process.off('SIGINT', interrupt)
           rmSync(temporary, { recursive: true, force: true })

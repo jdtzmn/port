@@ -113,8 +113,32 @@ Host header (`passHostHeader: true`). Client dnsmasq defaults `.port` and `.ssh`
 loopback; specific phase-0 DB answers and baseline `addn-hosts` overrides remain.
 The outer baseline Traefik lives in a separate port namespace and is unchanged.
 
-Setup is bounded to 45 seconds and HTTP readiness to 10 seconds. The bounded
-stdin close protocol removes only the owned nested proxy container, closes relay
+After those good routes pass, a fixture-only `POST /cgi-bin/sentinel` with the
+known sentinel body increments an owned BusyBox counter exactly once. The static
+index body is unchanged. `verify-count` reads that counter by the saved owned
+container ID inside the **original remote SSH login**, never through broken Traefik.
+
+The bounded helper protocol then simulates a crashed backend listener: `plaintext`
+closes only the original secure relay (not its SSH stream/master or Traefik), binds
+a plaintext collector to the **exact same gateway address and port**, and acknowledges
+that tuple. Python retries sentinel POSTs on both default and qualified public HTTP
+and HTTPS root routes; each must fail or return non-2xx. `plaintext-stats` closes all
+collector sockets and reports counters. `wrong-tls` binds the same tuple again with
+a fresh `createRemoteRelayIdentity` certificate; the same requests and checks repeat,
+followed by `wrong-tls-stats`. Each phase requires accepted connections > 0, application
+payload hits = 0, sentinel hits = 0, and the original workload counter still exactly 1.
+Plaintext capture inspects at most 4096 bytes of the first chunk (TLS ClientHello is
+allowed), prints no bytes, and destroys the socket immediately. Wrong-TLS capture
+counts decrypted application data, not handshake bytes. Backend verification is
+never disabled. Actual Traefik and its original rendered YAML remain unchanged and
+alive throughout both phases. This is **component crash-simulation listener replacement**,
+not automatic coordinator recovery or full cross-owner acceptance.
+
+Setup is bounded to 45 seconds and HTTP readiness to 10 seconds. Each protocol wait
+and collector lifetime is bounded to 30 seconds, each negative phase to 20 seconds,
+and the whole helper to 110 seconds before bounded cleanup. Raw and TLS collector
+sockets are destroyed before listener closure; connections have 1.5-second timeouts.
+The final stdin `close` removes only the owned nested proxy container, closes relay
 before the forward, and removes only its own temporary YAML directory. Finally blocks
 reap the helper; the original interactive SSH login must still work afterward.
 The fixture now uses the production route planner and YAML renderer. HTTPS probes
@@ -163,7 +187,7 @@ backup must produce a later `ready` revision. Stopping only the known fixture
 container must produce a healthy empty snapshot. Instance identity stays stable;
 successful revisions increase within this one foreground session (no assertion
 across new SSH sessions). Foreground exit removes the entire local session tree
-and observer. The helper supports only `start`, `probe`, `corrupt`, `restore`, and `stop`,
+and observer. The helper supports only `start`, `probe`, `verify-count`, `corrupt`, `restore`, and `stop`,
 with fixed paths under `/home/fixture/.port`; no user registry is imported.
 The bootstrap step has a 210-second outer deadline. See `bootstrap.log`.
 

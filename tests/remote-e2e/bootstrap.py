@@ -305,6 +305,58 @@ def http_component(shell, directory):
                 require(direct.recv(1024) == b'', 'relay accepted a non-Traefik peer')
         except (ConnectionResetError, BrokenPipeError):
             pass
+        # A mutating positive control must reach the original workload exactly once.
+        connection = http.client.HTTPConnection('feature.port', 3000, timeout=3)
+        try:
+            connection.request('POST', '/cgi-bin/sentinel', body=b'port-stale-sentinel')
+            response = connection.getresponse()
+            require(response.status == 200 and response.read(1024) == b'accepted',
+                    'sentinel positive control failed')
+        finally:
+            connection.close()
+        shell.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js verify-count')
+
+        def command(value):
+            helper.stdin.write((value + '\n').encode())
+            helper.stdin.flush()
+            return json.loads(bounded_line(helper, timeout=10))
+
+        for phase in ('plaintext', 'wrong-tls'):
+            require(command(phase) == dict(status=phase, address=ready['address'], port=ready['port']),
+                    'replacement did not bind the original backend tuple')
+            # Fresh requests retry each default/qualified root route, HTTP and HTTPS.
+            # Public fixture trust alone is disabled; backend verification stays pinned.
+            phase_end = time.monotonic() + 20
+            for _ in range(2):
+                for host in ('feature.port', 'feature.remote-a.ssh'):
+                    for secure in (False, True):
+                        remaining = phase_end - time.monotonic()
+                        require(remaining > 0, 'stale backend phase timed out')
+                        if secure:
+                            connection = http.client.HTTPSConnection(
+                                host, 3000, timeout=min(2, remaining), context=context)
+                        else:
+                            connection = http.client.HTTPConnection(host, 3000, timeout=min(2, remaining))
+                        try:
+                            connection.request('POST', '/cgi-bin/sentinel', body=b'port-stale-sentinel')
+                            response = connection.getresponse()
+                            require(not 200 <= response.status < 300,
+                                    'stale backend accepted sentinel POST')
+                            response.read(1024)
+                        except (OSError, http.client.HTTPException):
+                            pass
+                        finally:
+                            connection.close()
+            counters = command(phase + '-stats')
+            require(set(counters) == {'status', 'connections', 'applicationHits', 'sentinelHits'}
+                    and counters['status'] == phase + '-stats'
+                    and type(counters['connections']) is int and counters['connections'] > 0
+                    and counters['applicationHits'] == 0 and counters['sentinelHits'] == 0,
+                    'replacement received application payload or no connection attempts')
+            # This goes through the SAME original remote SSH login, not broken Traefik.
+            shell.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js verify-count')
+            print('PASS stale backend ' + phase + ': connections=' + str(counters['connections'])
+                  + ' applicationHits=0 sentinelHits=0 originalCount=1', flush=True)
         helper.stdin.write(b'close\n')
         helper.stdin.flush()
         require(json.loads(bounded_line(helper, timeout=15)) == {'status': 'closed'},
@@ -312,7 +364,7 @@ def http_component(shell, directory):
         require(helper.wait(timeout=3) == 0, 'HTTP component helper failed')
         shell.marker('test -t 0 && test "$(id -un)" = fixture && true')
         print('PASS actual HTTP component: DNS -> nested Traefik -> peer-filtered relay -> '
-              'openRemoteForward -> discovered remote-a Docker workload (four URL forms); '
+              'openRemoteStream -> discovered remote-a Docker workload (four URL forms); '
               'non-Traefik peer rejected; original login preserved', flush=True)
     finally:
         # Give the helper its bounded owned-resource cleanup before forced process reaping.
@@ -324,8 +376,6 @@ def http_component(shell, directory):
             except (BrokenPipeError, OSError, subprocess.TimeoutExpired):
                 pass
         stop_process(helper)
-        diagnostics.seek(0)
-        print('HTTP_COMPONENT_DIAGNOSTICS=' + diagnostics.read(6000).decode('utf-8', errors='replace'), flush=True)
         diagnostics.close()
 
 

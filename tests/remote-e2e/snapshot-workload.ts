@@ -45,7 +45,7 @@ function start(): void {
     project
   )
   const labels: string[] = parse(generated.replaceAll('!override []', '[]')).services.ui.labels
-  docker([
+  const id = docker([
     'run',
     '-d',
     '--pull=never',
@@ -61,8 +61,30 @@ function start(): void {
     'busybox:1.37.0',
     'sh',
     '-c',
-    'mkdir -p /www; printf remote-a-snapshot-fixture > /www/index.html; exec httpd -f -p 8080 -h /www',
+    `mkdir -p /www/cgi-bin
+printf remote-a-snapshot-fixture > /www/index.html
+printf 0 > /www/sentinel-count
+cat > /www/cgi-bin/sentinel <<'CGI'
+#!/bin/sh
+if [ "$REQUEST_METHOD" != POST ] || [ "$CONTENT_LENGTH" != 19 ]; then
+  printf 'Status: 400 Bad Request\\r\\n\\r\\n'; exit
+fi
+body=$(dd bs=1 count=19 2>/dev/null)
+if [ "$body" != port-stale-sentinel ]; then
+  printf 'Status: 400 Bad Request\\r\\n\\r\\n'; exit
+fi
+# Serialize the fixture-only mutation, including accidental concurrent deliveries.
+while ! mkdir /www/count-lock 2>/dev/null; do sleep 0.01; done
+count=$(cat /www/sentinel-count)
+printf %s "$((count + 1))" > /www/sentinel-count
+rmdir /www/count-lock
+printf 'Content-Type: text/plain\\r\\n\\r\\naccepted'
+CGI
+chmod 700 /www/cgi-bin/sentinel
+exec httpd -f -p 8080 -h /www`,
   ])
+  if (!/^[a-f0-9]{64}$/.test(id)) throw new Error('Invalid owned container identity')
+  writeFileSync(`${root}/snapshot-fixture/container-id`, id, { mode: 0o600, flag: 'wx' })
   const content = JSON.stringify({ projects: [{ repo, branch, ports: [3000] }], hostServices: [] })
   writeFileSync(saved, content, { mode: 0o600, flag: 'wx' })
   publish(content)
@@ -103,6 +125,14 @@ try {
     case 'probe':
       await probe()
       break
+    case 'verify-count': {
+      const id = readFileSync(`${root}/snapshot-fixture/container-id`, 'utf8')
+      if (!/^[a-f0-9]{64}$/.test(id)) throw new Error('Invalid owned container identity')
+      if (docker(['exec', id, 'cat', '/www/sentinel-count']) !== '1')
+        throw new Error('Unexpected sentinel count')
+      console.log('PASS sentinel count=1')
+      break
+    }
     case 'corrupt':
       readFileSync(saved)
       publish('{invalid fixture registry')
