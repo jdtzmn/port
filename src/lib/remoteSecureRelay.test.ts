@@ -61,6 +61,29 @@ async function echo() {
   return vi.fn(() => net.createConnection({ path, allowHalfOpen: true }))
 }
 
+it.each(['close', 'error', 'shutdown'])('reports listener liveness after %s', async mode => {
+  const listen = vi.spyOn(net.Server.prototype, 'listen')
+  try {
+    const result = await startSecureRemoteRelay({
+      bind: { kind: 'loopback' },
+      stream: { connect: () => null },
+    })
+    const server = listen.mock.instances.at(-1) as net.Server
+    expect(result.isAlive()).toBe(true)
+    if (mode === 'shutdown') {
+      await new Promise<void>(resolve => server.close(() => resolve()))
+    } else {
+      if (mode === 'error') server.emit('error', new Error('runtime failure'))
+      const closing = result.close()
+      expect(result.isAlive()).toBe(false)
+      await closing
+    }
+    expect(result.isAlive()).toBe(false)
+  } finally {
+    listen.mockRestore()
+  }
+})
+
 it('uses pinned TLS/SNI and the captured bound Unix stream capability', async () => {
   const connect = await echo()
   const stream = {
@@ -89,7 +112,7 @@ it('creates distinct identities per incarnation and never returns private keys',
   expect(a.tls.serverName).not.toBe(b.tls.serverName)
   expect(a.tls.certificatePem).not.toBe(b.tls.certificatePem)
   expect(Object.keys(a.tls).sort()).toEqual(['certificatePem', 'serverName'])
-  expect(Object.keys(a).sort()).toEqual(['address', 'close', 'expiresAt', 'port', 'tls'])
+  expect(Object.keys(a).sort()).toEqual(['address', 'close', 'expiresAt', 'isAlive', 'port', 'tls'])
   expect(JSON.stringify(a)).not.toContain('PRIVATE KEY')
   expect(a.expiresAt).toBeGreaterThan(Date.now())
 })

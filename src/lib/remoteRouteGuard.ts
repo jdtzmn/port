@@ -172,6 +172,7 @@ export async function startSecureRemoteRouteGuard(
   port: number
   tls: { serverName: string; certificatePem: string }
   expiresAt: number
+  isAlive(): boolean
   close(): Promise<void>
 }> {
   const config = snapshot(plan, status)
@@ -280,6 +281,7 @@ export async function startSecureRemoteRouteGuard(
     port: bound.port,
     tls: { serverName: identity.serverName, certificatePem: identity.certificatePem },
     expiresAt: identity.expiresAt,
+    isAlive: () => !closing && server.listening,
     close,
   }
 }

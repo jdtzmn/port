@@ -59,6 +59,22 @@ function exchange(guard: Guard, request: string, pin = guard.tls.certificatePem)
 const get = (host = 'app.feature.port:8080') => `GET / HTTP/1.1\r\nHost: ${host}\r\n\r\n`
 
 describe('secure remote route guard', () => {
+  it.each(['close', 'error', 'shutdown'])('reports listener liveness after %s', async mode => {
+    const listen = vi.spyOn(Server.prototype, 'listen')
+    const guard = await startSecureRemoteRouteGuard(plan(), 'conflict')
+    const server = listen.mock.instances.at(-1) as Server
+    expect(guard.isAlive()).toBe(true)
+    if (mode === 'shutdown') {
+      await new Promise<void>(resolve => server.close(() => resolve()))
+    } else {
+      if (mode === 'error') server.emit('error', new Error('runtime failure'))
+      const closing = guard.close()
+      expect(guard.isAlive()).toBe(false)
+      await closing
+    }
+    expect(guard.isAlive()).toBe(false)
+  })
+
   it('serves pinned HTTPS conflict without draining POST or sending Continue', async () => {
     const result = await exchange(
       await start(),
@@ -123,7 +139,14 @@ describe('secure remote route guard', () => {
     expect(guard.tls.serverName).not.toBe(other.tls.serverName)
     expect(guard.tls.certificatePem).not.toBe(other.tls.certificatePem)
     expect(guard.expiresAt).toBeGreaterThan(Date.now())
-    expect(Object.keys(guard).sort()).toEqual(['address', 'close', 'expiresAt', 'port', 'tls'])
+    expect(Object.keys(guard).sort()).toEqual([
+      'address',
+      'close',
+      'expiresAt',
+      'isAlive',
+      'port',
+      'tls',
+    ])
     expect(Object.keys(guard.tls).sort()).toEqual(['certificatePem', 'serverName'])
     expect(JSON.stringify(guard)).not.toContain('PRIVATE KEY')
   })

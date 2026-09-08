@@ -151,7 +151,11 @@ export async function startSecureRemoteRelay(options: {
   stream: { connect(): net.Socket | null }
   maxConnections?: number
 }): Promise<
-  RemoteRelay & { tls: { serverName: string; certificatePem: string }; expiresAt: number }
+  RemoteRelay & {
+    tls: { serverName: string; certificatePem: string }
+    expiresAt: number
+    isAlive(): boolean
+  }
 > {
   const address = validateBind(options.bind)
   const peerAddress = options.bind.kind === 'docker-bridge' ? options.bind.peerAddress : undefined
@@ -276,5 +280,6 @@ export async function startSecureRemoteRelay(options: {
     close,
     tls: { serverName: identity.serverName, certificatePem: identity.certificatePem },
     expiresAt: identity.expiresAt,
+    isAlive: () => !closing && server.listening,
   }
 }
