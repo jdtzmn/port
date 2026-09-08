@@ -21,7 +21,7 @@ export function generateSshIntegrationHook(): string {
       exit $?
     fi
     __port_ssh_observer=''
-    trap '__port_ssh_status=$?; trap - EXIT; trap "" HUP INT TERM; if [ -n "$__port_ssh_observer" ]; then kill -KILL "$__port_ssh_observer" 2>/dev/null || :; wait "$__port_ssh_observer" 2>/dev/null || :; fi; command port __remote-cleanup "$__port_ssh_dir" </dev/null >/dev/null 2>&1 || :; exit "$__port_ssh_status"' EXIT
+    trap '__port_ssh_status=$?; trap - EXIT; trap "" HUP INT TERM; if [ -n "$__port_ssh_observer" ]; then for __port_ssh_live in $(jobs -pr; jobs -ps); do if [ "$__port_ssh_live" = "$__port_ssh_observer" ]; then kill -KILL "$__port_ssh_observer" 2>/dev/null || :; fi; done; wait "$__port_ssh_observer" 2>/dev/null || :; fi; command port __remote-cleanup "$__port_ssh_dir" </dev/null >/dev/null 2>&1 || :; exit "$__port_ssh_status"' EXIT
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM

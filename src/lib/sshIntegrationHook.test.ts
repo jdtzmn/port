@@ -33,7 +33,7 @@ if (args[0] === '__remote-prepare') {
   console.log(process.env.PREPARE_PATH);
   process.exit(Number(process.env.PREPARE_STATUS || 0));
 }
-if (args[0] === '__remote-observe') setInterval(() => {}, 1000);
+if (args[0] === '__remote-observe' && process.env.OBSERVER_EXITS !== '1') setInterval(() => {}, 1000);
 if (args[0] === '__remote-cleanup') { console.log('suppressed cleanup'); process.exit(42); }
 `
       )
@@ -112,6 +112,18 @@ printf '%s' "$__port_ssh_dir"`)
     expect(result.status).toBe(0)
     expect(result.stdout).toBe('parentend')
     expect(result.stderr).toBe('')
+  })
+
+  test('does not signal a completed observer absent from the live job table', () => {
+    const result = run(
+      `jobs() { return 0; }
+kill() { printf unexpected-signal; builtin kill "$@"; }
+ssh host`,
+      { OBSERVER_EXITS: '1' }
+    )
+    expect(result.status).toBe(0)
+    expect(result.stdout).toBe('')
+    expect(result.calls.some(c => c.args[0] === '__remote-cleanup')).toBe(true)
   })
 
   test.each([
