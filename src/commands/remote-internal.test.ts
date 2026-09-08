@@ -1,12 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
+  getRemoteInstanceId: vi.fn(),
+  collectRemoteSnapshot: vi.fn(),
   prepareRemoteSession: vi.fn(),
   observeRemoteSession: vi.fn(),
   cleanupRemoteSession: vi.fn(),
   remoteHandshake: vi.fn(() => ({ kind: 'port-handshake', version: 1 })),
 }))
 vi.mock('../lib/remoteSession.ts', () => mocks)
+vi.mock('../lib/remoteIdentity.ts', () => mocks)
+vi.mock('../lib/remoteSnapshotCollector.ts', () => mocks)
 import { dispatchRemoteInternalCommand, isRemoteInternalCommand } from './remote-internal.ts'
 
 describe('private remote dispatch', () => {
@@ -20,6 +24,14 @@ describe('private remote dispatch', () => {
     stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
     stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
     mocks.prepareRemoteSession.mockResolvedValue('/tmp/port-ssh-abc123')
+    mocks.getRemoteInstanceId.mockResolvedValue('550e8400-e29b-41d4-a716-446655440000')
+    mocks.collectRemoteSnapshot.mockImplementation(async (instanceId, revision) => ({
+      version: 1,
+      kind: 'port-service-snapshot',
+      instanceId,
+      revision,
+      worktrees: [],
+    }))
   })
   afterEach(() => {
     stdout.mockRestore()
@@ -27,8 +39,8 @@ describe('private remote dispatch', () => {
     process.exitCode = previous
   })
 
-  test('only recognizes the four exact endpoints', () => {
-    for (const suffix of ['prepare', 'observe', 'cleanup', 'handshake']) {
+  test('only recognizes the five exact endpoints', () => {
+    for (const suffix of ['prepare', 'observe', 'cleanup', 'handshake', 'snapshot']) {
       expect(isRemoteInternalCommand(`__remote-${suffix}`)).toBe(true)
     }
     for (const token of [
@@ -53,7 +65,76 @@ describe('private remote dispatch', () => {
     await dispatchRemoteInternalCommand('__remote-handshake', [])
     expect(stdout).toHaveBeenCalledExactlyOnceWith('{"kind":"port-handshake","version":1}\n')
     expect(mocks.prepareRemoteSession).not.toHaveBeenCalled()
+    expect(mocks.getRemoteInstanceId).not.toHaveBeenCalled()
+    expect(mocks.collectRemoteSnapshot).not.toHaveBeenCalled()
   })
+
+  test.each(['0', '42', String(Number.MAX_SAFE_INTEGER)])(
+    'snapshot revision %s emits one validated JSON line',
+    async revision => {
+      await dispatchRemoteInternalCommand('__remote-snapshot', [revision])
+      expect(mocks.getRemoteInstanceId).toHaveBeenCalledTimes(1)
+      expect(mocks.collectRemoteSnapshot).toHaveBeenCalledExactlyOnceWith(
+        '550e8400-e29b-41d4-a716-446655440000',
+        Number(revision)
+      )
+      expect(stdout).toHaveBeenCalledTimes(1)
+      const line = stdout.mock.calls[0]![0] as string
+      expect(line.split('\n')).toHaveLength(2)
+      expect(Buffer.byteLength(line)).toBeLessThan(4 * 1024 * 1024)
+      expect(JSON.parse(line)).toEqual({
+        version: 1,
+        kind: 'port-service-snapshot',
+        instanceId: '550e8400-e29b-41d4-a716-446655440000',
+        revision: Number(revision),
+        worktrees: [],
+      })
+      expect(stderr).not.toHaveBeenCalled()
+      expect(process.exitCode).toBe(0)
+    }
+  )
+
+  test.each([
+    [],
+    ['0', '1'],
+    [''],
+    ['-1'],
+    ['-0'],
+    ['01'],
+    ['+1'],
+    ['1.0'],
+    ['1e2'],
+    [' 1'],
+    ['1\n'],
+    ['NaN'],
+    ['9007199254740992'],
+  ])('rejects snapshot arguments %j before IO', async (...args) => {
+    await dispatchRemoteInternalCommand('__remote-snapshot', args)
+    expect(mocks.getRemoteInstanceId).not.toHaveBeenCalled()
+    expect(mocks.collectRemoteSnapshot).not.toHaveBeenCalled()
+    expect(stdout).not.toHaveBeenCalled()
+    expect(stderr).not.toHaveBeenCalled()
+    expect(process.exitCode).toBe(1)
+  })
+
+  test.each(['identity', 'collector', 'malformed', 'oversized'])(
+    'snapshot %s failure is silent',
+    async failure => {
+      if (failure === 'identity')
+        mocks.getRemoteInstanceId.mockRejectedValueOnce(new Error('private path'))
+      if (failure === 'collector')
+        mocks.collectRemoteSnapshot.mockRejectedValueOnce(new Error('private Docker error'))
+      if (failure === 'malformed')
+        mocks.collectRemoteSnapshot.mockResolvedValueOnce({ private: 'invalid' })
+      if (failure === 'oversized')
+        mocks.collectRemoteSnapshot.mockResolvedValueOnce({ private: 'x'.repeat(4 * 1024 * 1024) })
+      await dispatchRemoteInternalCommand('__remote-snapshot', ['0'])
+      expect(stdout).not.toHaveBeenCalled()
+      expect(stderr).not.toHaveBeenCalled()
+      expect(process.exitCode).toBe(1)
+      if (failure === 'identity') expect(mocks.collectRemoteSnapshot).not.toHaveBeenCalled()
+    }
+  )
 
   test.each(['__remote-observe', '__remote-cleanup'])('%s has no output', async token => {
     await dispatchRemoteInternalCommand(token, ['/tmp/port-ssh-abc123'])
