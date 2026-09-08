@@ -11,5 +11,5 @@ COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=bun-runtime /usr/local/bin/bun /usr/local/bin/bun
 COPY port-cli.sh /usr/local/bin/port
 RUN chmod 755 /usr/local/bin/port && mkdir -p /opt/port
-COPY client.sh harness.py mux.py bootstrap.py ingress.py identity.ts ssh_config /fixture/
+COPY client.sh harness.py mux.py bootstrap.py baseline.py identity.ts ssh_config /fixture/
 ENTRYPOINT ["bash", "/fixture/client.sh"]

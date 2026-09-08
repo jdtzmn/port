@@ -1,4 +1,4 @@
-# Remote services: infrastructure, core ingress, and SSH bootstrap gates
+# Remote services: transport feasibility, Traefik baseline, and SSH bootstrap gates
 
 The networking proof uses explicit test-only `ssh -L` arguments. Separately,
 `bootstrap.py` exercises the actual built Port CLI, opt-in Bash shell hook, and
@@ -36,7 +36,7 @@ the companion cannot start fallback transport. Missing remote Port disables the
 handshake without breaking login. No remote install or special output occurs.
 
 The product test checks an actual private handshake file, exit status 7, and
-session cleanup on remote-a. After networking, multiplexing, and core ingress pass, `run.sh`
+session cleanup on remote-a. After transport feasibility, multiplexing, and the Traefik baseline pass, `run.sh`
 renames `/usr/local/bin/port` to `/usr/local/bin/port-unavailable` only on the
 disposable remote-b fixture. The same local Bash hook and plain `ssh remote-b`
 must still give the fixture user an interactive login with no Port on PATH.
@@ -63,7 +63,9 @@ treating the experimental hook as production-ready.
 - One disposable Debian client with OpenSSH client, Python stdlib PTYs,
   dnsmasq, `psql`, and the Docker CLI.
 - Two separate PostgreSQL 17 clusters (`remote_a`, `remote_b`), each alongside
-  a real OpenSSH server. PostgreSQL listens only on that remote's loopback.
+  a real OpenSSH server. Test-only PostgreSQL `listen_addresses='*'` and HTTP
+  `0.0.0.0:3000` listeners let Traefik reach them on the isolated fixture network.
+  Neither remote publishes host ports; trust authentication is fixture-only.
 - Runtime-generated Ed25519 client and server keys. Only public keys cross a
   project-scoped volume. Private keys stay in ephemeral container filesystems;
   they are never printed, copied to the runner, or collected as artifacts.
@@ -85,43 +87,48 @@ treating the experimental hook as production-ready.
   into the inner daemon because the fixture network has no registry egress.
   The smoke container itself runs with `--network=none` and `--pull=never`.
 
-## Core ingress library gate
+## Existing Traefik HTTP Host / TLS HostSNI baseline
 
-`ingress.py` drives the compiled `ingress-fixture.ts`, importing the actual
-`createRouteResolver`, `IngressAddresses`, and `startRouteIngress` libraries.
-The fixture starts with remote-a only and accepts bounded JSON owner updates.
-It allocates a separate address per hostname and reports authoritative mappings;
-the client writes `/tmp/ingress-hosts` and HUPs its known dnsmasq PID. Normal
-HTTP and libpq connections use real DNS, never a `hostaddr` override.
+`baseline.py` exercises real **Traefik v3.6.0**, not an ingress-library stand-in.
+The allowlisted `Dockerfile.traefik`, `traefik.yaml`, and `traefik-dynamic.yaml`
+provide static entrypoints and explicit fixture routes. No Docker socket or host
+ports are exposed by this service. These hand-written routes preserve the existing
+`compose.ts` / `generateTraefikTcpLabels` baseline (`tls=true`, represented by
+`tls: {}` in file configuration); they do not test automatic remote product wiring.
 
-Coverage:
+The client resolves the Traefik service IP, writes `/tmp/baseline-hosts`, and HUPs
+its known dnsmasq PID. It asserts that **all four feature names resolve to the
+same proxy address**, through actual DNS, never `hostaddr`, hosts-file client
+shortcuts, runner DNS changes, or IP-per-hostname routing:
 
-- Unique `feature.port:3000` HTTP and `feature.port:5432` PostgreSQL identity;
-  named `ui.feature.port:80` HTTP.
-- Remote-a + remote-b yields HTTP 409 with both candidates and rejects new raw
-  TCP connections. Retained pre-conflict IP connections are also rejected
-  (HTTP retains the original Host), proving stale DNS cannot bypass ownership.
-- Explicit `feature.remote-{a,b}.ssh:5432/:3000` and
-  `ui.feature.remote-{a,b}.ssh:80` reach the correct distinct backends.
-- Local + remote ownership conflicts even though local advertises only UI;
-  the DB request still conflicts before service filtering. Explicit
-  `feature.local.port:3000` and `ui.feature.local.port:80` reach the actual local UI.
-- Removed explicit owners return HTTP 503/reject TCP, never another owner.
-  Backend POST counters are calibrated by a successful POST, then checked across
-  all owners to prove rejected HTTP POSTs cause no backend side effects.
+- `ui.feature-a.port:80` and `feature-a.port:3000` use HTTP Host routing to
+  `remote-a:3000`; the corresponding b names reach `remote-b:3000`.
+- `feature-a.port:5432` and `feature-b.port:5432` use TLS HostSNI on the **same IP
+  and same port 5432**, terminating TLS before their respective PostgreSQL backends.
+- Real `psql` / libpq uses `sslmode=require sslsni=1` (supported by the Debian 12
+  libpq 15 fixture). SQL verifies database names, backend addresses/ports, and
+  distinct cluster system identifiers. `\\conninfo` must report client TLS;
+  backend `pg_stat_ssl=false` is expected because Traefik terminates TLS.
+- Missing SNI, unmatched SNI (also resolved to that same IP), and
+  `sslmode=disable` must not successfully run SQL. Each attempt is bounded;
+  a protocol-detection timeout is an acceptable fail-closed result. Positive TLS
+  probes run again afterward. No catch-all TCP router can choose an arbitrary DB.
 
-**Test wiring, not product orchestration:** the catalog and address book are
-process-local. Python explicitly starts strict-config `ssh -N -L` tunnels on
-private `127.78.2.2`/`.3`, preserving ports 5432 and 3000 upstream. Remote Bun
-identity servers bind `127.0.0.1:3000`; the actual local backend binds
-`127.78.2.1:3000`. These private endpoints are not user-facing alternative ports.
-This does not prove automatic discovery, automatic forwarding, persistent address
-allocation, `port up`, or whole-product routing. Live TCP connection pinning
-remains a unit-test requirement, not a claim of this Python gate.
+The fixture uses Traefik's generated self-signed certificate with an empty client
+trust directory. `sslmode=require` tests encryption, **not verify-full identity
+validation**; this is acceptable only for this disposable fixture. TLS negotiation
+failure fails the gate, never skips or substitutes a fake backend.
 
-The gate runs before remote-b's CLI is renamed; see `ingress.log`. The existing
-run command above runs all gates, with a 180-second outer ingress deadline and
-bounded subprocess, protocol, HTTP, SQL, DNS, and cleanup operations.
+The separate phase-0 explicit raw `ssh -L` proof above is **transport feasibility
+only**. Its distinct loopback IPs do not prove SNI or shipped plaintext routing.
+Separate loopback-IP allocation, a privileged broker, and protocol-independent raw
+plaintext TCP are deferred to [#149](https://github.com/jdtzmn/port/issues/149).
+They are not requirements of this feature. Automatic remote discovery, transport
+coordination, and product `port up` routing remain unfinished and are not claimed
+by this baseline gate.
+
+The `baseline` step runs before remote-b's CLI is renamed, with a 90-second outer
+deadline and bounded DNS, HTTP, and libpq operations. See `baseline.log`.
 
 ## Isolation and cleanup
 

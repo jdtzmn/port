@@ -10,6 +10,8 @@
 !sshd_config
 !port-cli.sh
 !bootstrap.py
-!ingress.py
+!baseline.py
 !identity.ts
-!ingress-fixture.ts
+!Dockerfile.traefik
+!traefik.yaml
+!traefik-dynamic.yaml

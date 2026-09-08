@@ -39,11 +39,13 @@ Automated acceptance targets Linux and GitHub Actions. Jacob will test macOS man
 
 ## 2. Scope and non-goals
 
-The release scope includes HTTP, WebSockets, and raw TCP, with PostgreSQL as a mandatory real-client acceptance case. Raw TCP is not deferred: it drives the addressing design.
+The release scope preserves Port's existing shared `127.0.0.1` ingress with Traefik HTTP Host and TLS SNI routing, extending those semantics to remote services. It includes HTTP, WebSockets, and TLS/SNI-routed services, with PostgreSQL TLS negotiation and SNI as a mandatory real-client acceptance case. Clients without SNI are not required to work; plaintext TCP cannot be disambiguated by hostname on this shared address.
+
+Protocol-independent plaintext TCP, per-hostname loopback IPs, address allocation/tombstones, and any associated privileged helper are deferred to [issue #149](https://github.com/jdtzmn/port/issues/149), for both local and remote services. They are not prerequisites for this remote plan. Approved one-time local integration setup does not authorize a new root helper.
 
 Non-goals: file synchronization, remote filesystems, public sharing, persistent connectivity after the last integrated SSH session closes, arbitrary remote administration, and tab-specific destination selection.
 
-HTTPS support must be explicitly designed and tested before being claimed. Do not assume HTTP Host routing solves TLS certificate trust, SNI routing, or application protocols with optional TLS. UDP is outside initial scope.
+Preserve existing HTTP/SNI semantics; remote HTTPS and database TLS paths must be explicitly designed and tested before being claimed. HTTP Host routing alone does not prove certificate trust, SNI routing, or PostgreSQL's TLS negotiation. UDP is outside initial scope.
 
 ## 3. Addressing and ambiguity
 
@@ -56,7 +58,7 @@ HTTPS support must be explicitly designed and tested before being claimed. Do no
 | Explicit remote `127.od` | `ui.my-feature.127.od.ssh` | `my-feature.127.od.ssh:3000` |
 | Explicit remote `devbox` | `ui.my-feature.devbox.ssh` | `my-feature.devbox.ssh:3000` |
 
-Explicit aliases always exist for known destinations; only ambiguity makes their use necessary. Scripts may use them from the beginning. PostgreSQL retains port 5432, e.g. `my-feature.127.od.ssh:5432`.
+Explicit aliases always exist for known destinations; only ambiguity makes their use necessary. Scripts may use them from the beginning. PostgreSQL retains port 5432, e.g. `my-feature.127.od.ssh:5432`, with a TLS/SNI-capable client. Alias routing requires HTTP Host or TLS SNI; DNS resolution alone does not provide plaintext TCP hostname disambiguation.
 
 The SSH destination supplies a friendly label. It is not an authentication identity. Define collision-safe handling for aliases that reach the same VM, the same alias resolving to different VMs, custom users/ports, IP literals, DNS-invalid characters, and length limits. Never silently merge different identities because labels sanitize to the same value. Preserve `127.od` naturally in the example above.
 
@@ -73,7 +75,7 @@ Reserve the explicit-local pattern and validate interactions with existing branc
 
 HTTP ambiguity returns `409 Conflict` with a readable response and structured alternatives: destination labels and explicit addresses. Do not forward or replay the request, including POST bodies. No selection UI or mutation occurs.
 
-Raw TCP cannot return a universal HTTP-style error. Reject an ambiguous connection before backend contact. Show alternatives through local `port urls` / `port status`; determine the exact local CLI discovery scope during implementation so remote-only worktrees are inspectable without a local checkout. Do not emit HTTP or fabricated PostgreSQL messages into arbitrary protocols.
+TLS/SNI ambiguity must fail closed: reject the handshake/connection without selecting or contacting a database/application backend. Show explicit-address alternatives through local `port urls` / `port status`; determine the exact local CLI discovery scope during implementation so remote-only worktrees are inspectable without a local checkout. HTTP 409 applies to HTTP requests, not arbitrary TLS or database connections. Do not emit HTTP or fabricated PostgreSQL messages into those protocols. Missing SNI must never guess a hostname/owner or bypass conflict policy; supporting clients without SNI is out of scope.
 
 Existing established connections remain attached to their original backend or are closed; never splice them to a new destination. New connections/HTTP requests observe current conflict state. When an owner disappears and the namespace becomes unique, new unqualified traffic may resolve to the remaining owner under this rule. Explicit addresses are required when callers need destination stability through topology changes. Document this consequence; it is not an implicit fallback for an explicit address.
 
@@ -92,26 +94,26 @@ Remote Port owns execution and authoritative service state. Local Port owns DNS,
 
 HTTP should reuse remote Traefik routing where practical, preserving the original Host identity. Explicit remote aliases may require remote proxy aliases or carefully defined upstream Host translation. Validate redirects, cookies, origin checks, forwarded-header trust, and HMR; do not apply blanket response rewriting as a substitute for a canonical-origin design. Applications with fixed allowed origins may require configuration, which must be documented.
 
-Raw TCP may require a dedicated remote forwarding adapter instead of remote HTTP Traefik entrypoints. Confirm current TCP capabilities before selecting that path. Discovery must advertise only supported, constrained backend capabilities; do not treat arbitrary remote metadata as a general forwarding instruction.
+Confirm Traefik's PostgreSQL TLS negotiation and SNI capabilities with actual clients before selecting the constrained remote forwarding path. Preserve routing identity across local ingress and SSH transport; determine TLS passthrough/termination and explicit-alias handling rather than assuming HTTP Host translation also handles SNI. Discovery must advertise only supported, constrained backend capabilities; do not treat arbitrary remote metadata as a general forwarding instruction.
 
-### Destination IP routing
+### Shared loopback HTTP/SNI routing
 
-Ordinary PostgreSQL does not reliably carry the original DNS hostname. Use private local destination addresses plus original ports rather than relying on HTTP Host or universal TLS SNI.
+Keep the existing shared `127.0.0.1` local DNS/ingress model. HTTP Host or TLS SNI, together with the logical port, identifies a route; DNS destination IP alone does not. Multiple worktrees may share the original port only where the client supplies the supported routing identity. Do not introduce per-hostname IP allocation to support plaintext clients in this plan.
 
-Allocate ingress addresses at the granularity needed to distinguish route namespaces/owners on the same logical port. A single IP per VM is insufficient if two worktrees on that VM both expose PostgreSQL on 5432. Service aliases can share an address only when the IP/port pair remains unambiguous.
+At ingress, unqualified names must check current candidate ownership. Explicit names select exactly one identity, regardless of the shared DNS answer. Publish ownership and proxy routes coherently so stale state cannot select a conflicting or different owner.
 
-An unqualified namespace needs a stable ingress whose resolver checks current candidate ownership, not a DNS answer that directly pins whichever destination was unique at resolution time. Explicit ingress addresses map to exactly one identity.
-
-Required properties:
+Required properties and engineering investigations:
 
 - Original externally visible ports; any ephemeral transport ports remain internal.
-- No LAN-exposed listeners or accidental wildcard binds.
-- Local Traefik containers can reach the intended private endpoints.
-- Atomic route generation publication; bounded concurrent updates and allocation locks.
-- Local-only traffic still works without an SSH bridge connection.
-- Stale DNS cannot bypass conflict checks or target a new owner through IP reuse.
-- Do not recycle a retired explicit address to a different owner merely after DNS TTL expiry; applications cache beyond TTL. Establish a durable allocation/tombstone policy and an explicit safe exhaustion/reset strategy.
-- Define IPv4/IPv6 answers consistently; an unhandled AAAA path must not bypass routing policy.
+- Private SSH forwarding endpoints and control connections, with no new LAN-exposed listeners.
+- Investigate existing wildcard publishing, no-LAN enforcement, and any necessary migration explicitly; do not silently change current local DNS or treat privacy as already proven.
+- Prove local Traefik containers can reach intended private endpoints without broadening exposure.
+- Atomic route generation publication and bounded concurrent updates.
+- Local-only HTTP/SNI traffic still works without an SSH bridge connection.
+- Retained DNS answers do not bypass current Host/SNI conflict checks or explicit-owner identity.
+- Audit IPv4/IPv6 listener and DNS behavior for policy bypasses; any required compatibility migration needs an explicit design decision, not a new address allocator.
+
+Per-hostname allocation, persistence/exhaustion, tombstones, and privileged address brokers belong to issue #149, not this gate.
 
 ## 5. Ordinary SSH bootstrap: first design gate
 
@@ -127,7 +129,7 @@ The selected mechanism must:
 6. Leave noninteractive SSH, scp, and sftp unchanged.
 7. Fall back to ordinary SSH if discovery/integration is unavailable.
 
-Decide connection multiplexing, ControlMaster ownership, repeated authentication behavior, and cleanup without killing user-owned SSH masters. Do not infer authorization from environment variables alone, hijack arbitrary existing sessions, or change global SSH configuration silently.
+Decide connection multiplexing, ControlMaster ownership, and cleanup without killing user-owned SSH masters. Require a single SSH authentication/login flow; companion discovery and forwarding must reuse its authenticated connection rather than prompt for a second login. Do not infer authorization from environment variables alone, hijack arbitrary existing sessions, or change global SSH configuration silently.
 
 Missing remote Port must not break login. Missing local integration means ordinary SSH only, not magical discovery. Document one-time setup and the initial supported shell matrix. Experimental commands are test-only scaffolding with a removal gate; no shipped `port ssh` fallback.
 
@@ -166,11 +168,11 @@ Do not expose environment values, secrets, or unnecessary filesystem paths. Dist
 
 ### Performance
 
-Share transport/proxy entrypoints where route identity is preserved; do not create one SSH session or polling process per service. Target a bounded number of control connections per remote and reconcile only changed routes. Pool forwarding resources where safe, but do not sacrifice raw TCP namespace isolation. Measure connection establishment, discovery-to-access latency, idle polling cost, and multi-worktree load before adding streaming or more complex caching. Record explicit budgets during the networking gate instead of inventing unmeasured targets.
+Share transport/proxy entrypoints where route identity is preserved; do not create one SSH session or polling process per service. Target a bounded number of control connections per remote and reconcile only changed routes. Pool forwarding resources where safe, but do not sacrifice HTTP Host/TLS SNI owner isolation. Measure connection establishment, discovery-to-access latency, idle polling cost, and multi-worktree load before adding streaming or more complex caching. Record explicit budgets during the networking gate instead of inventing unmeasured targets.
 
 ### Security
 
-Use OpenSSH authentication and host-key verification. No required agent forwarding, public relay, or inbound laptop connectivity. Local listeners and control sockets need appropriate user isolation. Validate advertised names, lengths, ports, protocols, and destinations. Remote data must not execute local hooks, choose arbitrary local network targets, write arbitrary files, or replace unrelated routes. Escape diagnostics and HTTP conflict output. Keep privileged address/DNS setup narrow and separate from the unprivileged discovery parser. Choose least privileges for production listeners; privileged test containers are not a production security design.
+Use OpenSSH authentication and strict host-key verification, retaining a single authentication flow for integrated SSH and its companion channels. No required agent forwarding, public relay, or inbound laptop connectivity. Local listeners and control sockets need appropriate user isolation. Validate advertised names, lengths, ports, protocols, and destinations. Remote data must not execute local hooks, choose arbitrary local network targets, write arbitrary files, or replace unrelated routes. Escape diagnostics and HTTP conflict output. Keep approved one-time local setup separate from the unprivileged discovery parser; it is not approval for a new root helper or privileged address broker. Investigate existing listener permissions and wildcard-publishing migration with least privilege and no-LAN goals; privileged test containers are not a production security design.
 
 ## 8. Linux E2E and GitHub Actions
 
@@ -192,10 +194,10 @@ Before feature implementation, run a green GitHub Actions feasibility harness pr
 
 - PTY-driven plain SSH and real interactive shell behavior.
 - Isolated DNS inside the client machine.
-- Two local destination addresses listening on the same port.
-- A real psql client reaches the intended database through transport.
+- Real Traefik HTTP Host routing on shared loopback ingress and identical logical ports.
+- Real Traefik PostgreSQL TLS negotiation and SNI routing: actual psql/libpq clients address different hostnames on shared ingress port 5432 and read the intended database identity through SSH transport. Record supported client/proxy versions, TLS settings, SNI behavior, and certificate/trust requirements; do not substitute raw forwarding for this baseline.
 
-This milestone may use explicit test wiring to prove infrastructure, but must not be presented as passing feature acceptance. Subsequent product tests must bootstrap through installed integration and ordinary SSH, never call bridge internals to bypass it.
+The current raw `ssh -L`/DNS feasibility proof is transport infrastructure evidence only, not proof of Traefik SNI or PostgreSQL TLS negotiation. The baseline above must pass on Linux GitHub Actions before relying on that mechanism. This milestone may use explicit test wiring to prove infrastructure, but must not be presented as passing feature acceptance. Subsequent product tests must bootstrap through installed integration and ordinary SSH, never call bridge internals to bypass it.
 
 ### Product entrypoint
 
@@ -203,33 +205,34 @@ Install the intended integration in an isolated shell profile. Drive a real inte
 
 ### Required acceptance cases
 
-| Case                           | Required evidence                                                 |
-| ------------------------------ | ----------------------------------------------------------------- |
-| One remote                     | Both default URL forms reach correct worktree                     |
-| Two worktrees on one remote    | Same HTTP and PostgreSQL ports independently reachable            |
-| Local versus remote collision  | HTTP 409 lists alternatives; explicit aliases target each owner   |
-| Two remote collision           | Same checks without local owner                                   |
-| Three-way collision            | No priority-based implicit selection                              |
-| Partial service sets           | No cross-machine UI/API composition under unqualified namespace   |
-| PostgreSQL                     | psql uses 5432 for each explicit owner and reads correct identity |
-| Ambiguous raw TCP              | Reject before contacting any database backend                     |
-| Explicit missing service/owner | Unavailable, never another backend                                |
-| HTTP semantics                 | Host, redirects, cookies, origin behavior, POST non-forwarding    |
-| WebSockets                     | Upgrade, bidirectional HMR-style traffic, safe connection closure |
-| Multiple SSH sessions          | Shared resources survive one session closing                      |
-| Last session/network loss      | Owned access removed/disabled, remote services remain running     |
-| Reconnect/remote restart       | Fresh snapshot replaces stale service state                       |
-| Missing/incompatible Port      | Ordinary SSH still works                                          |
-| Changed SSH host key           | Verification rejects connection normally                          |
-| Bridge restart                 | Owned route cleanup and reconciliation                            |
+| Case                           | Required evidence                                                                                                |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| One remote                     | Both default URL forms reach correct worktree                                                                    |
+| Two worktrees on one remote    | Same ports independently reachable through HTTP Host/PostgreSQL TLS SNI                                          |
+| Local versus remote collision  | HTTP 409 lists alternatives; explicit aliases target each owner                                                  |
+| Two remote collision           | Same checks without local owner                                                                                  |
+| Three-way collision            | No priority-based implicit selection                                                                             |
+| Partial service sets           | No cross-machine UI/API composition under unqualified namespace                                                  |
+| PostgreSQL TLS/SNI             | Actual psql uses TLS negotiation and SNI through Traefik on 5432 for each explicit owner; reads correct identity |
+| Ambiguous TLS/SNI              | Handshake/connection rejects before database/application backend contact; local CLI lists explicit alternatives  |
+| Missing SNI                    | No guessed owner or conflict bypass; no promise of client support                                                |
+| Explicit missing service/owner | Unavailable, never another backend                                                                               |
+| HTTP semantics                 | Host, redirects, cookies, origin behavior, POST non-forwarding                                                   |
+| WebSockets                     | Upgrade, bidirectional HMR-style traffic, safe connection closure                                                |
+| Multiple SSH sessions          | Shared resources survive one session closing                                                                     |
+| Last session/network loss      | Owned access removed/disabled, remote services remain running                                                    |
+| Reconnect/remote restart       | Fresh snapshot replaces stale service state                                                                      |
+| Missing/incompatible Port      | Ordinary SSH still works                                                                                         |
+| Changed SSH host key           | Verification rejects connection normally                                                                         |
+| Bridge restart                 | Owned route cleanup and reconciliation                                                                           |
 
 Assert backend counters/logs as well as client errors: a 409 alone does not prove a POST was not forwarded. Do not inject client DNS overrides or Playwright hostname mappings in primary tests; requests must traverse actual Port DNS.
 
-Use Playwright/Chromium for page behavior, an HTTP client for status/headers/non-forwarding, a WebSocket client for upgrades, and psql for PostgreSQL. Non-GUI cases must pass independently of any browser process.
+Use Playwright/Chromium for page behavior, an HTTP client for status/headers/non-forwarding, a WebSocket client for upgrades, and actual psql/libpq clients for PostgreSQL TLS negotiation and SNI through real Traefik. Verify handshake failures and backend logs for TLS conflicts; HTTP 409 is not a database/TLS assertion. Non-GUI cases must pass independently of any browser process.
 
 ### Stale cache and identity tests
 
-Resolve an unqualified name while unique, retain its address, introduce a conflict, then connect to the retained address with the original HTTP Host and separately with raw TCP. Both paths must enforce current conflict policy. Disconnect an explicit owner, add another owner, and prove retained explicit addresses never reach the new one. Repeat with a persistent HTTP connection; new requests must not bypass the conflict resolver. Existing database/WebSocket streams may stay pinned or close, never switch destinations.
+Resolve an unqualified name while unique, retain the shared loopback answer, introduce a conflict, then connect using the original HTTP Host and separately TLS SNI (including real PostgreSQL TLS negotiation). Both supported paths must enforce current conflict policy. Disconnect an explicit owner, add another owner, and prove requests retaining the explicit Host/SNI never reach the new one. The shared IP alone is not an owner identity; these tests do not assert plaintext TCP hostname routing or address-allocation safety. Repeat with a persistent HTTP connection; new requests must not bypass the conflict resolver. Existing database/WebSocket streams may stay pinned or close, never switch destinations.
 
 ### Docker-backed tier
 
@@ -249,7 +252,7 @@ Provide one documented local Linux command invoking the same harness as CI. Exac
 
 ### Manual macOS handoff
 
-No automated macOS coverage required. Give Jacob a checklist covering DNS/private address installation, Docker reachability, plain SSH, both URL forms, PostgreSQL on original ports, collisions/explicit aliases, disconnect cleanup, and no LAN exposure. Do not claim Linux results prove macOS behavior.
+No automated macOS coverage required. Give Jacob a checklist covering one-time local integration with existing shared-loopback DNS, private forwarding/Docker reachability, plain SSH, both URL forms, PostgreSQL TLS negotiation and SNI through Traefik on original ports, collisions/explicit aliases, disconnect cleanup, and no LAN exposure. Do not claim Linux results prove macOS behavior.
 
 ## 9. Repository integration points
 
@@ -267,23 +270,23 @@ The existing Linux integration workflow installs DNS on the runner and runs shar
 
 Each phase is a small validated commit sequence. Add failing requirement tests, implement the minimum change, then demonstrate those tests pass. Do not label test-only wiring as feature completion.
 
-0. **CI harness feasibility:** green plain SSH/DNS/same-port PostgreSQL infrastructure proof on GitHub Ubuntu; verify nested Docker smoke feasibility.
+0. **CI harness feasibility:** green plain SSH/DNS and real Traefik HTTP Host/PostgreSQL TLS negotiation/SNI same-port baseline with actual clients on GitHub Ubuntu; raw SSH forwarding alone is insufficient. Verify nested Docker smoke feasibility.
 1. **Transparent bootstrap:** select and document mechanism, supported shells and SSH semantics; real PTY acceptance with normal fallback. No shipped alternate command.
-2. **Private networking:** implement identity-aware local address/listener allocation and DNS with HTTP/TCP forwarding; prove two worktrees per remote retain identical ports and no LAN exposure.
+2. **Private networking:** preserve shared-loopback DNS and HTTP Host/TLS SNI routing over private SSH forwarding; prove two worktrees per remote retain identical ports with supported clients. Investigate Docker reachability, wildcard-publishing migration and no-LAN enforcement without silently changing local DNS or adding an allocator/root helper.
 3. **Discovery/reconciliation:** versioned snapshots, ownership and bounded updates; services appear/disappear automatically through ordinary SSH plus remote Port commands.
-4. **Aliases/conflicts:** default/explicit addressing, 409 alternatives, raw TCP rejection, stale DNS and persistent HTTP checks.
+4. **Aliases/conflicts:** default/explicit addressing, HTTP 409 alternatives, fail-closed TLS/SNI handshake rejection with alternatives in the local CLI, retained-DNS Host/SNI and persistent HTTP checks.
 5. **Lifecycle/security:** session references, reconnect/crash recovery, malformed metadata, origin/WebSocket behavior, isolation and performance measurements.
-6. **Release documentation:** local setup, supported SSH scope, conflict diagnostics, custom-domain decision, raw TCP behavior, limitations and manual macOS checklist.
+6. **Release documentation:** local setup, supported SSH scope, conflict diagnostics, custom-domain decision, tested TLS/SNI client requirements, plaintext/no-SNI limitations and issue #149 deferral, and manual macOS checklist.
 
-Release acceptance: matching worktrees run locally and on two remotes. Unqualified routes fail when ambiguous. Explicit local and `.ssh` addresses reach exactly their intended services on original ports. Removing destinations, retaining DNS answers, and reconnecting cannot cause explicit addresses or established streams to reach a different owner. All required Linux E2E tests pass on GitHub Actions.
+Release acceptance: matching worktrees run locally and on two remotes. Unqualified HTTP routes return 409 when ambiguous; ambiguous TLS/SNI handshakes fail closed with explicit alternatives discoverable in the local CLI. Explicit local and `.ssh` names reach exactly their intended services on original ports using HTTP Host or supported TLS/SNI clients. Removing destinations, retaining DNS answers with explicit Host/SNI, and reconnecting cannot route those explicit names or established streams to a different owner. No plaintext TCP hostname-disambiguation or no-SNI client guarantee is implied. All required Linux E2E tests pass on GitHub Actions.
 
 ## 11. Decisions still requiring evidence
 
 - Plain-SSH hook/wrapper mechanism, supported shell matrix, multiplexing/authentication ownership.
-- Private IP pool, namespace allocation granularity, privilege boundary, address persistence/exhaustion, IPv6 policy.
-- Local Traefik coexistence with IP-specific raw TCP listeners and wildcard binds.
-- Remote TCP ingress capability and constrained forwarding implementation.
-- Canonical origin handling for explicit aliases, custom domains and TLS scope.
+- Private SSH endpoint/listener design, container reachability, IPv4/IPv6 policy and no-LAN verification within existing shared-loopback DNS semantics.
+- Existing Traefik wildcard publishing and any explicitly designed compatibility migration; no new privileged broker or per-hostname allocation gate.
+- Real Traefik PostgreSQL TLS negotiation/SNI baseline with actual client versions/settings, fail-closed handshake handling and constrained remote forwarding implementation.
+- Canonical origin handling for explicit aliases, custom domains, TLS passthrough/termination, certificates/trust and SNI alias handling.
 - Stable authenticated destination identity versus aliases, clones, users and ports.
 - Exact local CLI interface for inspecting remote-only routes and conflict alternatives.
 - `.ssh` namespace validation and reserved local alias compatibility.

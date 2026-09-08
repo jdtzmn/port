@@ -1,4 +1,14 @@
 services:
+  traefik:
+    build:
+      context: .
+      dockerfile: Dockerfile.traefik
+    networks: [fixture]
+    healthcheck:
+      test: [CMD, traefik, healthcheck, --ping]
+      interval: 2s
+      timeout: 2s
+      retries: 60
   remote-a:
     build:
       context: .

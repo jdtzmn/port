@@ -14,8 +14,8 @@ install -m 600 -o fixture -g fixture /public-keys/client.pub /home/fixture/.ssh/
 /usr/sbin/sshd -t
 /usr/sbin/sshd -D -e &
 ssh_pid=$!
-# No password: this disposable database listens only on remote loopback.
-/usr/local/bin/docker-entrypoint.sh postgres -c listen_addresses=127.0.0.1 &
+# Test-only trust DB: reachable by Traefik on the isolated network; no host ports.
+/usr/local/bin/docker-entrypoint.sh postgres -c listen_addresses='*' &
 pg_pid=$!
 bun /fixture/identity.ts &
 http_pid=$!

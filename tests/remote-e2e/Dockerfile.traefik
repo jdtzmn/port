@@ -1,0 +1,3 @@
+FROM traefik:v3.6.0
+COPY traefik.yaml /etc/traefik/traefik.yaml
+COPY traefik-dynamic.yaml /etc/traefik/dynamic.yaml
