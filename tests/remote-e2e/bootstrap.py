@@ -187,6 +187,12 @@ def live_discovery(shell, directory):
 
     discovered = wait_cache('ready', since, lambda s: later(s, initial) and bool(s['worktrees']))['snapshot']
     original_endpoint = endpoint(discovered)
+    # Run HTTP in the ordinary remote SSH shell, not inside the workload or a forward.
+    mutate('probe')
+    reachable = re.findall(rb'^SNAPSHOT_FIXTURE_REACHABLE=([0-9.]+)$',
+                           shell.output.replace(b'\r', b''), re.MULTILINE)
+    require(reachable == [address.encode()],
+            'remote SSH namespace did not reach the discovered Docker endpoint identity')
     since = mutate('corrupt')
     unavailable = wait_cache('unavailable', since, lambda s: bool(s['worktrees']))['snapshot']
     require(unavailable['instanceId'] == initial['instanceId']

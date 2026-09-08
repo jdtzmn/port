@@ -25,7 +25,7 @@ cleanup() {
   set +e
   # Only bounded known-service logs and status, never inspect/env/key dumps.
   step 15 status "${compose[@]}" ps -a
-  step 15 fixture-logs "${compose[@]}" logs --no-color --tail 80 remote-a remote-b client docker traefik
+  step 15 fixture-logs "${compose[@]}" logs --no-color --tail 80 remote-a remote-b client docker docker-a docker-b traefik
   step 60 cleanup "${compose[@]}" down --volumes --remove-orphans --timeout 5
   local cleanup_status=$?
   [[ -z "$image_dir" ]] || rm -rf -- "$image_dir"
@@ -43,7 +43,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 step 15 config "${compose[@]}" config --quiet
 step 600 build "${compose[@]}" build
-# The private DinD network has no registry egress. Seed one pinned smoke image
+# The private DinD network has no registry egress. Seed all three local daemons
 # via the runner's Docker CLI; never mount a host Docker socket in any fixture.
 step 120 smoke-pull docker pull busybox:1.37.0
 image_dir=$(mktemp -d "${TMPDIR:-/tmp}/remote-e2e-image.XXXXXXXX")
@@ -60,9 +60,11 @@ for machine in client remote-a remote-b; do
   step 30 "port-copy-$machine" "${compose[@]}" cp "$image_dir/app/." "$machine:/opt/port/"
 done
 # DinD creates a private /tmp mount; use the root filesystem for docker cp.
-step 30 smoke-copy "${compose[@]}" cp "$image_dir/smoke.tar" docker:/smoke.tar
-step 60 smoke-load "${compose[@]}" exec -T docker docker image load --input /smoke.tar
-step 10 smoke-remove "${compose[@]}" exec -T docker rm -f /smoke.tar
+for daemon in docker docker-a docker-b; do
+  step 30 "smoke-copy-$daemon" "${compose[@]}" cp "$image_dir/smoke.tar" "$daemon:/smoke.tar"
+  step 60 "smoke-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /smoke.tar
+  step 10 "smoke-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /smoke.tar
+done
 step 150 proof "${compose[@]}" exec -T client python3 /fixture/harness.py
 step 90 multiplexing "${compose[@]}" exec -T client python3 /fixture/mux.py
 step 90 baseline "${compose[@]}" exec -T client python3 /fixture/baseline.py

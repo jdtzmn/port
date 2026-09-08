@@ -12,9 +12,9 @@ const container = 'port-snapshot-fixture-ui'
 const network = 'traefik-network'
 const repo = '/home/fixture/snapshot-project'
 const branch = 'feature'
-// Force the private shared DinD: never accept a caller-selected daemon.
+// Force this remote's namespace-local DinD: never accept a caller-selected daemon.
 function docker(args: string[]): string {
-  return execFileSync('/usr/local/bin/docker', ['--host', 'tcp://docker:2375', ...args], {
+  return execFileSync('/usr/local/bin/docker', ['--host', 'tcp://127.0.0.1:2375', ...args], {
     encoding: 'utf8',
     timeout: 10_000,
     maxBuffer: 64 * 1024,
@@ -59,10 +59,9 @@ function start(): void {
     '--label',
     'com.docker.compose.service=ui',
     'busybox:1.37.0',
-    'httpd',
-    '-f',
-    '-p',
-    '8080',
+    'sh',
+    '-c',
+    'mkdir -p /www; printf remote-a-snapshot-fixture > /www/index.html; exec httpd -f -p 8080 -h /www',
   ])
   const content = JSON.stringify({ projects: [{ repo, branch, ports: [3000] }], hostServices: [] })
   writeFileSync(saved, content, { mode: 0o600, flag: 'wx' })
@@ -78,11 +77,31 @@ function start(): void {
       ])
   )
 }
+async function probe(): Promise<void> {
+  const address = docker([
+    'inspect',
+    '--format',
+    '{{(index .NetworkSettings.Networks "traefik-network").IPAddress}}',
+    container,
+  ])
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(address)) throw new Error('Invalid fixture address')
+  const response = await fetch(`http://${address}:8080`, {
+    signal: AbortSignal.timeout(5000),
+    redirect: 'error',
+  })
+  if (!response.ok || (await response.text()) !== 'remote-a-snapshot-fixture') {
+    throw new Error('Unexpected fixture HTTP identity')
+  }
+  console.log('SNAPSHOT_FIXTURE_REACHABLE=' + address)
+}
 try {
   if (process.argv.length !== 3) throw new Error('Expected one fixture mode')
   switch (process.argv[2]) {
     case 'start':
       start()
+      break
+    case 'probe':
+      await probe()
       break
     case 'corrupt':
       readFileSync(saved)

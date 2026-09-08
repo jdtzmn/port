@@ -72,22 +72,34 @@ changes automatically over its owned multiplexed connection.
 The Bun-built helper uses actual `generateOverrideContent` and YAML parsing to
 label ONE BusyBox 1.37.0 HTTP container (published/logical 3000, target 8080), with
 matching Compose project/service labels and a disposable Port registry entry.
-It uses only the existing private shared `docker` DinD fixture, without publishing
-ports or mounting a host socket. This proves collector behavior, **not separate
-VM-local Docker daemons or product `port up` routing**. SSH exec channels use the
-fixture CLI wrapper's default `DOCKER_HOST=tcp://docker:2375`.
+Three isolated DinD daemons model VM-local Docker networking: the client shares
+`docker`'s network namespace, and each remote shares its own `docker-a` or
+`docker-b` namespace. Filesystems and home identities remain separate. Each
+namespace has its own Docker bridge and loopback-published services. Compose DNS
+aliases `client`, `remote-a`, and `remote-b` belong to the corresponding DinD
+services on the isolated fixture network, preserving the outer Traefik baseline.
+All clients use `DOCKER_HOST=tcp://127.0.0.1:2375` by default; the seed helper forces
+that fixed daemon regardless of caller settings. No workload ports or host socket
+are exposed. This models VM-local networking, **not VM security isolation or
+product `port up` routing**.
 
 The client retries atomic-cache reads and decoding races within bounded waits,
 requiring fresh `observedAt` and explicit status, not merely file existence. It
 checks `feature.port`, the inspected private Docker IP:8080, logical port 3000,
-HTTP + TLS-SNI transports, and the HTTP-only `ui` alias. Strict field checks reject
+HTTP + TLS-SNI transports, and the HTTP-only `ui` alias. After discovery, the
+ordinary remote interactive SSH shell runs the helper's `probe` mode: Bun fetches
+the owned container's private IP:8080 directly, with a bounded timeout, and emits
+an address marker only after matching its fixed static HTTP body. The client
+requires that marker's address to equal the discovered endpoint. This proves
+remote SSH namespace reachability, not forwarding or product routing.
+Strict field checks reject
 paths/environment metadata. Corrupting only the disposable remote registry must
 produce `unavailable` with the last-known endpoint; restoring its private fixture
 backup must produce a later `ready` revision. Stopping only the known fixture
 container must produce a healthy empty snapshot. Instance identity stays stable;
 successful revisions increase within this one foreground session (no assertion
 across new SSH sessions). Foreground exit removes the entire local session tree
-and observer. The helper supports only `start`, `corrupt`, `restore`, and `stop`,
+and observer. The helper supports only `start`, `probe`, `corrupt`, `restore`, and `stop`,
 with fixed paths under `/home/fixture/.port`; no user registry is imported.
 The bootstrap step has a 150-second outer deadline. See `bootstrap.log`.
 
@@ -138,9 +150,11 @@ treating the experimental hook as production-ready.
   using each **hostname and original port 5432**, without a `hostaddr` override.
   SQL asserts database name, server address/port, and distinct PostgreSQL system
   identifiers, proving distinct backend clusters rather than just open sockets.
-- A dedicated `docker:27.5.1-dind` fixture runs a real `busybox:1.37.0` container
-  and checks its output. The runner pulls/saves this small image and loads it
-  into the inner daemon because the fixture network has no registry egress.
+- Three dedicated `docker:27.5.1-dind` fixtures have separate owned storage volumes.
+  The client daemon runs a real `busybox:1.37.0` smoke container and checks its
+  output. The runner pulls/saves this small image and loads it into all three
+  daemons via their root filesystems (not DinD's private `/tmp` mount), because
+  the fixture network has no registry egress.
   The smoke container itself runs with `--network=none` and `--pull=never`.
 
 ## Existing Traefik HTTP Host / TLS HostSNI baseline
@@ -189,15 +203,17 @@ deadline and bounded DNS, HTTP, and libpq operations. See `baseline.log`.
 ## Isolation and cleanup
 
 Every run uses a random Compose project with its own `internal: true` network,
-public-key volume, and DinD storage. There are no published ports, fixed container
+public-key volume, and three independent DinD storage volumes. There are no published ports, fixed container
 names, external networks, or host Docker socket mounts. Only the client rewrites
 its own `/etc/resolv.conf`; the runner's DNS and hosts files are untouched.
 Compose is explicitly passed `/dev/null` as its env file and implicit env-file
 loading is disabled; no `.env` files are read.
 
-**Privileged fixture warning:** only DinD is privileged. Its unauthenticated TCP
-API is reachable solely on the private fixture network, never published on the
-runner. This is disposable test infrastructure, not a secure production daemon
+**Privileged fixture warning:** only the three DinD services are privileged.
+Each unauthenticated TCP API binds `127.0.0.1:2375` in its shared namespace, not
+its fixture-network address or the runner. Each client/remote depends only on its
+own daemon's health; public-key readiness remains concurrent, without a health
+dependency cycle. Client dnsmasq still binds only its own loopback. This is disposable test infrastructure, not a secure production daemon
 configuration. Privileged DinD is not a security boundary against malicious
 fixture code; run only trusted test code on an appropriate runner. The runner's
 Docker CLI creates fixtures and seeds the image, but the client never receives
