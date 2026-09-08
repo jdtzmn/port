@@ -17,9 +17,11 @@ ssh_pid=$!
 # No password: this disposable database listens only on remote loopback.
 /usr/local/bin/docker-entrypoint.sh postgres -c listen_addresses=127.0.0.1 &
 pg_pid=$!
-trap 'kill "$ssh_pid" "$pg_pid" 2>/dev/null || true; wait || true' EXIT
+bun /fixture/identity.ts &
+http_pid=$!
+trap 'kill "$ssh_pid" "$pg_pid" "$http_pid" 2>/dev/null || true; wait || true' EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
 touch /tmp/ssh-ready
-wait -n "$ssh_pid" "$pg_pid"
+wait -n "$ssh_pid" "$pg_pid" "$http_pid"
 exit 1

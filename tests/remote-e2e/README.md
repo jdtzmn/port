@@ -1,10 +1,10 @@
-# Remote services: infrastructure and SSH bootstrap gates
+# Remote services: infrastructure, core ingress, and SSH bootstrap gates
 
 The networking proof uses explicit test-only `ssh -L` arguments. Separately,
 `bootstrap.py` exercises the actual built Port CLI, opt-in Bash shell hook, and
 a plain `ssh remote-a` login with an automatic remote handshake, missing-Port
 `ssh remote-b` login, and ordinary noninteractive SSH passthrough. **Automatic
-service discovery/routing is not implemented or claimed by these tests.**
+service discovery, transport coordination, and `port up` routing are not claimed.**
 
 ## Run
 
@@ -36,7 +36,7 @@ the companion cannot start fallback transport. Missing remote Port disables the
 handshake without breaking login. No remote install or special output occurs.
 
 The product test checks an actual private handshake file, exit status 7, and
-session cleanup on remote-a. After networking and multiplexing pass, `run.sh`
+session cleanup on remote-a. After networking, multiplexing, and core ingress pass, `run.sh`
 renames `/usr/local/bin/port` to `/usr/local/bin/port-unavailable` only on the
 disposable remote-b fixture. The same local Bash hook and plain `ssh remote-b`
 must still give the fixture user an interactive login with no Port on PATH.
@@ -84,6 +84,44 @@ treating the experimental hook as production-ready.
   and checks its output. The runner pulls/saves this small image and loads it
   into the inner daemon because the fixture network has no registry egress.
   The smoke container itself runs with `--network=none` and `--pull=never`.
+
+## Core ingress library gate
+
+`ingress.py` drives the compiled `ingress-fixture.ts`, importing the actual
+`createRouteResolver`, `IngressAddresses`, and `startRouteIngress` libraries.
+The fixture starts with remote-a only and accepts bounded JSON owner updates.
+It allocates a separate address per hostname and reports authoritative mappings;
+the client writes `/tmp/ingress-hosts` and HUPs its known dnsmasq PID. Normal
+HTTP and libpq connections use real DNS, never a `hostaddr` override.
+
+Coverage:
+
+- Unique `feature.port:3000` HTTP and `feature.port:5432` PostgreSQL identity;
+  named `ui.feature.port:80` HTTP.
+- Remote-a + remote-b yields HTTP 409 with both candidates and rejects new raw
+  TCP connections. Retained pre-conflict IP connections are also rejected
+  (HTTP retains the original Host), proving stale DNS cannot bypass ownership.
+- Explicit `feature.remote-{a,b}.ssh:5432/:3000` and
+  `ui.feature.remote-{a,b}.ssh:80` reach the correct distinct backends.
+- Local + remote ownership conflicts even though local advertises only UI;
+  the DB request still conflicts before service filtering. Explicit
+  `feature.local.port:3000` and `ui.feature.local.port:80` reach the actual local UI.
+- Removed explicit owners return HTTP 503/reject TCP, never another owner.
+  Backend POST counters are calibrated by a successful POST, then checked across
+  all owners to prove rejected HTTP POSTs cause no backend side effects.
+
+**Test wiring, not product orchestration:** the catalog and address book are
+process-local. Python explicitly starts strict-config `ssh -N -L` tunnels on
+private `127.78.2.2`/`.3`, preserving ports 5432 and 3000 upstream. Remote Bun
+identity servers bind `127.0.0.1:3000`; the actual local backend binds
+`127.78.2.1:3000`. These private endpoints are not user-facing alternative ports.
+This does not prove automatic discovery, automatic forwarding, persistent address
+allocation, `port up`, or whole-product routing. Live TCP connection pinning
+remains a unit-test requirement, not a claim of this Python gate.
+
+The gate runs before remote-b's CLI is renamed; see `ingress.log`. The existing
+run command above runs all gates, with a 180-second outer ingress deadline and
+bounded subprocess, protocol, HTTP, SQL, DNS, and cleanup operations.
 
 ## Isolation and cleanup
 

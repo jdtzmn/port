@@ -10,3 +10,6 @@
 !sshd_config
 !port-cli.sh
 !bootstrap.py
+!ingress.py
+!identity.ts
+!ingress-fixture.ts

@@ -50,6 +50,7 @@ image_dir=$(mktemp -d "${TMPDIR:-/tmp}/remote-e2e-image.XXXXXXXX")
 # Build the actual checkout into a fresh, artifact-only directory; no source or secrets enter fixtures.
 mkdir -p "$image_dir/app"
 step 120 port-build bun build "$root/src/index.ts" --outdir "$image_dir/app/dist" --target bun --splitting
+step 120 ingress-build bun build "$here/ingress-fixture.ts" --outdir "$image_dir/app/ingress" --target bun
 cp "$root/package.json" "$image_dir/app/package.json"
 chmod -R a+rX "$image_dir/app"
 step 60 smoke-save docker image save --output "$image_dir/smoke.tar" busybox:1.37.0
@@ -63,7 +64,8 @@ step 60 smoke-load "${compose[@]}" exec -T docker docker image load --input /smo
 step 10 smoke-remove "${compose[@]}" exec -T docker rm -f /smoke.tar
 step 150 proof "${compose[@]}" exec -T client python3 /fixture/harness.py
 step 90 multiplexing "${compose[@]}" exec -T client python3 /fixture/mux.py
+step 180 ingress "${compose[@]}" exec -T client python3 /fixture/ingress.py
 # Remove only the disposable fixture's CLI, after gates that need both remotes.
 step 10 missing-port "${compose[@]}" exec -T remote-b mv /usr/local/bin/port /usr/local/bin/port-unavailable
 step 90 bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py
-printf 'remote-e2e: networking and product handshake gates passed (service routing not implemented)\n'
+printf 'remote-e2e: networking, core ingress and product handshake gates passed (automatic discovery/transport not claimed)\n'

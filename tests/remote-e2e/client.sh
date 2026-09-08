@@ -18,7 +18,10 @@ done
 chmod 600 /root/.ssh/known_hosts
 # Only this disposable client changes DNS. Docker's embedded resolver still
 # resolves fixture service names; .ssh answers point to separate loopback IPs.
+touch /tmp/ingress-hosts
+chmod 644 /tmp/ingress-hosts
 printf '%s\n' \
+  'addn-hosts=/tmp/ingress-hosts' 'pid-file=/tmp/dnsmasq.pid' 'local=/port/' \
   'no-resolv' 'local=/ssh/' 'server=127.0.0.11' 'listen-address=127.0.0.1' 'bind-interfaces' \
   'address=/db-a.ssh/127.77.0.2' 'address=/db-b.ssh/127.77.0.3' \
   > /tmp/dnsmasq.conf

@@ -11,5 +11,5 @@ COPY --from=bun-runtime /usr/local/bin/bun /usr/local/bin/bun
 COPY port-cli.sh /usr/local/bin/port
 RUN chmod 755 /usr/local/bin/port && mkdir -p /opt/port
 COPY sshd_config /etc/ssh/sshd_config
-COPY remote.sh /fixture/remote.sh
+COPY remote.sh identity.ts /fixture/
 ENTRYPOINT ["bash", "/fixture/remote.sh"]
