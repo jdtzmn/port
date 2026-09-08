@@ -20,7 +20,7 @@ const DEADLINE_MS = 10_000
 const PROJECT_LABEL = 'com.docker.compose.project'
 // Deliberately project at the daemon, never retrieve a full inspect document.
 const TEMPLATE =
-  '{"id":{{json .Id}},"stateRunning":{{json .State.Running}},"labels":{{json .Config.Labels}},"networks":{' +
+  '{"id":{{json .Id}},"stateRunning":{{json .State.Running}},"labels":{{json .Config.Labels}},"networks":{ ' +
   '{{range $i, $n := .NetworkSettings.Networks}}{{json $i}}:{"IPAddress":{{json $n.IPAddress}}},{{end}}' +
   '"": {"IPAddress":""}}}'
 const fail = (): never => {
@@ -150,6 +150,7 @@ function parseContainer(line: string, ids: Set<string>, contexts: Map<string, Wo
 
 /** Read-only collection; any failed Docker observation invalidates the entire result. */
 export async function collectRemoteSnapshot(instanceId: string, revision: number) {
+  let stage = 'registry'
   try {
     const registry = await readRegistryStrict()
     const hosts = registry.hostServices ?? []
@@ -168,6 +169,7 @@ export async function collectRemoteSnapshot(instanceId: string, revision: number
       contexts.set(key, { repo, branch, domain: '' })
     }
     const repos = [...new Set([...registry.projects, ...hosts].map(item => item.repo))]
+    stage = 'project-config'
     const domains = new Map<string, string>()
     // Four reads at a time; never fan out over the entire registry.
     for (let i = 0; i < repos.length; i += 4) {
@@ -196,6 +198,7 @@ export async function collectRemoteSnapshot(instanceId: string, revision: number
     const deadline = Date.now() + DEADLINE_MS
     let bytes = 0
     const query = async (args: string[]): Promise<string> => {
+      stage = args[0] === 'ps' ? 'docker-list' : 'docker-inspect'
       const remaining = deadline - Date.now()
       if (remaining <= 0) return fail()
       const output = await new Promise<string>((resolve, reject) => {
@@ -262,8 +265,9 @@ export async function collectRemoteSnapshot(instanceId: string, revision: number
         if (pending.size) return fail()
       }
     }
+    stage = 'snapshot-validation'
     return buildRemoteSnapshot({ instanceId, revision, docker, hosts: safeHosts })
   } catch {
-    return fail()
+    throw new Error('Unable to collect remote snapshot', { cause: stage })
   }
 }

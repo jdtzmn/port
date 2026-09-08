@@ -2,6 +2,7 @@ FROM docker:27.5.1-cli AS certificates
 FROM oven/bun:1.3.3 AS bun-runtime
 FROM postgres:17.4-bookworm
 COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=certificates /usr/local/bin/docker /usr/local/bin/docker
 RUN sed -i 's|http://|https://|g' /etc/apt/sources.list.d/* \
     && apt-get -o APT::Update::Error-Mode=any update && apt-get install -y --no-install-recommends openssh-server \
     && rm -rf /var/lib/apt/lists/* /etc/ssh/ssh_host_* \

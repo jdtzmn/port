@@ -50,6 +50,7 @@ image_dir=$(mktemp -d "${TMPDIR:-/tmp}/remote-e2e-image.XXXXXXXX")
 # Build the actual checkout into a fresh, artifact-only directory; no source or secrets enter fixtures.
 mkdir -p "$image_dir/app"
 step 120 port-build bun build "$root/src/index.ts" --outdir "$image_dir/app/dist" --target bun --splitting
+step 120 snapshot-fixture-build bun build "$here/snapshot-workload.ts" --outdir "$image_dir/app/fixtures" --target bun
 cp "$root/package.json" "$image_dir/app/package.json"
 chmod -R a+rX "$image_dir/app"
 step 60 smoke-save docker image save --output "$image_dir/smoke.tar" busybox:1.37.0
@@ -66,5 +67,5 @@ step 90 multiplexing "${compose[@]}" exec -T client python3 /fixture/mux.py
 step 90 baseline "${compose[@]}" exec -T client python3 /fixture/baseline.py
 # Remove only the disposable fixture's CLI, after gates that need both remotes.
 step 10 missing-port "${compose[@]}" exec -T remote-b mv /usr/local/bin/port /usr/local/bin/port-unavailable
-step 90 bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py
-printf 'remote-e2e: transport feasibility, Traefik baseline and product handshake gates passed (automatic discovery/transport not claimed)\n'
+step 150 bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py
+printf 'remote-e2e: transport feasibility, Traefik baseline and product handshake/live-discovery gates passed (fixture seed only; product routing not claimed)\n'

@@ -282,6 +282,9 @@ describe('collectRemoteSnapshot', () => {
     const args = calls[1]?.[1] as string[]
     expect(args[4]).toContain('.Config.Labels')
     expect(args[4]).toContain('$n.IPAddress')
+    // A JSON opening brace adjacent to a Go action is parsed as an invalid action.
+    expect(args[4]).not.toContain('{{{')
+    expect(args[4]).toContain('"networks":{ {{range')
     expect(JSON.stringify(calls)).not.toMatch(/\.Env|compose.*config/)
     for (const call of calls) {
       expect(call[0]).toBe('docker')

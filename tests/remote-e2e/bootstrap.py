@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Actual opt-in Port shell bootstrap over plain SSH; handshake only, no routing."""
+"""Actual plain-SSH bootstrap and live discovery with an explicit fixture seed; no routing."""
 import errno
 import json
+import ipaddress
+import re
 import os
 from pathlib import Path
 import pty
@@ -107,6 +109,97 @@ def observer_finished(directory):
     return True
 
 
+def live_discovery(shell, directory):
+    """Only read the cache: the product's owned companion must do all observation."""
+    def wait_cache(status, since, predicate):
+        found = []
+
+        def matches():
+            try:
+                envelope = json.loads((directory / 'snapshot.json').read_text())
+            except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError):
+                return False
+            require(set(envelope) == {'version', 'kind', 'status', 'observedAt', 'snapshot'},
+                    'unexpected cache fields')
+            require(envelope['version'] == 1 and envelope['kind'] == 'port-session-snapshot',
+                    'invalid cache envelope')
+            observed = envelope['observedAt']
+            require(isinstance(observed, (int, float)), 'invalid observation time')
+            if envelope['status'] != status or not since <= observed <= time.time() * 1000 + 1000:
+                return False
+            snapshot = envelope['snapshot']
+            if snapshot is None:
+                return False
+            require(set(snapshot) == {'version', 'kind', 'instanceId', 'revision', 'worktrees'},
+                    'unexpected snapshot fields')
+            require(snapshot['version'] == 1 and snapshot['kind'] == 'port-service-snapshot',
+                    'invalid snapshot')
+            require(isinstance(snapshot['revision'], int) and snapshot['revision'] >= 0,
+                    'invalid revision')
+            require(isinstance(snapshot['instanceId'], str)
+                    and re.fullmatch('[a-zA-Z0-9_-]{1,128}', snapshot['instanceId']) is not None,
+                    'invalid instance identity')
+            if predicate(snapshot):
+                found.append(envelope)
+                return True
+            return False
+
+        shell.wait_for(matches)
+        return found[0]
+
+    def mutate(mode):
+        since = time.time() * 1000
+        shell.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js ' + mode)
+        return since
+
+    initial = wait_cache('ready', time.time() * 1000,
+                         lambda snapshot: snapshot['worktrees'] == [])['snapshot']
+    since = mutate('start')
+    addresses = re.findall(rb'^SNAPSHOT_FIXTURE_IP=([0-9.]+)$',
+                           shell.output.replace(b'\r', b''), re.MULTILINE)
+    require(len(addresses) == 1, 'missing unique fixture Docker address')
+    address = addresses[0].decode()
+    ip = ipaddress.IPv4Address(address)
+    require(ip.is_private and not ip.is_loopback and not ip.is_link_local,
+            'fixture target is not a private Docker address')
+
+    def endpoint(snapshot):
+        require(len(snapshot['worktrees']) == 1, 'expected one discovered worktree')
+        tree = snapshot['worktrees'][0]
+        require(set(tree) == {'worktreeId', 'namespace', 'endpoints'}, 'unexpected worktree fields')
+        require(re.fullmatch('[a-f0-9]{64}', tree['worktreeId']) is not None,
+                'invalid worktree identity')
+        require(tree['namespace'] == 'feature.port' and len(tree['endpoints']) == 1,
+                'expected one feature.port endpoint')
+        item = tree['endpoints'][0]
+        require(set(item) == {'id', 'name', 'aliasTransports', 'logicalPort', 'transports', 'target'},
+                'unexpected endpoint fields (paths/environment must not escape)')
+        require(re.fullmatch('[a-f0-9]{64}', item['id']) is not None, 'invalid endpoint identity')
+        require(item == dict(id=item['id'], name='ui', aliasTransports=['http'], logicalPort=3000,
+                             transports=['http', 'tls-sni'], target={'address': address, 'port': 8080}),
+                'discovered endpoint differs from generated labels/private Docker target')
+        return item
+
+    def later(snapshot, previous):
+        require(snapshot['instanceId'] == initial['instanceId'], 'instance identity changed')
+        return snapshot['revision'] > previous['revision']
+
+    discovered = wait_cache('ready', since, lambda s: later(s, initial) and bool(s['worktrees']))['snapshot']
+    original_endpoint = endpoint(discovered)
+    since = mutate('corrupt')
+    unavailable = wait_cache('unavailable', since, lambda s: bool(s['worktrees']))['snapshot']
+    require(unavailable['instanceId'] == initial['instanceId']
+            and unavailable['revision'] >= discovered['revision'], 'last-known identity/revision lost')
+    require(endpoint(unavailable) == original_endpoint, 'unavailable cache lost last-known endpoint')
+    since = mutate('restore')
+    recovered = wait_cache('ready', since, lambda s: later(s, unavailable) and bool(s['worktrees']))['snapshot']
+    require(endpoint(recovered) == original_endpoint, 'recovery changed endpoint identity')
+    since = mutate('stop')
+    wait_cache('ready', since, lambda s: later(s, recovered) and s['worktrees'] == [])
+    print('PASS automatic live discovery: empty -> seeded -> unavailable/retained -> ready -> stopped/empty',
+          flush=True)
+
+
 def main():
     # Install the fixture's normal SSH config, not command-specific test options.
     shutil.copyfile('/fixture/ssh_config', '/root/.ssh/config')
@@ -131,9 +224,19 @@ def main():
         owned = set(Path('/tmp').glob('port-ssh-*')) - before
         require(len(owned) == 1, 'expected exactly one owned session')
         print('PASS plain ssh + actual Port shell hook + remote CLI handshake', flush=True)
+        directory = private_session(before)
+        try:
+            live_discovery(shell, directory)
+        except Exception:
+            cache = directory / 'snapshot.json'
+            if cache.exists():
+                print('FAILED_CACHE=' + cache.read_text()[:8192], flush=True)
+            raise
         shell.send('exit 7\n')
         shell.wait_for(lambda: all(not path.exists() for path in owned))
         shell.marker('test "$?" -eq 7')
+        shell.wait_for(lambda: observer_finished(directory))
+        require(session_directories() == before, 'live-discovery login leaked local session state')
         print('PASS product shell preserves status 7 and removes session state', flush=True)
 
         shell.send('ssh -J remote-b remote-a\n')

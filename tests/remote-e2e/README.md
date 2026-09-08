@@ -1,10 +1,11 @@
-# Remote services: transport feasibility, Traefik baseline, and SSH bootstrap gates
+# Remote services: transport feasibility, Traefik baseline, SSH bootstrap and live discovery
 
 The networking proof uses explicit test-only `ssh -L` arguments. Separately,
 `bootstrap.py` exercises the actual built Port CLI, opt-in Bash shell hook, and
 a plain `ssh remote-a` login with an automatic remote handshake, missing-Port
-`ssh remote-b` login, and ordinary noninteractive SSH passthrough. **Automatic
-service discovery, transport coordination, and `port up` routing are not claimed.**
+`ssh remote-b` login, and ordinary noninteractive SSH passthrough. It also checks
+**automatic live discovery from an explicit disposable fixture seed**, not full
+`port up` acceptance. **Product transport coordination and routing remain unwired.**
 
 ## Run
 
@@ -34,6 +35,36 @@ The preflight uses `ssh -G`, which can evaluate `Match exec` a second time; this
 is not universally side-effect-free. Authentication stays with foreground SSH;
 the companion cannot start fallback transport. Missing remote Port disables the
 handshake without breaking login. No remote install or special output occurs.
+
+### Live-discovery collector gate (explicit fixture seed)
+
+Within the first foreground plain `ssh remote-a` session, the client waits for a
+fresh `ready` empty snapshot cache, then types the fixed `snapshot-workload.js`
+helper commands into the actual interactive shell. It never invokes observer or
+snapshot commands to force observation: the product companion must discover the
+changes automatically over its owned multiplexed connection.
+
+The Bun-built helper uses actual `generateOverrideContent` and YAML parsing to
+label ONE BusyBox 1.37.0 HTTP container (published/logical 3000, target 8080), with
+matching Compose project/service labels and a disposable Port registry entry.
+It uses only the existing private shared `docker` DinD fixture, without publishing
+ports or mounting a host socket. This proves collector behavior, **not separate
+VM-local Docker daemons or product `port up` routing**. SSH exec channels use the
+fixture CLI wrapper's default `DOCKER_HOST=tcp://docker:2375`.
+
+The client retries atomic-cache reads and decoding races within bounded waits,
+requiring fresh `observedAt` and explicit status, not merely file existence. It
+checks `feature.port`, the inspected private Docker IP:8080, logical port 3000,
+HTTP + TLS-SNI transports, and the HTTP-only `ui` alias. Strict field checks reject
+paths/environment metadata. Corrupting only the disposable remote registry must
+produce `unavailable` with the last-known endpoint; restoring its private fixture
+backup must produce a later `ready` revision. Stopping only the known fixture
+container must produce a healthy empty snapshot. Instance identity stays stable;
+successful revisions increase within this one foreground session (no assertion
+across new SSH sessions). Foreground exit removes the entire local session tree
+and observer. The helper supports only `start`, `corrupt`, `restore`, and `stop`,
+with fixed paths under `/home/fixture/.port`; no user registry is imported.
+The bootstrap step has a 150-second outer deadline. See `bootstrap.log`.
 
 The product test checks an actual private handshake file, exit status 7, and
 session cleanup on remote-a. After transport feasibility, multiplexing, and the Traefik baseline pass, `run.sh`
@@ -123,9 +154,9 @@ The separate phase-0 explicit raw `ssh -L` proof above is **transport feasibilit
 only**. Its distinct loopback IPs do not prove SNI or shipped plaintext routing.
 Separate loopback-IP allocation, a privileged broker, and protocol-independent raw
 plaintext TCP are deferred to [#149](https://github.com/jdtzmn/port/issues/149).
-They are not requirements of this feature. Automatic remote discovery, transport
-coordination, and product `port up` routing remain unfinished and are not claimed
-by this baseline gate.
+They are not requirements of this feature. Automatic discovery is checked separately
+by the fixture-seeded bootstrap gate above; transport coordination and product
+`port up` routing remain unfinished and are not claimed by this baseline gate.
 
 The `baseline` step runs before remote-b's CLI is renamed, with a 90-second outer
 deadline and bounded DNS, HTTP, and libpq operations. See `baseline.log`.
