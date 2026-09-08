@@ -62,20 +62,204 @@ function identityKey(identity: SshConnectionIdentity): string {
   return JSON.stringify([identity.hostname, identity.port, identity.user, identity.contextHash])
 }
 
-/** In-memory metadata only. Unavailable claim IDs must never be used as backend identities. */
-export function createRemoteCoordinatorState(
+export interface RemoteCoordinatorCheckpoint {
+  version: 1
+  // Session insertion order determines the successor on disconnect; retain it.
+  sessions: { sessionId: string; frame: Omit<Frame, 'payload' | 'ready'> | null }[]
+  owners: {
+    ownerId: string
+    selected: string | null
+    watermark: number
+    selectionFloor: number
+    claims: { tree: Tree; observedAt: number }[]
+  }[]
+}
+type Options = { freshnessMs?: number; maxSessions?: number }
+type Restored = { sessions: Map<string, Frame | null>; owners: Map<string, OwnerState> }
+
+function exact(value: unknown, keys: string): value is Record<string, unknown> {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value).sort().join(',') === keys
+  )
+}
+function checkId(id: unknown): asserts id is string {
+  if (typeof id !== 'string' || !id.length || Buffer.byteLength(id) > 256) fail()
+}
+// Reject values JSON would silently omit/coerce before using the snapshot parser.
+function jsonDto(value: unknown, ancestors = new Set<object>()): void {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return
+  if (typeof value === 'number' && Number.isFinite(value)) return
+  if (typeof value !== 'object' || value === null || ancestors.has(value)) fail()
+  const object = value as object
+  if (!Array.isArray(object) && Object.getPrototypeOf(object) !== Object.prototype) fail()
+  if (
+    Reflect.ownKeys(object).length !==
+    Object.keys(object).length + (Array.isArray(object) ? 1 : 0)
+  )
+    fail()
+  ancestors.add(object)
+  if (
+    Array.isArray(object) &&
+    (Object.keys(object).length !== object.length ||
+      Object.keys(object).some((key, index) => key !== String(index)))
+  )
+    fail()
+  for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(object))) {
+    if (Array.isArray(object) && key === 'length') continue
+    if (!('value' in descriptor)) fail()
+    jsonDto(descriptor.value, ancestors)
+  }
+  ancestors.delete(object)
+}
+
+/** Validate into private maps in full; never replay observations during restoration. */
+export function restoreRemoteCoordinatorState(
   registry: Registry,
-  { freshnessMs = 6000, maxSessions = 4096 }: { freshnessMs?: number; maxSessions?: number } = {}
+  checkpoint: unknown,
+  options: Options = {}
+) {
+  try {
+    jsonDto(checkpoint)
+    if (
+      !exact(checkpoint, 'owners,sessions,version') ||
+      checkpoint.version !== 1 ||
+      !Array.isArray(checkpoint.sessions) ||
+      checkpoint.sessions.length > (options.maxSessions ?? 4096) ||
+      !Array.isArray(checkpoint.owners) ||
+      checkpoint.owners.length > 4096
+    )
+      return fail()
+    const records = new Map(registry.serialize().records.map(record => [record.ownerId, record]))
+    const sessions = new Map<string, Frame | null>()
+    const owners = new Map<string, OwnerState>()
+    for (const item of checkpoint.sessions) {
+      if (!exact(item, 'frame,sessionId')) return fail()
+      checkId(item.sessionId)
+      if (sessions.has(item.sessionId)) fail()
+      if (item.frame === null) {
+        sessions.set(item.sessionId, null)
+        continue
+      }
+      const frame = item.frame
+      if (
+        !exact(frame, 'identity,observedAt,ownerId,snapshot') ||
+        typeof frame.ownerId !== 'string' ||
+        typeof frame.observedAt !== 'number' ||
+        !time(frame.observedAt)
+      )
+        return fail()
+      const record = records.get(frame.ownerId)
+      const snapshot = copySnapshot(frame.snapshot)
+      if (
+        !record ||
+        !isSshConnectionIdentity(record.connectionIdentity) ||
+        frame.identity !== identityKey(record.connectionIdentity) ||
+        snapshot.instanceId !== record.instanceId ||
+        frame.ownerId !==
+          digest([
+            record.connectionIdentity.hostname,
+            record.connectionIdentity.port,
+            record.connectionIdentity.user,
+            record.connectionIdentity.contextHash,
+            snapshot.instanceId,
+          ])
+      )
+        return fail()
+      sessions.set(item.sessionId, {
+        identity: identityKey(record.connectionIdentity),
+        snapshot,
+        payload: canonical(snapshot),
+        observedAt: frame.observedAt,
+        ownerId: frame.ownerId,
+        ready: false,
+      })
+    }
+    let trees = 0
+    let endpoints = 0
+    for (const item of checkpoint.owners) {
+      if (
+        !exact(item, 'claims,ownerId,selected,selectionFloor,watermark') ||
+        typeof item.ownerId !== 'string' ||
+        !records.has(item.ownerId) ||
+        owners.has(item.ownerId) ||
+        typeof item.watermark !== 'number' ||
+        !time(item.watermark) ||
+        typeof item.selectionFloor !== 'number' ||
+        !time(item.selectionFloor) ||
+        item.selectionFloor > item.watermark ||
+        !Array.isArray(item.claims)
+      )
+        return fail()
+      const watermark = item.watermark
+      const live = [...sessions.entries()].filter(([, frame]) => frame?.ownerId === item.ownerId)
+      if (live.length) {
+        if (
+          typeof item.selected !== 'string' ||
+          sessions.get(item.selected)?.ownerId !== item.ownerId ||
+          live.some(([, frame]) => frame!.observedAt > watermark)
+        )
+          fail()
+      } else if (
+        item.selected !== null ||
+        item.watermark !== 0 ||
+        item.selectionFloor !== 0 ||
+        item.claims.length
+      )
+        fail()
+      const claims: OwnerState['claims'] = new Map()
+      for (const claim of item.claims) {
+        if (
+          ++trees > 4096 ||
+          !exact(claim, 'observedAt,tree') ||
+          typeof claim.observedAt !== 'number' ||
+          !time(claim.observedAt) ||
+          claim.observedAt > item.watermark
+        )
+          return fail()
+        // Different historical namespaces may share the same original worktree ID.
+        const tree = copySnapshot({
+          version: 1,
+          kind: 'port-service-snapshot',
+          instanceId: records.get(item.ownerId)!.instanceId,
+          revision: 0,
+          worktrees: [claim.tree],
+        }).worktrees[0]!
+        endpoints += tree.endpoints.length
+        if (endpoints > 4096 || claims.has(claimKey(tree))) fail()
+        claims.set(claimKey(tree), { tree, observedAt: claim.observedAt })
+      }
+      owners.set(item.ownerId, {
+        selected: item.selected === null ? undefined : (item.selected as string),
+        watermark: item.watermark,
+        selectionFloor: item.selectionFloor,
+        claims,
+      })
+    }
+    for (const frame of sessions.values()) if (frame && !owners.has(frame.ownerId)) fail()
+    return coordinator(registry, options, { sessions, owners })
+  } catch {
+    return fail()
+  }
+}
+
+/** In-memory metadata only. Unavailable claim IDs must never be used as backend identities. */
+export function createRemoteCoordinatorState(registry: Registry, options: Options = {}) {
+  return coordinator(registry, options)
+}
+function coordinator(
+  registry: Registry,
+  { freshnessMs = 6000, maxSessions = 4096 }: Options,
+  restored?: Restored
 ) {
   if (!time(freshnessMs) || !Number.isInteger(maxSessions) || maxSessions < 1 || maxSessions > 4096)
     fail()
   // Tombstones count against the lifetime bound; session IDs can never be reused.
-  const sessions = new Map<string, Frame | null>()
-  const owners = new Map<string, OwnerState>()
+  const sessions = restored?.sessions ?? new Map<string, Frame | null>()
+  const owners = restored?.owners ?? new Map<string, OwnerState>()
   let poisoned = false
-  function checkId(id: string) {
-    if (typeof id !== 'string' || !id.length || Buffer.byteLength(id) > 256) fail()
-  }
   function room(id: string) {
     if (!sessions.has(id) && sessions.size >= maxSessions) fail()
   }
@@ -122,6 +306,43 @@ export function createRemoteCoordinatorState(
     }
   }
   return {
+    checkpoint(): RemoteCoordinatorCheckpoint {
+      if (poisoned) fail()
+      return {
+        version: 1,
+        sessions: [...sessions].map(([sessionId, frame]) => ({
+          sessionId,
+          frame: frame
+            ? {
+                identity: frame.identity,
+                snapshot: copySnapshot(frame.snapshot),
+                observedAt: frame.observedAt,
+                ownerId: frame.ownerId,
+              }
+            : null,
+        })),
+        owners: [...owners]
+          .sort(([a], [b]) => compare(a, b))
+          .map(([ownerId, state]) => ({
+            ownerId,
+            selected: state.selected ?? null,
+            watermark: state.watermark,
+            selectionFloor: state.selectionFloor,
+            claims: [...state.claims]
+              .sort(([a], [b]) => compare(a, b))
+              .map(([, claim]) => ({
+                tree: copySnapshot({
+                  version: 1,
+                  kind: 'port-service-snapshot',
+                  instanceId: 'claim',
+                  revision: 0,
+                  worktrees: [claim.tree],
+                }).worktrees[0]!,
+                observedAt: claim.observedAt,
+              })),
+          })),
+      }
+    },
     /** True only for an adopted newer frame. Replays and retired IDs return false. */
     observe(input: RemoteCoordinatorObservation, now: number): boolean {
       if (poisoned) fail()

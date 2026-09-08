@@ -52,8 +52,12 @@ function ssh(
   })
 }
 
+function validSessionDirectory(directory: unknown): directory is string {
+  return typeof directory === 'string' && /^\/tmp\/port-ssh-[A-Za-z0-9]{6}$/.test(directory)
+}
+
 function ownedDirectory(directory: string): Stats {
-  if (!/^\/tmp\/port-ssh-[A-Za-z0-9]{6}$/.test(directory) || !process.getuid) {
+  if (!validSessionDirectory(directory) || !process.getuid) {
     throw new Error('Invalid session path')
   }
   const stat = lstatSync(directory)
@@ -63,7 +67,7 @@ function ownedDirectory(directory: string): Stats {
   return stat
 }
 
-function unchanged(directory: string, original: Stats): void {
+function unchanged(directory: string, original: RemoteSessionFileIdentity): void {
   const current = ownedDirectory(directory)
   if (current.dev !== original.dev || current.ino !== original.ino) {
     throw new Error('Session directory replaced')
@@ -113,7 +117,7 @@ function publish(directory: string, original: Stats, name: string, value: unknow
   throw new Error('Session output already exists')
 }
 
-function sameInode(a: Stats, b: Stats): boolean {
+function sameInode(a: RemoteSessionFileIdentity, b: RemoteSessionFileIdentity): boolean {
   return a.dev === b.dev && a.ino === b.ino
 }
 
@@ -183,7 +187,11 @@ function pause(milliseconds: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
-function sameSocket(directory: string, original: Stats, pinned: Stats): boolean {
+function sameSocket(
+  directory: string,
+  original: RemoteSessionFileIdentity,
+  pinned: RemoteSessionFileIdentity
+): boolean {
   const current = socket(directory, original)
   return current !== null && sameInode(current, pinned)
 }
@@ -315,9 +323,30 @@ export interface RemoteSessionObservation {
   observedAt?: number
 }
 
+export interface RemoteSessionFileIdentity {
+  dev: number
+  ino: number
+  uid: number
+}
+
+/** Detached JSON data only; directory retains the original lexical spelling. */
+export interface RemoteSessionObservationPin {
+  version: 1
+  directory: string
+  sessionId: string
+  root: RemoteSessionFileIdentity
+  control: RemoteSessionFileIdentity
+  metadata: RemoteSessionFileIdentity
+  handshake: RemoteSessionFileIdentity
+  destination: string
+  connectionIdentity: SshConnectionIdentity
+  disconnected: boolean
+}
+
 export interface RemoteSessionObservationHandle {
   readonly sessionId: string
   readonly read: (now: number) => RemoteSessionObservation
+  readonly checkpoint: () => RemoteSessionObservationPin
 }
 
 /** Bounded private regular-file reads; never follow links or block on special files. */
@@ -386,6 +415,84 @@ function observationEnvelope(
   return { status: item.status, snapshot, observedAt: item.observedAt }
 }
 
+function fileIdentity({ dev, ino, uid }: RemoteSessionFileIdentity): RemoteSessionFileIdentity {
+  return { dev, ino, uid }
+}
+
+function observationSessionId(pin: Omit<RemoteSessionObservationPin, 'sessionId'>): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        pin.directory,
+        ...[pin.root, pin.metadata, pin.control, pin.handshake].map(stat => [stat.dev, stat.ino]),
+      ])
+    )
+    .digest('hex')
+}
+
+function exactData(value: unknown, keys: string[]): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  if (prototype !== Object.prototype && prototype !== null) return false
+  const own = Reflect.ownKeys(value)
+  return (
+    own.length === keys.length &&
+    keys.every(key => {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key)
+      return descriptor?.enumerable === true && Object.hasOwn(descriptor, 'value')
+    })
+  )
+}
+
+/** Reject malformed input before touching the filesystem; never adopt current files. */
+export function restoreRemoteSessionObservation(value: unknown): RemoteSessionObservationHandle {
+  try {
+    if (
+      !exactData(value, [
+        'version',
+        'directory',
+        'sessionId',
+        'root',
+        'control',
+        'metadata',
+        'handshake',
+        'destination',
+        'connectionIdentity',
+        'disconnected',
+      ])
+    )
+      throw new Error()
+    if (
+      value.version !== 1 ||
+      !validSessionDirectory(value.directory) ||
+      typeof value.sessionId !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(value.sessionId) ||
+      typeof value.disconnected !== 'boolean' ||
+      typeof value.destination !== 'string' ||
+      Buffer.byteLength(value.destination) > 8192 ||
+      !classifySshInvocation([value.destination]) ||
+      !exactData(value.connectionIdentity, ['hostname', 'port', 'user', 'contextHash']) ||
+      !isSshConnectionIdentity(value.connectionIdentity)
+    )
+      throw new Error()
+    for (const stat of [value.root, value.control, value.metadata, value.handshake]) {
+      if (
+        !exactData(stat, ['dev', 'ino', 'uid']) ||
+        ![stat.dev, stat.ino, stat.uid].every(
+          n => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0
+        ) ||
+        stat.uid !== process.getuid?.()
+      )
+        throw new Error()
+    }
+    const pin = value as unknown as RemoteSessionObservationPin
+    if (observationSessionId(pin) !== pin.sessionId) throw new Error()
+    return observationHandle(structuredClone(pin))
+  } catch {
+    throw new Error('Invalid remote session observation checkpoint')
+  }
+}
+
 /** Pin once, without SSH or liveness probes. Only proven root/control loss is terminal. */
 export function pinRemoteSessionObservation(
   directory: string
@@ -398,90 +505,105 @@ export function pinRemoteSessionObservation(
     if (!control) return null
     const handshake = readObservationFile(`${directory}/handshake.json`, 8192)
     if (!validHandshake(handshake.value)) return null
-    let disconnected = false
-    const checkPresence = (): void => {
-      for (const [path, original] of [
-        [directory, pinned.original],
-        [`${directory}/s`, control],
-      ] as const) {
-        try {
-          if (!sameInode(lstatSync(path), original)) disconnected = true
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === 'ENOENT') disconnected = true
-          throw error
-        }
-        if (disconnected) throw new Error('Session disconnected')
-        // Check privacy before looking through the directory.
-        if (path === directory) unchanged(directory, pinned.original)
-      }
+    const data = {
+      version: 1 as const,
+      directory,
+      root: fileIdentity(pinned.original),
+      metadata: fileIdentity(pinned.metadata),
+      control: fileIdentity(control),
+      handshake: fileIdentity(handshake.stat),
+      destination: pinned.destination,
+      connectionIdentity: identity,
+      disconnected: false,
     }
-    const validate = (): void => {
-      checkPresence()
-      const current = readSession(directory)
-      const currentIdentity = current.connectionIdentity
-      if (
-        !sameInode(current.original, pinned.original) ||
-        !sameInode(current.metadata, pinned.metadata) ||
-        current.destination !== pinned.destination ||
-        !currentIdentity ||
-        currentIdentity.hostname !== identity.hostname ||
-        currentIdentity.port !== identity.port ||
-        currentIdentity.user !== identity.user ||
-        currentIdentity.contextHash !== identity.contextHash ||
-        !sameSocket(directory, pinned.original, control)
-      )
-        throw new Error('Invalid session observation')
-      const currentHandshake = readObservationFile(`${directory}/handshake.json`, 8192)
-      if (
-        !sameInode(currentHandshake.stat, handshake.stat) ||
-        !validHandshake(currentHandshake.value)
-      )
-        throw new Error('Invalid session handshake')
-      checkPresence()
-    }
-    validate()
-    const sessionId = createHash('sha256')
-      .update(
-        JSON.stringify([
-          directory,
-          ...[pinned.original, pinned.metadata, control, handshake.stat].map(stat => [
-            stat.dev,
-            stat.ino,
-          ]),
-        ])
-      )
-      .digest('hex')
-    return Object.freeze({
-      sessionId,
-      read(now: number): RemoteSessionObservation {
-        const captured = { destination: pinned.destination, connectionIdentity: { ...identity } }
-        if (disconnected) return { ...captured, status: 'disconnected' }
-        try {
-          validate()
-          const { value } = readObservationFile(
-            `${directory}/snapshot.json`,
-            4 * 1024 * 1024 + 1024
-          )
-          const observation = observationEnvelope(value, now)
-          validate()
-          return { ...captured, ...observation }
-        } catch {
-          // A snapshot/metadata failure must not hide concurrent definitive control loss.
-          try {
-            checkPresence()
-          } catch {
-            /* Permission and I/O ambiguity remain unavailable. */
-          }
-          return { ...captured, status: disconnected ? 'disconnected' : 'unavailable' }
-        }
-      },
+    const handle = restoreRemoteSessionObservation({
+      ...data,
+      sessionId: observationSessionId(data),
     })
+    return observationHandle(handle.checkpoint(), true)
   } catch {
     return null
   }
 }
 
-function socket(directory: string, original: Stats): Stats | null {
+function observationHandle(
+  pin: RemoteSessionObservationPin,
+  validateInitial = false
+): RemoteSessionObservationHandle {
+  const { directory, control } = pin
+  const pinned = { original: pin.root, metadata: pin.metadata, destination: pin.destination }
+  const handshake = { stat: pin.handshake }
+  const identity = pin.connectionIdentity
+  let disconnected = pin.disconnected
+  const checkPresence = (): void => {
+    for (const [path, original] of [
+      [directory, pinned.original],
+      [`${directory}/s`, control],
+    ] as const) {
+      try {
+        if (!sameInode(lstatSync(path), original)) disconnected = true
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') disconnected = true
+        throw error
+      }
+      if (disconnected) throw new Error('Session disconnected')
+      // Check privacy before looking through the directory.
+      if (path === directory) unchanged(directory, pinned.original)
+    }
+  }
+  const validate = (): void => {
+    checkPresence()
+    const current = readSession(directory)
+    const currentIdentity = current.connectionIdentity
+    if (
+      !sameInode(current.original, pinned.original) ||
+      !sameInode(current.metadata, pinned.metadata) ||
+      current.destination !== pinned.destination ||
+      !currentIdentity ||
+      currentIdentity.hostname !== identity.hostname ||
+      currentIdentity.port !== identity.port ||
+      currentIdentity.user !== identity.user ||
+      currentIdentity.contextHash !== identity.contextHash ||
+      !sameSocket(directory, pinned.original, control)
+    )
+      throw new Error('Invalid session observation')
+    const currentHandshake = readObservationFile(`${directory}/handshake.json`, 8192)
+    if (
+      !sameInode(currentHandshake.stat, handshake.stat) ||
+      !validHandshake(currentHandshake.value)
+    )
+      throw new Error('Invalid session handshake')
+    checkPresence()
+  }
+  if (validateInitial) validate()
+  return Object.freeze({
+    sessionId: pin.sessionId,
+    checkpoint(): RemoteSessionObservationPin {
+      return structuredClone({ ...pin, disconnected })
+    },
+    read(now: number): RemoteSessionObservation {
+      const captured = { destination: pinned.destination, connectionIdentity: { ...identity } }
+      if (disconnected) return { ...captured, status: 'disconnected' }
+      try {
+        validate()
+        const { value } = readObservationFile(`${directory}/snapshot.json`, 4 * 1024 * 1024 + 1024)
+        const observation = observationEnvelope(value, now)
+        validate()
+        return { ...captured, ...observation }
+      } catch {
+        // A snapshot/metadata failure must not hide concurrent definitive control loss.
+        try {
+          checkPresence()
+        } catch {
+          /* Permission and I/O ambiguity remain unavailable. */
+        }
+        return { ...captured, status: disconnected ? 'disconnected' : 'unavailable' }
+      }
+    },
+  })
+}
+
+function socket(directory: string, original: RemoteSessionFileIdentity): Stats | null {
   unchanged(directory, original)
   try {
     const stat = lstatSync(`${directory}/s`)

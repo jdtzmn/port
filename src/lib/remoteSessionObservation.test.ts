@@ -11,7 +11,11 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { createServer, type Server } from 'node:net'
-import { pinRemoteSessionObservation, remoteHandshake } from './remoteSession.ts'
+import {
+  pinRemoteSessionObservation,
+  remoteHandshake,
+  restoreRemoteSessionObservation,
+} from './remoteSession.ts'
 import { parseSshConnectionIdentity } from './sshConnectionIdentity.ts'
 
 const identity = parseSshConnectionIdentity('hostname example.test\nuser tester\nport 22\n')!
@@ -64,6 +68,116 @@ afterEach(async () => {
 })
 
 describe('pinned remote observations', () => {
+  it('roundtrips detached original pins without refreshing stale or repeated cache timestamps', () => {
+    const handle = pin()
+    const saved = JSON.parse(JSON.stringify(handle.checkpoint()))
+    expect(saved.directory).toBe(directory)
+    expect(Object.keys(saved.root).sort()).toEqual(['dev', 'ino', 'uid'])
+    const restored = restoreRemoteSessionObservation(saved)
+    expect(restored.sessionId).toBe(handle.sessionId)
+    expect(restored.checkpoint()).toEqual(handle.checkpoint())
+    expect(restored.read(999999)).toEqual(handle.read(999999))
+    expect(restored.read(999999).observedAt).toBe(10)
+    saved.root.ino++
+    saved.connectionIdentity.hostname = 'changed'
+    const output = restored.checkpoint()
+    output.control.ino++
+    output.connectionIdentity.user = 'changed'
+    expect(restored.checkpoint()).toEqual(handle.checkpoint())
+    expect(restored.read(999999).status).toBe('ready')
+  })
+  it.each(['root', 'control'])(
+    'restores original %s loss/replacement and latches it',
+    async kind => {
+      const saved = pin().checkpoint()
+      const path = kind === 'root' ? directory : `${directory}/s`
+      const moved = kind === 'root' ? `${directory}-old` : `${directory}/old-s`
+      renameSync(path, moved)
+      const missing = restoreRemoteSessionObservation(saved)
+      expect(missing.read(20).status).toBe('disconnected')
+      if (kind === 'root') {
+        mkdirSync(directory, { mode: 0o700 })
+        put('metadata.json', metadata)
+        put('handshake.json', remoteHandshake())
+        put('snapshot.json', envelope)
+      }
+      await listen()
+      const replaced = restoreRemoteSessionObservation(saved)
+      expect(replaced.checkpoint()).toEqual(saved)
+      expect(replaced.read(20).status).toBe('disconnected')
+      expect(missing.read(20).status).toBe('disconnected')
+      expect(restoreRemoteSessionObservation(missing.checkpoint()).read(20).status).toBe(
+        'disconnected'
+      )
+    }
+  )
+  it.each(['metadata.json', 'handshake.json'])(
+    'retains original %s through unsafe restore',
+    name => {
+      const saved = pin().checkpoint()
+      chmodSync(`${directory}/${name}`, 0o000)
+      const unreadable = restoreRemoteSessionObservation(saved)
+      expect(unreadable.read(20).status).toBe('unavailable')
+      expect(unreadable.checkpoint()).toEqual(saved)
+      chmodSync(`${directory}/${name}`, 0o600)
+      expect(unreadable.read(20).status).toBe('ready')
+      put('next', name === 'metadata.json' ? metadata : remoteHandshake())
+      renameSync(`${directory}/next`, `${directory}/${name}`)
+      expect(pin().sessionId).not.toBe(saved.sessionId)
+      const replaced = restoreRemoteSessionObservation(saved)
+      expect(replaced.read(20).status).toBe('unavailable')
+      expect(replaced.checkpoint()).toEqual(saved)
+      unlinkSync(`${directory}/${name}`)
+      expect(restoreRemoteSessionObservation(saved).read(20).status).toBe('unavailable')
+    }
+  )
+  it('restores permission ambiguity and malformed cache without disconnecting', () => {
+    const saved = pin().checkpoint()
+    chmodSync(directory, 0o755)
+    const restored = restoreRemoteSessionObservation(saved)
+    expect(restored.read(20).status).toBe('unavailable')
+    chmodSync(directory, 0o700)
+    put('snapshot.json', {})
+    expect(restored.read(20).status).toBe('unavailable')
+    put('snapshot.json', envelope)
+    expect(restored.read(999999).observedAt).toBe(10)
+    expect(restored.checkpoint()).toEqual(saved)
+  })
+  it('rejects malformed and oversized checkpoints with a sanitized error', () => {
+    const saved = pin().checkpoint()
+    const invalid = [
+      null,
+      {},
+      { ...saved, extra: true },
+      { ...saved, version: 2 },
+      { ...saved, directory: `/private${directory}` },
+      { ...saved, sessionId: '0'.repeat(64) },
+      { ...saved, destination: 'x'.repeat(8193) },
+      { ...saved, connectionIdentity: { ...identity, hostname: 'x'.repeat(1025) } },
+      { ...saved, root: { ...saved.root, extra: 1 } },
+      { ...saved, disconnected: 'false' },
+      ...[-1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, '1'].flatMap(ino =>
+        ['root', 'control', 'metadata', 'handshake'].map(key => ({
+          ...saved,
+          [key]: { ...saved.root, ino },
+        }))
+      ),
+      { ...saved, root: { ...saved.root, uid: saved.root.uid + 1 } },
+      { ...saved, root: { ...saved.root, dev: -1 } },
+      {
+        ...saved,
+        get destination() {
+          throw new Error('secret')
+        },
+      },
+    ]
+    for (const value of invalid) {
+      expect(() => restoreRemoteSessionObservation(value)).toThrow(
+        'Invalid remote session observation checkpoint'
+      )
+    }
+    expect(pin().checkpoint()).toEqual(saved)
+  })
   it('reads ready, replay and atomic updates without refreshing timestamps', () => {
     const handle = pin()
     expect(pin().sessionId).toBe(handle.sessionId)

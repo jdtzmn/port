@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { createRemoteCoordinatorState } from './remoteCoordinatorState.ts'
+import {
+  createRemoteCoordinatorState,
+  restoreRemoteCoordinatorState,
+  type RemoteCoordinatorCheckpoint,
+} from './remoteCoordinatorState.ts'
 import { createRemoteOwnerRegistry } from './remoteOwnerRegistry.ts'
 import { compileRemoteRoutePlan } from './remoteRoutePlan.ts'
 import type { RemoteSnapshot } from './remoteSnapshot.ts'
@@ -41,6 +45,242 @@ function setup(options = {}) {
     )
   return { registry, state, observe, desired: (now = 0) => state.desired(now)[0]! }
 }
+
+describe('remote coordinator checkpoints', () => {
+  const adopt = (
+    state: ReturnType<typeof createRemoteCoordinatorState>,
+    sessionId: string,
+    revision: number,
+    at: number,
+    namespace = 'main.port'
+  ) =>
+    state.observe(
+      {
+        sessionId,
+        connectionIdentity: identity,
+        destination: 'host',
+        snapshot: snapshot(revision, namespace),
+        observedAt: at,
+      },
+      at
+    )
+
+  it('retains original historical divergent claims through multiple restarts', () => {
+    const { state, registry, observe } = setup()
+    observe('z', 100, 1)
+    observe('a', 0, 2, snapshot(0, 'other.port'))
+    observe('z', 101, 3, snapshot(101, 'third.port'))
+    observe('a', 1, 4, snapshot(1, 'fourth.port'))
+    const saved = state.checkpoint()
+    expect(saved.owners[0]!.claims.map(claim => claim.tree.namespace)).toEqual([
+      'fourth.port',
+      'main.port',
+      'other.port',
+      'third.port',
+    ])
+    expect(new Set(saved.owners[0]!.claims.map(claim => claim.tree.worktreeId)).size).toBe(1)
+    const restored = restoreRemoteCoordinatorState(registry, saved)
+    expect(restored.checkpoint()).toEqual(saved)
+    expect(restored.desired(4)).toEqual(state.desired(4))
+    expect(compileRemoteRoutePlan(restored.desired(4))).toEqual(
+      compileRemoteRoutePlan(state.desired(4))
+    )
+    expect(restoreRemoteCoordinatorState(registry, restored.checkpoint()).checkpoint()).toEqual(
+      saved
+    )
+    saved.sessions[0]!.frame!.snapshot.worktrees.length = 0
+    saved.owners[0]!.claims[0]!.tree.endpoints[0]!.target.port = 1234
+    expect(restored.checkpoint()).toEqual(state.checkpoint())
+    const detached = restored.checkpoint()
+    detached.owners.length = 0
+    expect(restored.checkpoint().owners).toHaveLength(1)
+  })
+
+  it('starts every frame unavailable, rejects replays and recovers per session', () => {
+    const { state, registry, observe } = setup()
+    observe('z', 100, 10)
+    observe('a', 0, 11)
+    const restored = restoreRemoteCoordinatorState(registry, state.checkpoint())
+    expect(restored.desired(11)[0]!.available).toBe(false)
+    expect(adopt(restored, 'z', 100, 12)).toBe(false)
+    expect(adopt(restored, 'a', 0, 12)).toBe(false)
+    expect(restored.checkpoint()).toEqual(state.checkpoint())
+    expect(adopt(restored, 'a', 1, 13)).toBe(true)
+    expect(restored.desired(13)[0]!.available).toBe(false)
+    expect(adopt(restored, 'z', 101, 14)).toBe(true)
+    expect(restored.desired(14)[0]).toMatchObject({ available: true, selectedSessionId: 'z' })
+    expect(restored.desired(6015)[0]!.available).toBe(false)
+  })
+
+  it('preserves sticky selection, successor insertion order, floors and tombstones', () => {
+    const { state, registry, observe } = setup()
+    observe('selected', 100, 100)
+    observe('z', 0, 50)
+    observe('a', 500, 50)
+    state.disconnect('selected')
+    state.disconnect('unknown')
+    const saved = state.checkpoint()
+    expect(saved.owners[0]).toMatchObject({ selected: 'z', watermark: 100, selectionFloor: 100 })
+    const restored = restoreRemoteCoordinatorState(registry, saved)
+    expect(restored.checkpoint()).toEqual(saved)
+    expect(adopt(restored, 'selected', 101, 101)).toBe(false)
+    expect(adopt(restored, 'unknown', 1, 101)).toBe(false)
+    adopt(restored, 'z', 1, 99)
+    adopt(restored, 'a', 501, 99)
+    expect(restored.desired(100)[0]!.available).toBe(false)
+    adopt(restored, 'z', 2, 100)
+    expect(restored.desired(100)[0]).toMatchObject({ available: true, selectedSessionId: 'z' })
+    const next = restoreRemoteCoordinatorState(registry, saved)
+    next.disconnect('z')
+    expect(next.checkpoint().owners[0]!.selected).toBe('a')
+    next.disconnect('a')
+    expect(restoreRemoteCoordinatorState(registry, next.checkpoint()).checkpoint()).toEqual(
+      next.checkpoint()
+    )
+  })
+
+  it('enforces aggregate claim caps and validates foreign live selection', () => {
+    const { state, registry, observe } = setup()
+    observe('a', 0, 1)
+    state.observe(
+      {
+        sessionId: 'foreign',
+        connectionIdentity: { ...identity, port: 2222 },
+        destination: 'host',
+        snapshot: snapshot(),
+        observedAt: 1,
+      },
+      1
+    )
+    const saved = state.checkpoint()
+    const owner = saved.owners.find(item => item.selected === 'a')!
+    owner.selected = 'foreign'
+    expect(() => restoreRemoteCoordinatorState(registry, saved)).toThrow()
+    owner.selected = 'a'
+    const tree = snapshot().worktrees[0]!
+    owner.claims = Array.from({ length: 4096 }, (_, index) => ({
+      observedAt: 1,
+      tree: { ...tree, namespace: `n${index}.port` },
+    }))
+    expect(() => restoreRemoteCoordinatorState(registry, saved)).toThrow()
+    owner.claims = [
+      {
+        observedAt: 1,
+        tree: {
+          ...tree,
+          endpoints: Array.from({ length: 4096 }, (_, index) => ({
+            ...tree.endpoints[0]!,
+            id: index.toString(16).padStart(64, '0'),
+          })),
+        },
+      },
+    ]
+    expect(() => restoreRemoteCoordinatorState(registry, saved)).toThrow()
+    const overflow = state.checkpoint()
+    overflow.sessions = Array.from({ length: 4097 }, (_, index) => ({
+      sessionId: String(index),
+      frame: null,
+    }))
+    expect(() => restoreRemoteCoordinatorState(registry, overflow)).toThrow()
+  })
+
+  it('rejects invalid DTOs atomically without changing the registry or source', () => {
+    const { state, registry, observe } = setup()
+    observe('a', 1, 10)
+    state.disconnect('dead')
+    const baseline = state.checkpoint()
+    const reservations = registry.serialize()
+    const mutations: ((value: RemoteCoordinatorCheckpoint) => void)[] = [
+      value => {
+        Object.assign(value, { version: 2 })
+      },
+      value => {
+        Object.assign(value, { extra: true })
+      },
+      value => {
+        value.sessions.push(value.sessions[0]!)
+      },
+      value => {
+        value.owners.push(value.owners[0]!)
+      },
+      value => {
+        value.sessions[0]!.sessionId = ''
+      },
+      value => {
+        value.sessions[0]!.sessionId = 'x'.repeat(257)
+      },
+      value => {
+        value.sessions[0]!.frame!.ownerId = 'missing'
+      },
+      value => {
+        value.sessions[0]!.frame!.identity = '[]'
+      },
+      value => {
+        value.sessions[0]!.frame!.snapshot.instanceId = 'wrong'
+      },
+      value => {
+        value.sessions[0]!.frame!.snapshot.revision = -1
+      },
+      value => {
+        Object.assign(value.sessions[0]!.frame!, { ready: true })
+      },
+      value => {
+        value.sessions[0]!.frame!.observedAt = 11
+      },
+      value => {
+        value.owners[0]!.selected = 'dead'
+      },
+      value => {
+        value.owners[0]!.selected = null
+      },
+      value => {
+        value.owners[0]!.watermark = -1
+      },
+      value => {
+        value.owners[0]!.selectionFloor = 11
+      },
+      value => {
+        value.owners[0]!.selectionFloor = Infinity
+      },
+      value => {
+        value.owners[0]!.claims[0]!.observedAt = 11
+      },
+      value => {
+        value.owners[0]!.claims.push(value.owners[0]!.claims[0]!)
+      },
+      value => {
+        value.owners[0]!.claims[0]!.tree.endpoints[0]!.target.address = '8.8.8.8'
+      },
+      value => {
+        value.owners.length = 0
+      },
+      value => {
+        value.owners[0]!.ownerId = 'missing'
+      },
+      value => {
+        value.sessions.length = 0
+      },
+      value => {
+        Object.assign(value.sessions[0]!.frame!.snapshot, { extra: undefined })
+      },
+      value => {
+        value.owners[0]!.claims = Array.from({ length: 4097 }, () => value.owners[0]!.claims[0]!)
+      },
+    ]
+    for (const mutate of mutations) {
+      const value = structuredClone(baseline)
+      mutate(value)
+      expect(() => restoreRemoteCoordinatorState(registry, value)).toThrow(
+        'Invalid remote coordinator'
+      )
+      expect(registry.serialize()).toEqual(reservations)
+      expect(state.checkpoint()).toEqual(baseline)
+    }
+    expect(() => restoreRemoteCoordinatorState(registry, baseline, { maxSessions: 1 })).toThrow()
+    expect(() => restoreRemoteCoordinatorState(registry, baseline, { freshnessMs: -1 })).toThrow()
+    expect(() => restoreRemoteCoordinatorState(createRemoteOwnerRegistry(), baseline)).toThrow()
+  })
+})
 
 describe('remote coordinator metadata state', () => {
   it('orders revisions per session and keeps the first session selected', () => {
@@ -269,5 +509,6 @@ describe('remote coordinator metadata state', () => {
     observe('a', 0, 0, large)
     expect(() => observe('b', 0, 1, snapshot(0, 'other.port'))).toThrow()
     expect(() => state.desired(1)).toThrow('Invalid remote coordinator state or capacity exceeded')
+    expect(() => state.checkpoint()).toThrow()
   })
 })
