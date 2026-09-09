@@ -140,7 +140,10 @@ describe('private remote dispatch', () => {
     await dispatchRemoteInternalCommand(token, ['/tmp/port-ssh-abc123'])
     const handler =
       token === '__remote-observe' ? mocks.observeRemoteSession : mocks.cleanupRemoteSession
-    expect(handler).toHaveBeenCalledWith('/tmp/port-ssh-abc123')
+    expect(handler).toHaveBeenCalledWith(
+      '/tmp/port-ssh-abc123',
+      ...(token === '__remote-observe' ? [undefined, expect.any(Function)] : [])
+    )
     expect(stdout).not.toHaveBeenCalled()
     expect(stderr).not.toHaveBeenCalled()
   })

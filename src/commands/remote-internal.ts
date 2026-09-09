@@ -14,6 +14,8 @@ const tokens = new Set([
   '__remote-cleanup',
   '__remote-handshake',
   '__remote-snapshot',
+  '__remote-runtime',
+  '__remote-supervise',
 ])
 
 export function isRemoteInternalCommand(token: string | undefined): boolean {
@@ -24,7 +26,12 @@ export function isRemoteInternalCommand(token: string | undefined): boolean {
 export async function dispatchRemoteInternalCommand(token: string, args: string[]): Promise<void> {
   try {
     if (!isRemoteInternalCommand(token)) throw new Error('Invalid command')
-    if (token === '__remote-handshake') {
+    if (token === '__remote-runtime' || token === '__remote-supervise') {
+      if (args.length !== 0) throw new Error('Invalid arguments')
+      if (token === '__remote-runtime')
+        await (await import('../lib/remoteRuntime.ts')).runRemoteRuntime()
+      else await (await import('../lib/remoteSupervisor.ts')).runRemoteSupervisor()
+    } else if (token === '__remote-handshake') {
       if (args.length !== 0) throw new Error('Invalid arguments')
       process.stdout.write(JSON.stringify(remoteHandshake()) + '\n')
     } else if (token === '__remote-snapshot') {
@@ -48,8 +55,11 @@ export async function dispatchRemoteInternalCommand(token: string, args: string[
       if (args.length !== 1 || !/^\/tmp\/port-ssh-[A-Za-z0-9]{6}(?![\s\S])/.test(args[0]!)) {
         throw new Error('Invalid arguments')
       }
-      if (token === '__remote-observe') await observeRemoteSession(args[0]!)
-      else await cleanupRemoteSession(args[0]!)
+      if (token === '__remote-observe') {
+        await observeRemoteSession(args[0]!, undefined, async () => {
+          await (await import('../lib/remoteSupervisor.ts')).registerRemoteRuntimeSession(args[0]!)
+        })
+      } else await cleanupRemoteSession(args[0]!)
     }
   } catch {
     process.exitCode = 1

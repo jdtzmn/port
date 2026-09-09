@@ -127,6 +127,7 @@ program
   .option('--domain <domain>', 'Domain suffix to configure (default: config domain or port)')
   .option('--no-shell-hook', 'Skip adding the shell hook to your shell profile')
   .option('--shell-hook-only', 'Only add the shell hook, skipping DNS setup')
+  .option('--remote-services', 'Enable local routing for ordinary Bash SSH sessions')
   .action(install)
 
 // port list

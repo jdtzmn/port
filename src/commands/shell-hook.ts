@@ -1,6 +1,7 @@
 import * as output from '../lib/output.ts'
 import { generateSshIntegrationHook } from '../lib/sshIntegrationHook.ts'
 import { SUPPORTED_SHELLS, type Shell } from '../lib/shell.ts'
+import { isRemoteRuntimeEnabled } from '../lib/remoteEnabled.ts'
 
 /**
  * Generate shell hook code that the user adds to their shell profile.
@@ -32,7 +33,8 @@ export function shellHook(shell: string, options: { remoteServices?: boolean } =
   }
 
   let hookCode = shell === 'fish' ? generateFishHook() : generatePosixHook(shell)
-  if (options.remoteServices) hookCode += '\n' + generateSshIntegrationHook()
+  if (options.remoteServices || (shell === 'bash' && isRemoteRuntimeEnabled()))
+    hookCode += '\n' + generateSshIntegrationHook()
 
   // Write to stdout so it can be eval'd
   process.stdout.write(hookCode + '\n')

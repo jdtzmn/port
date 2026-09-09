@@ -200,7 +200,8 @@ async function observeSnapshots(
   directory: string,
   original: Stats,
   pinned: Stats,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onSnapshot?: () => Promise<void>
 ): Promise<void> {
   let last: RemoteSnapshot | null = null
   let revision = 0
@@ -235,6 +236,11 @@ async function observeSnapshots(
       if (candidate && last && candidate.instanceId !== last.instanceId) break
       if (candidate) last = candidate
       publishStatus(candidate ? 'ready' : 'unavailable')
+      try {
+        await onSnapshot?.()
+      } catch {
+        /* Optional local routing cannot stop observation. */
+      }
       if (revision === Number.MAX_SAFE_INTEGER) break
       revision++
       await pause(2000, signal)
@@ -867,7 +873,11 @@ export async function prepareRemoteSession(argv: string[]): Promise<string | nul
   }
 }
 
-export async function observeRemoteSession(directory: string, signal?: AbortSignal): Promise<void> {
+export async function observeRemoteSession(
+  directory: string,
+  signal?: AbortSignal,
+  onSnapshot?: () => Promise<void>
+): Promise<void> {
   try {
     const original = session(directory)
     const deadline = Date.now() + 90_000
@@ -902,7 +912,7 @@ export async function observeRemoteSession(directory: string, signal?: AbortSign
             return
           if (!sameSocket(directory, original, pinned)) return
           publish(directory, original, 'handshake.json', remoteHandshake())
-          await observeSnapshots(directory, original, pinned, signal)
+          await observeSnapshots(directory, original, pinned, signal, onSnapshot)
           return
         }
       }
