@@ -36,7 +36,7 @@ class LocalShell:
     def send(self, text):
         os.write(self.fd, text.encode())
 
-    def marker(self, command, check=None):
+    def marker(self, command, check=None, timeout=20):
         marker = "BOOTSTRAP_" + uuid.uuid4().hex
         # Split the token so even a wrapped/echoed command cannot match it.
         self.send(command + " && printf '\\n%s%s\\n' '" + marker[:16] + "' '" + marker[16:] + "'\n")
@@ -46,7 +46,7 @@ class LocalShell:
                 check()
             return marker.encode() in self.output.replace(b"\r", b"").split(b"\n")
 
-        self.wait_for(completed)
+        self.wait_for(completed, timeout=timeout)
 
     def wait_for(self, predicate, timeout=20):
         end = time.monotonic() + timeout
@@ -493,6 +493,85 @@ def private_forward(shell, directory):
         stop_process(helper)
 
 
+def automatic_runtime(shell):
+    before = session_directories()
+    shell.marker(
+        'SHELL=/bin/bash command port install --remote-services --shell-hook-only --yes '
+        '>/tmp/remote-install.log && eval "$(command port shell-hook bash)"; declare -F ssh >/dev/null',
+        timeout=60,
+    )
+    shell.send('ssh remote-a\n')
+    shell.marker('test -t 0 && test "$(id -un)" = fixture')
+    shell.wait_for(lambda: any((path / 'handshake.json').exists() for path in session_directories() - before))
+    directory = private_session(before)
+    shell.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-start', timeout=90)
+
+    expected = b'remote-a-product-runtime'
+    routes = [('ui.feature.port', 80), ('feature.port', 3000),
+              ('ui.feature.remote-a.ssh', 80), ('feature.remote-a.ssh', 3000)]
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    end = time.monotonic() + 45
+    for host, port in routes:
+        require(socket.gethostbyname(host) == '127.0.0.1', 'automatic route DNS did not resolve locally')
+        while True:
+            remaining = end - time.monotonic()
+            require(remaining > 0, 'automatic route publication timed out')
+            connection = http.client.HTTPConnection(host, port, timeout=min(2, remaining))
+            try:
+                connection.request('GET', '/')
+                response = connection.getresponse()
+                if response.status == 200 and response.read(1024) == expected:
+                    break
+            except (OSError, http.client.HTTPException):
+                pass
+            finally:
+                connection.close()
+            time.sleep(0.1)
+    for host in ('feature.port', 'feature.remote-a.ssh'):
+        connection = http.client.HTTPSConnection(host, 3000, timeout=3, context=context)
+        try:
+            connection.request('GET', '/')
+            response = connection.getresponse()
+            require(response.status == 200 and response.read(1024) == expected,
+                    'automatic TLS/SNI route reached the wrong endpoint')
+        finally:
+            connection.close()
+    connection = http.client.HTTPConnection('feature.port', 3000, timeout=3)
+    try:
+        connection.request('POST', '/cgi-bin/sentinel', body=b'port-runtime-sentinel')
+        response = connection.getresponse()
+        require(response.status == 200 and response.read(1024) == b'accepted',
+                'automatic route sentinel failed')
+    finally:
+        connection.close()
+    shell.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-verify-count')
+    shell.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-stop', timeout=90)
+
+    end = time.monotonic() + 30
+    while True:
+        remaining = end - time.monotonic()
+        require(remaining > 0, 'removed automatic route retained the old backend')
+        connection = http.client.HTTPConnection('feature.port', 3000, timeout=min(2, remaining))
+        try:
+            connection.request('GET', '/')
+            response = connection.getresponse()
+            stale = response.status == 200 and response.read(1024) == expected
+            if not stale:
+                break
+        except (OSError, http.client.HTTPException):
+            break
+        finally:
+            connection.close()
+        time.sleep(0.1)
+    shell.send('exit 17\n')
+    shell.wait_for(lambda: not directory.exists())
+    shell.marker('test "$?" -eq 17')
+    require(session_directories() == before, 'automatic runtime login leaked session state')
+    print('PASS ordinary SSH -> port up -> automatic HTTP/TLS-SNI routing; removal and status 17 preserved',
+          flush=True)
+
 def main():
     # Install the fixture's normal SSH config, not command-specific test options.
     shutil.copyfile('/fixture/ssh_config', '/root/.ssh/config')
@@ -532,6 +611,7 @@ def main():
         shell.wait_for(lambda: observer_finished(directory))
         require(session_directories() == before, 'live-discovery login leaked local session state')
         print('PASS product shell preserves status 7 and removes session state', flush=True)
+        automatic_runtime(shell)
 
         shell.send('ssh -J remote-b remote-a\n')
         shell.marker('test -t 0 && test "$(id -un)" = fixture')

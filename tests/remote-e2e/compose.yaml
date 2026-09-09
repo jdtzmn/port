@@ -19,6 +19,7 @@ services:
       POSTGRES_HOST_AUTH_METHOD: trust
     volumes:
       - public-keys:/public-keys
+      - remote-a-state:/home/fixture/.port
     network_mode: 'service:docker-a'
     depends_on:
       docker-a:
@@ -53,6 +54,7 @@ services:
       dockerfile: Dockerfile.client
     volumes:
       - public-keys:/public-keys
+      - client-state:/root/.port
     network_mode: 'service:docker'
     depends_on:
       docker:
@@ -82,6 +84,7 @@ services:
         aliases: [client]
     volumes:
       - docker-data:/var/lib/docker
+      - client-state:/root/.port
     healthcheck:
       test: [CMD, docker, info]
       interval: 2s
@@ -94,6 +97,7 @@ services:
         aliases: [remote-a]
     volumes:
       - docker-a-data:/var/lib/docker
+      - remote-a-state:/home/fixture/.port
   docker-b:
     <<: *dind
     networks:
@@ -109,3 +113,5 @@ volumes:
   docker-data:
   docker-a-data:
   docker-b-data:
+  client-state:
+  remote-a-state:

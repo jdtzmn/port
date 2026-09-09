@@ -47,6 +47,9 @@ step 600 build "${compose[@]}" build
 # via the runner's Docker CLI; never mount a host Docker socket in any fixture.
 step 120 smoke-pull docker pull busybox:1.37.0
 step 120 proxy-pull docker pull traefik:v3.6
+version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$root/package.json")
+handler_image="ghcr.io/jdtzmn/port-404-handler:$version"
+step 300 handler-build docker build --pull=false -t "$handler_image" "$root/packages/404-app"
 image_dir=$(mktemp -d "${TMPDIR:-/tmp}/remote-e2e-image.XXXXXXXX")
 # Build the actual checkout into a fresh, artifact-only directory; no source or secrets enter fixtures.
 mkdir -p "$image_dir/app"
@@ -58,6 +61,7 @@ cp "$root/package.json" "$image_dir/app/package.json"
 chmod -R a+rX "$image_dir/app"
 step 60 smoke-save docker image save --output "$image_dir/smoke.tar" busybox:1.37.0
 step 60 proxy-save docker image save --output "$image_dir/proxy.tar" traefik:v3.6
+step 60 handler-save docker image save --output "$image_dir/handler.tar" "$handler_image"
 step 210 readiness "${compose[@]}" up -d --wait --wait-timeout 150
 for machine in client remote-a remote-b; do
   step 30 "port-copy-$machine" "${compose[@]}" cp "$image_dir/app/." "$machine:/opt/port/"
@@ -68,10 +72,15 @@ for daemon in docker docker-a docker-b; do
   step 60 "smoke-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /smoke.tar
   step 10 "smoke-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /smoke.tar
 done
-# Seed Traefik into ONLY the client's namespace-local daemon; no bind mounts.
-step 30 proxy-copy "${compose[@]}" cp "$image_dir/proxy.tar" docker:/proxy.tar
-step 60 proxy-load "${compose[@]}" exec -T docker docker image load --input /proxy.tar
-step 10 proxy-remove "${compose[@]}" exec -T docker rm -f /proxy.tar
+# Production Port starts Traefik and the 404 handler in both participating daemons.
+for daemon in docker docker-a; do
+  step 30 "proxy-copy-$daemon" "${compose[@]}" cp "$image_dir/proxy.tar" "$daemon:/proxy.tar"
+  step 60 "proxy-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /proxy.tar
+  step 10 "proxy-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /proxy.tar
+  step 30 "handler-copy-$daemon" "${compose[@]}" cp "$image_dir/handler.tar" "$daemon:/handler.tar"
+  step 60 "handler-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /handler.tar
+  step 10 "handler-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /handler.tar
+done
 step 150 proof "${compose[@]}" exec -T client python3 /fixture/harness.py
 step 90 multiplexing "${compose[@]}" exec -T client python3 /fixture/mux.py
 step 90 baseline "${compose[@]}" exec -T client python3 /fixture/baseline.py

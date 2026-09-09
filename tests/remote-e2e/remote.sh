@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 umask 077
+install -d -m 700 -o fixture -g fixture /home/fixture/.port
+printf '%s\n' \
+  'pid-file=/tmp/dnsmasq.pid' 'local=/port/' 'no-resolv' 'server=127.0.0.11' \
+  'listen-address=127.0.0.1' 'bind-interfaces' 'address=/.port/127.0.0.1' \
+  > /tmp/dnsmasq.conf
+dnsmasq --test --conf-file=/tmp/dnsmasq.conf
+dnsmasq --keep-in-foreground --conf-file=/tmp/dnsmasq.conf &
+dns_pid=$!
+printf 'nameserver 127.0.0.1\noptions timeout:1 attempts:2\n' > /etc/resolv.conf
 ssh-keygen -q -t ed25519 -N '' -f /run/ssh-host-key
 cp /run/ssh-host-key.pub "/public-keys/${FIXTURE_NAME}.pub.tmp"
 mv "/public-keys/${FIXTURE_NAME}.pub.tmp" "/public-keys/${FIXTURE_NAME}.pub"
@@ -19,9 +28,9 @@ ssh_pid=$!
 pg_pid=$!
 bun /fixture/identity.ts &
 http_pid=$!
-trap 'kill "$ssh_pid" "$pg_pid" "$http_pid" 2>/dev/null || true; wait || true' EXIT
+trap 'kill "$ssh_pid" "$pg_pid" "$http_pid" "$dns_pid" 2>/dev/null || true; wait || true' EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
 touch /tmp/ssh-ready
-wait -n "$ssh_pid" "$pg_pid" "$http_pid"
+wait -n "$ssh_pid" "$pg_pid" "$http_pid" "$dns_pid"
 exit 1

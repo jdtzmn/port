@@ -1,7 +1,7 @@
 // Disposable remote-a fixture seed, NOT the product's `port up` route.
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { parse } from 'yaml'
+import { parse, stringify } from 'yaml'
 import { generateOverrideContent } from '../../src/lib/compose.ts'
 import { buildProjectName } from '../../src/lib/projectName.ts'
 
@@ -99,6 +99,84 @@ exec httpd -f -p 8080 -h /www`,
       ])
   )
 }
+function productStart(): void {
+  const main = `${repo}/main`
+  const tree = `${repo}/.port/trees/${branch}`
+  mkdirSync(`${repo}/.port/trees`, { recursive: true, mode: 0o700 })
+  execFileSync('git', ['init', main], { stdio: 'ignore' })
+  execFileSync(
+    'git',
+    [
+      '-C',
+      main,
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      'commit',
+      '--allow-empty',
+      '-m',
+      'Fixture',
+    ],
+    { stdio: 'ignore' }
+  )
+  execFileSync('git', ['-C', main, 'worktree', 'add', '-b', branch, tree], { stdio: 'ignore' })
+  const script = `mkdir -p /www/cgi-bin
+printf remote-a-product-runtime > /www/index.html
+printf 0 > /www/sentinel-count
+cat > /www/cgi-bin/sentinel <<'CGI'
+#!/bin/sh
+body=$(dd bs=1 count="\${CONTENT_LENGTH:-0}" 2>/dev/null)
+[ "$REQUEST_METHOD" = POST ] && [ "$body" = port-runtime-sentinel ] || { printf 'Status: 400 Bad Request\\r\\n\\r\\n'; exit; }
+count=$(cat /www/sentinel-count)
+printf %s "$((count + 1))" > /www/sentinel-count
+printf 'Content-Type: text/plain\\r\\n\\r\\naccepted'
+CGI
+chmod 700 /www/cgi-bin/sentinel
+exec httpd -f -p 8080 -h /www`
+  writeFileSync(
+    `${tree}/compose.yaml`,
+    stringify({
+      services: {
+        ui: {
+          image: 'busybox:1.37.0',
+          ports: ['3000:8080'],
+          command: ['sh', '-c', script],
+        },
+      },
+    }),
+    { mode: 0o600, flag: 'wx' }
+  )
+  execFileSync('/usr/local/bin/port', ['up'], { cwd: tree, timeout: 60_000, stdio: 'inherit' })
+  const ids = docker([
+    'ps',
+    '--no-trunc',
+    '--filter',
+    'label=com.docker.compose.service=ui',
+    '--format',
+    '{{.ID}}',
+  ])
+    .split('\n')
+    .filter(Boolean)
+  if (ids.length !== 1 || !/^[a-f0-9]{64}$/.test(ids[0]!))
+    throw new Error('Invalid product container identity')
+  writeFileSync(`${root}/product-container-id`, ids[0]!, { mode: 0o600, flag: 'wx' })
+  console.log('PRODUCT_RUNTIME_STARTED')
+}
+function productVerifyCount(): void {
+  const id = readFileSync(`${root}/product-container-id`, 'utf8')
+  if (!/^[a-f0-9]{64}$/.test(id) || docker(['exec', id, 'cat', '/www/sentinel-count']) !== '1')
+    throw new Error('Unexpected product sentinel count')
+  console.log('PASS product sentinel count=1')
+}
+function productStop(): void {
+  execFileSync('/usr/local/bin/port', ['down'], {
+    cwd: `${repo}/.port/trees/${branch}`,
+    timeout: 60_000,
+    stdio: 'inherit',
+  })
+  console.log('PRODUCT_RUNTIME_STOPPED')
+}
 async function probe(): Promise<void> {
   const address = docker([
     'inspect',
@@ -121,6 +199,15 @@ try {
   switch (process.argv[2]) {
     case 'start':
       start()
+      break
+    case 'product-start':
+      productStart()
+      break
+    case 'product-verify-count':
+      productVerifyCount()
+      break
+    case 'product-stop':
+      productStop()
       break
     case 'probe':
       await probe()
