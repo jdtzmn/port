@@ -493,6 +493,38 @@ def private_forward(shell, directory):
         stop_process(helper)
 
 
+def runtime_diagnostics():
+    state = Path('/root/.port/remote')
+    controls = list(Path('/tmp').glob('port-remote-*'))
+    processes = {'supervisor': 0, 'runtime': 0}
+    for cmdline in Path('/proc').glob('[0-9]*/cmdline'):
+        try:
+            value = cmdline.read_bytes()
+        except OSError:
+            continue
+        for name, token in [('supervisor', b'__remote-supervise'), ('runtime', b'__remote-runtime')]:
+            if token in value:
+                processes[name] += 1
+    container = 'missing'
+    try:
+        result = subprocess.run(
+            ['docker', 'inspect', '--type', 'container', '--format', '{{.State.Status}}', 'port-traefik'],
+            check=False, capture_output=True, timeout=5, text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip() in ('created', 'running', 'exited', 'dead'):
+            container = result.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    print('RUNTIME_DIAGNOSTICS=' + json.dumps({
+        'marker': (state / 'enabled.json').is_file(),
+        'catalog': (state / 'sessions.jsonl').is_file(),
+        'checkpoint': (state / 'checkpoint.json').is_file(),
+        'routes': Path('/root/.port/traefik/dynamic/port-remote-routes.yml').is_file(),
+        'control': any((path / 'endpoint.json').is_file() for path in controls),
+        'processes': processes,
+        'traefik': container,
+    }, sort_keys=True), flush=True)
+
 def automatic_runtime(shell):
     before = session_directories()
     shell.marker(
@@ -517,7 +549,9 @@ def automatic_runtime(shell):
         require(socket.gethostbyname(host) == '127.0.0.1', 'automatic route DNS did not resolve locally')
         while True:
             remaining = end - time.monotonic()
-            require(remaining > 0, 'automatic route publication timed out')
+            if remaining <= 0:
+                runtime_diagnostics()
+                raise RuntimeError('automatic route publication timed out')
             connection = http.client.HTTPConnection(host, port, timeout=min(2, remaining))
             try:
                 connection.request('GET', '/')
@@ -542,8 +576,11 @@ def automatic_runtime(shell):
     try:
         connection.request('POST', '/cgi-bin/sentinel', body=b'port-runtime-sentinel')
         response = connection.getresponse()
-        require(response.status == 200 and response.read(1024) == b'accepted',
-                'automatic route sentinel failed')
+        body = response.read(1024)
+        require(
+            response.status == 200 and body == b'accepted',
+            f'automatic route sentinel failed: status={response.status} body={body[:128]!r}',
+        )
     finally:
         connection.close()
     shell.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-verify-count')
@@ -633,7 +670,12 @@ def main():
             shell.wait_for(lambda: b'Enter passphrase for key' in shell.output)
             shell.send(passphrase + '\n')
             # OpenSSH may flush queued terminal input while leaving readpass mode.
-            shell.wait_for(lambda: b'\n$ ' in shell.output.replace(b'\r', b''))
+            shell.wait_for(
+                lambda: any(
+                    line.endswith(b'$ ')
+                    for line in shell.output.replace(b'\r', b'').split(b'\n')
+                )
+            )
             shell.marker('test -t 0 && test "$(id -un)" = fixture')
             shell.wait_for(handshake)
             require(shell.output.count(b'Enter passphrase for key') == 1,

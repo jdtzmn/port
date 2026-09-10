@@ -126,10 +126,10 @@ printf remote-a-product-runtime > /www/index.html
 printf 0 > /www/sentinel-count
 cat > /www/cgi-bin/sentinel <<'CGI'
 #!/bin/sh
-body=$(dd bs=1 count="\${CONTENT_LENGTH:-0}" 2>/dev/null)
-[ "$REQUEST_METHOD" = POST ] && [ "$body" = port-runtime-sentinel ] || { printf 'Status: 400 Bad Request\\r\\n\\r\\n'; exit; }
-count=$(cat /www/sentinel-count)
-printf %s "$((count + 1))" > /www/sentinel-count
+body=$$(dd bs=1 count="$\${CONTENT_LENGTH:-0}" 2>/dev/null)
+[ "$$REQUEST_METHOD" = POST ] && [ "$$body" = port-runtime-sentinel ] || { printf 'Status: 400 Bad Request\\r\\nContent-Type: text/plain\\r\\n\\r\\nmethod=%s length=%s body=%s' "$$REQUEST_METHOD" "$\${CONTENT_LENGTH:-unset}" "$$body"; exit; }
+count=$$(cat /www/sentinel-count)
+printf %s "$$((count + 1))" > /www/sentinel-count
 printf 'Content-Type: text/plain\\r\\n\\r\\naccepted'
 CGI
 chmod 700 /www/cgi-bin/sentinel
