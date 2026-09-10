@@ -135,7 +135,7 @@ CGI
 chmod 700 /www/cgi-bin/sentinel
 exec httpd -f -p 8080 -h /www`
   writeFileSync(
-    `${tree}/compose.yaml`,
+    `${tree}/docker-compose.yml`,
     stringify({
       services: {
         ui: {

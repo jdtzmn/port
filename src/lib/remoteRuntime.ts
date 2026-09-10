@@ -1,9 +1,6 @@
-import { createHash } from 'node:crypto'
 import { connect } from 'node:net'
-import { lstat, mkdir, realpath } from 'node:fs/promises'
-import { join } from 'node:path'
-import { GLOBAL_PORT_DIR } from './registry.ts'
-import { TRAEFIK_DYNAMIC_DIR, ensureTraefikDynamicDir } from './traefik.ts'
+import { ensureTraefikDynamicDir } from './traefik.ts'
+import { getRemoteRuntimePaths } from './remoteRuntimePaths.ts'
 import {
   startRemoteCoordinatorControl,
   requestRemoteCoordinator,
@@ -37,20 +34,6 @@ import {
   type RemoteRuntimeCheckpoint,
 } from './remoteRuntimeStore.ts'
 import type { RemoteSnapshot } from './remoteSnapshot.ts'
-
-export async function remoteRuntimePaths() {
-  await mkdir(GLOBAL_PORT_DIR, { recursive: true })
-  const root = join(await realpath(GLOBAL_PORT_DIR), 'remote')
-  await mkdir(root, { mode: 0o700 }).catch(error => {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-  })
-  const stat = await lstat(root)
-  if (!stat.isDirectory() || stat.uid !== process.getuid?.() || (stat.mode & 0o7777) !== 0o700)
-    throw new Error('Invalid remote runtime directory')
-  const hash = createHash('sha256').update(root).digest('hex').slice(0, 12)
-  const controlRoot = join(await realpath('/tmp'), `port-remote-${process.getuid?.()}-${hash}`)
-  return { root, controlRoot, dynamicDirectory: TRAEFIK_DYNAMIC_DIR }
-}
 
 /** One serial resource worker. Control admissions are journalled separately from route frames. */
 export async function startRemoteRuntime(options: {
@@ -282,7 +265,7 @@ export async function startRemoteRuntime(options: {
 }
 
 export async function runRemoteRuntime() {
-  const paths = await remoteRuntimePaths()
+  const paths = await getRemoteRuntimePaths()
   await ensureTraefikDynamicDir()
   const runtime = await startRemoteRuntime(paths)
   if (!runtime) return

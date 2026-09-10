@@ -4,7 +4,7 @@ import { lstat, mkdir, open } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { GLOBAL_PORT_DIR } from './registry.ts'
-import { remoteRuntimePaths } from './remoteRuntime.ts'
+import { getRemoteRuntimePaths } from './remoteRuntimePaths.ts'
 import { requestRemoteCoordinator } from './remoteCoordinatorControl.ts'
 import { withRemoteMutex } from './remoteMutex.ts'
 
@@ -50,7 +50,7 @@ export async function remoteRuntimeEnabled(): Promise<boolean> {
 }
 
 export async function enableRemoteRuntime(): Promise<void> {
-  const { root } = await remoteRuntimePaths()
+  const { root } = await getRemoteRuntimePaths()
   if (await remoteRuntimeEnabled()) return
   const file = await open(
     join(root, 'enabled.json'),
@@ -72,7 +72,7 @@ let registeredIncarnation: string | undefined
 export async function registerRemoteRuntimeSession(directory: string): Promise<void> {
   try {
     if (!(await remoteRuntimeEnabled())) return
-    const { controlRoot } = await remoteRuntimePaths()
+    const { controlRoot } = await getRemoteRuntimePaths()
     const ping = await requestRemoteCoordinator(controlRoot, { version: 1, action: 'ping' })
     if (!ping || ping.status !== 'ok') {
       if (performance.now() - launchedAt >= 10_000) {
@@ -102,7 +102,7 @@ export async function registerRemoteRuntimeSession(directory: string): Promise<v
 /** Kernel-held singleton supervisor. A worker's parent pipe closes when this process dies. */
 export async function runRemoteSupervisor(): Promise<void> {
   if (!(await remoteRuntimeEnabled())) return
-  const { controlRoot } = await remoteRuntimePaths()
+  const { controlRoot } = await getRemoteRuntimePaths()
   await mkdir(controlRoot, { mode: 0o700 }).catch(error => {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
   })
