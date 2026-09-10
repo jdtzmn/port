@@ -507,8 +507,8 @@ def automatic_runtime(shell):
     shell.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-start', timeout=90)
 
     expected = b'remote-a-product-runtime'
-    routes = [('ui.feature.port', 80), ('feature.port', 3000),
-              ('ui.feature.remote-a.ssh', 80), ('feature.remote-a.ssh', 3000)]
+    routes = [('ui.feature.port', 80), ('feature.port', 3100),
+              ('ui.feature.remote-a.ssh', 80), ('feature.remote-a.ssh', 3100)]
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
@@ -530,7 +530,7 @@ def automatic_runtime(shell):
                 connection.close()
             time.sleep(0.1)
     for host in ('feature.port', 'feature.remote-a.ssh'):
-        connection = http.client.HTTPSConnection(host, 3000, timeout=3, context=context)
+        connection = http.client.HTTPSConnection(host, 3100, timeout=3, context=context)
         try:
             connection.request('GET', '/')
             response = connection.getresponse()
@@ -538,7 +538,7 @@ def automatic_runtime(shell):
                     'automatic TLS/SNI route reached the wrong endpoint')
         finally:
             connection.close()
-    connection = http.client.HTTPConnection('feature.port', 3000, timeout=3)
+    connection = http.client.HTTPConnection('feature.port', 3100, timeout=3)
     try:
         connection.request('POST', '/cgi-bin/sentinel', body=b'port-runtime-sentinel')
         response = connection.getresponse()
@@ -553,7 +553,7 @@ def automatic_runtime(shell):
     while True:
         remaining = end - time.monotonic()
         require(remaining > 0, 'removed automatic route retained the old backend')
-        connection = http.client.HTTPConnection('feature.port', 3000, timeout=min(2, remaining))
+        connection = http.client.HTTPConnection('feature.port', 3100, timeout=min(2, remaining))
         try:
             connection.request('GET', '/')
             response = connection.getresponse()

@@ -259,9 +259,9 @@ publishes certificate-pinned routes into local Port's real Traefik directory.
 The client resolves and requests all four existing/default and qualified forms:
 
 - `http://ui.feature.port/`
-- `http://feature.port:3000/`
+- `http://feature.port:3100/`
 - `http://ui.feature.remote-a.ssh/`
-- `http://feature.remote-a.ssh:3000/`
+- `http://feature.remote-a.ssh:3100/`
 
 The logical-port default and qualified names are also tested over TLS/SNI. Every route
 must return `remote-a-product-runtime`. One POST increments the remote owned container's

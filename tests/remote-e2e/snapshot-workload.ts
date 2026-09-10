@@ -140,7 +140,7 @@ exec httpd -f -p 8080 -h /www`
       services: {
         ui: {
           image: 'busybox:1.37.0',
-          ports: ['3000:8080'],
+          ports: ['3100:8080'],
           command: ['sh', '-c', script],
         },
       },
