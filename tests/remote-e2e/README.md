@@ -2,10 +2,11 @@
 
 The networking proof uses explicit test-only `ssh -L` arguments. Separately,
 `bootstrap.py` exercises the actual built Port CLI, opt-in Bash shell hook, and
-a plain `ssh remote-a` login with an automatic remote handshake, missing-Port
-`ssh remote-b` login, and ordinary noninteractive SSH passthrough. It also checks
-**automatic live discovery from an explicit disposable fixture seed**, not full
-`port up` acceptance. **Product transport coordination and routing remain unwired.**
+plain SSH logins with automatic remote handshakes, missing-Port fallback, jump
+hosts, encrypted keys, and ordinary noninteractive passthrough. Component gates
+exercise discovery and authenticated forwarding in isolation. The final product
+gate enables the one-time integration marker, runs real `port up` on remote-a,
+and requires automatic local HTTP and TLS/SNI routing through production Traefik.
 
 ## Run
 
@@ -27,10 +28,12 @@ package metadata are copied into fixtures, not the repository or secret files.
 
 ## Experimental bootstrap scope
 
-Enable with `eval "$(port shell-hook bash --remote-services)"` in Bash. Existing
-SSH aliases/functions are left alone. Other shells retain normal Port hooks but
-currently reject this experimental flag. Unsupported SSH invocations or existing
-multiplexing policies pass through unchanged. `command ssh` bypasses integration.
+Enable once with `port install --remote-services` from Bash. This configures the
+normal `.port` and `.ssh` wildcard DNS suffixes, stores an owner-only local marker,
+and installs the ordinary shell hook; subsequent `port shell-hook bash` output adds
+the SSH integration automatically. Existing SSH aliases/functions are left alone.
+Other shells are not yet supported for remote services. Unsupported invocations or
+existing multiplexing policies pass through unchanged. `command ssh` bypasses integration.
 
 The preflight uses `ssh -G`, which can evaluate `Match exec` a second time; this
 is not universally side-effect-free. Authentication stays with foreground SSH;
@@ -237,6 +240,36 @@ relax Ctrl-C, terminal restoration, or exit-status requirements.
 Password authentication and broader disconnect cases remain release gates before
 treating the experimental hook as production-ready.
 
+## Automatic product routing gate
+
+After the component and failure-path gates clean up, the client runs the supported
+one-time `port install --remote-services --shell-hook-only --yes` flow against its
+fixture-local `.port` and `.ssh` DNS. A normal generated Bash hook then wraps an
+ordinary `ssh remote-a` login. No test-created forward, relay, route plan, or Traefik
+configuration participates in this final gate.
+
+Inside that unchanged foreground login, a fixture helper creates a real Git repository
+and `feature` linked worktree, writes an ordinary BusyBox Compose service, and invokes
+the built `/usr/local/bin/port up`. Remote Port starts its own production Traefik and
+404 handler from images preloaded into remote-a's namespace-local daemon. The observer
+publishes only validated service metadata through the authenticated SSH master; the
+local supervisor admits the pinned session, reconciles owner resources, and atomically
+publishes certificate-pinned routes into local Port's real Traefik directory.
+
+The client resolves and requests all four existing/default and qualified forms:
+
+- `http://ui.feature.port/`
+- `http://feature.port:3000/`
+- `http://ui.feature.remote-a.ssh/`
+- `http://feature.remote-a.ssh:3000/`
+
+The logical-port default and qualified names are also tested over TLS/SNI. Every route
+must return `remote-a-product-runtime`. One POST increments the remote owned container's
+sentinel exactly once. Real `port down` must remove the backend; subsequent requests
+must never return the old identity. Finally, SSH exit status 17 and complete local
+session cleanup are required. Startup, publication, requests, shutdown, and cleanup
+are independently bounded.
+
 ## What is actually exercised
 
 - One disposable Debian client with OpenSSH client, Python stdlib PTYs,
@@ -304,9 +337,9 @@ The separate phase-0 explicit raw `ssh -L` proof above is **transport feasibilit
 only**. Its distinct loopback IPs do not prove SNI or shipped plaintext routing.
 Separate loopback-IP allocation, a privileged broker, and protocol-independent raw
 plaintext TCP are deferred to [#149](https://github.com/jdtzmn/port/issues/149).
-They are not requirements of this feature. Automatic discovery is checked separately
-by the fixture-seeded bootstrap gate above; transport coordination and product
-`port up` routing remain unfinished and are not claimed by this baseline gate.
+They are not requirements of this feature. This hand-written baseline does not claim
+automatic behavior; the later product gate independently exercises real `port up`,
+discovery, transport coordination, and route publication without fixture wiring.
 
 The `baseline` step runs before remote-b's CLI is renamed, with a 90-second outer
 deadline and bounded DNS, HTTP, and libpq operations. See `baseline.log`.

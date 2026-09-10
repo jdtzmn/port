@@ -87,4 +87,4 @@ step 90 baseline "${compose[@]}" exec -T client python3 /fixture/baseline.py
 # Remove only the disposable fixture's CLI, after gates that need both remotes.
 step 10 missing-port "${compose[@]}" exec -T remote-b mv /usr/local/bin/port /usr/local/bin/port-unavailable
 step 210 bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py
-printf 'remote-e2e: transport feasibility, Traefik baseline and product handshake/private-transport/live-discovery/HTTP-component gates passed (component/fixture seed only; product routing not claimed)\n'
+printf 'remote-e2e: transport, SSH compatibility, failure-path components, and automatic port up HTTP/TLS-SNI routing passed\n'
