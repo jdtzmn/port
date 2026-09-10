@@ -5,6 +5,7 @@ import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   generateOverrideContent,
+  getTraefikBoundPorts,
   getComposeFileStack,
   getServicePorts,
   startTraefik,
@@ -37,6 +38,36 @@ describe('getServicePorts', () => {
     })
 
     expect(ports).toEqual([18000, 3001])
+  })
+})
+
+describe('getTraefikBoundPorts', () => {
+  test('reads host bindings without indexing unbound image ports', async () => {
+    const exec = vi.spyOn(execModule, 'execAsync').mockResolvedValue({
+      stdout: JSON.stringify({
+        '80/tcp': [{ HostIp: '', HostPort: '80' }],
+        '3000/tcp': [
+          { HostIp: '0.0.0.0', HostPort: '3000' },
+          { HostIp: '::', HostPort: '3000' },
+        ],
+      }),
+      stderr: '',
+    } as never)
+
+    await expect(getTraefikBoundPorts()).resolves.toEqual([80, 3000])
+    expect(exec).toHaveBeenCalledWith(
+      'docker inspect --format "{{json .HostConfig.PortBindings}}" port-traefik'
+    )
+    exec.mockRestore()
+  })
+
+  test('fails closed on malformed binding data', async () => {
+    const exec = vi
+      .spyOn(execModule, 'execAsync')
+      .mockResolvedValue({ stdout: '{"80/tcp":null}', stderr: '' } as never)
+
+    await expect(getTraefikBoundPorts()).resolves.toEqual([])
+    exec.mockRestore()
   })
 })
 

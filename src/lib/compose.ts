@@ -881,20 +881,29 @@ export async function isTraefikRunning(): Promise<boolean> {
  */
 export async function getTraefikBoundPorts(): Promise<number[]> {
   try {
-    // Returns port bindings like "0.0.0.0:80->80/tcp, 0.0.0.0:3000->3000/tcp"
+    // HostConfig contains only requested host bindings. NetworkSettings.Ports may
+    // also include image-declared, unbound ports with null values; indexing those
+    // in a Go template makes the entire inspection fail.
     const { stdout } = await execAsync(
-      'docker inspect --format "{{range $p, $conf := .NetworkSettings.Ports}}{{(index $conf 0).HostPort}} {{end}}" port-traefik'
+      'docker inspect --format "{{json .HostConfig.PortBindings}}" port-traefik'
     )
+    const value: unknown = JSON.parse(stdout)
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return []
 
-    const ports: number[] = []
-    for (const token of stdout.trim().split(/\s+/)) {
-      const port = parseInt(token, 10)
-      if (Number.isFinite(port) && port > 0) {
-        ports.push(port)
+    const ports = new Set<number>()
+    for (const bindings of Object.values(value)) {
+      if (!Array.isArray(bindings) || bindings.length === 0) return []
+      for (const binding of bindings) {
+        if (!binding || typeof binding !== 'object' || Array.isArray(binding)) return []
+        const hostPort = (binding as { HostPort?: unknown }).HostPort
+        if (typeof hostPort !== 'string' || !/^\d{1,5}$/.test(hostPort)) return []
+        const port = Number(hostPort)
+        if (!Number.isInteger(port) || port < 1 || port > 65535) return []
+        ports.add(port)
       }
     }
 
-    return ports
+    return [...ports].sort((a, b) => a - b)
   } catch {
     return []
   }
