@@ -167,7 +167,14 @@ exec httpd -f -p 8080 -h /www`
   }
   execFileSync('/usr/local/bin/port', ['up'], { cwd: tree, timeout: 60_000, stdio: 'inherit' })
   const project = buildProjectName(repo, branch)
-  const ids = docker(['inspect', '--type', 'container', '--format', '{{.Id}}', `${project}-ui-1`])
+  const ids = docker([
+    'ps',
+    '--no-trunc',
+    '--filter',
+    `name=${project}-ui-1`,
+    '--format',
+    '{{.ID}}',
+  ])
     .split('\n')
     .filter(Boolean)
   if (ids.length !== 1 || !/^[a-f0-9]{64}$/.test(ids[0]!))
