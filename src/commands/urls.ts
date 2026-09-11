@@ -3,12 +3,41 @@ import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../li
 import { parseComposeFile, getServicePorts, composePs } from '../lib/compose.ts'
 import { buildProjectName as getProjectName } from '../lib/projectName.ts'
 import { formatHostname, formatHostnameLabel } from '../lib/hostname.ts'
+import { findRemoteRuntimePaths } from '../lib/remoteRuntimePaths.ts'
+import { readRemoteRouteView } from '../lib/remoteRuntimeStore.ts'
+import { describeRemoteRoute, remoteHttpRoutes, remoteRouteUrl } from '../lib/remoteRouteView.ts'
 import * as output from '../lib/output.ts'
 
 /**
  * Show service URLs for the current worktree
  */
 export async function urls(serviceName?: string): Promise<void> {
+  try {
+    const paths = await findRemoteRuntimePaths()
+    const routes = paths ? await readRemoteRouteView(paths.root) : undefined
+    if (routes) {
+      const visible = remoteHttpRoutes(routes, serviceName)
+      if (serviceName && visible.length === 0) {
+        output.error(`Service "${serviceName}" not found in current remote route view`)
+        process.exit(1)
+      }
+      if (visible.length === 0) {
+        output.warn('No remote HTTP routes are currently published')
+        return
+      }
+      output.header('Remote service URLs:')
+      for (const route of visible) {
+        console.error(
+          `  ${output.url(remoteRouteUrl(route))} ${output.dim(describeRemoteRoute(route))}`
+        )
+      }
+      return
+    }
+  } catch {
+    output.warn('Remote route view is unavailable; refusing to guess a local route')
+    return
+  }
+
   let worktreeInfo
   try {
     worktreeInfo = detectWorktree()

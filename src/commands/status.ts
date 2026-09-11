@@ -9,6 +9,9 @@ import {
   STALE_WORKTREE_WARNING_THRESHOLD,
   formatStaleWorktreeWarning,
 } from '../lib/staleWorktrees.ts'
+import { findRemoteRuntimePaths } from '../lib/remoteRuntimePaths.ts'
+import { readRemoteRouteView } from '../lib/remoteRuntimeStore.ts'
+import { describeRemoteRoute } from '../lib/remoteRouteView.ts'
 import * as output from '../lib/output.ts'
 
 /**
@@ -50,6 +53,19 @@ export async function status(): Promise<void> {
     }
 
     output.newline()
+  }
+
+  try {
+    const paths = await findRemoteRuntimePaths()
+    const routes = paths ? await readRemoteRouteView(paths.root) : undefined
+    if (routes) {
+      output.header('Remote route ownership:')
+      output.newline()
+      for (const route of routes.routes) console.log(`  ${describeRemoteRoute(route)}`)
+      output.newline()
+    }
+  } catch {
+    output.warn('Remote route view is unavailable')
   }
 
   await cleanupStaleHostServices()
