@@ -90,6 +90,14 @@ Show service status across all worktrees
 - **Why**: Shows running/stopped services across all worktrees.
 - **Agent guidance**: Use before changing service state or diagnosing routing problems.
 
+### `port doctor`
+
+Diagnose Port prerequisites, routing, and project configuration
+
+- **How**: Run when setup or routing is not working; add --verbose to show every check.
+- **Why**: Reports actionable blockers and warnings without changing Port state.
+- **Agent guidance**: Safe, read-only diagnostics. Run before changing Docker, DNS, or Port configuration.
+
 ### `port shell-hook <bash|zsh|fish>`
 
 Print shell integration code for automatic cd

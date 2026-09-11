@@ -63,6 +63,14 @@ export const COMMAND_GUIDE: CommandGuideEntry[] = [
     agentGuidance: 'Use before changing service state or diagnosing routing problems.',
   },
   {
+    command: 'port doctor',
+    category: 'useful',
+    description: 'Diagnose Port prerequisites, routing, and project configuration',
+    how: 'Run when setup or routing is not working; add --verbose to show every check.',
+    why: 'Reports actionable blockers and warnings without changing Port state.',
+    agentGuidance: 'Safe, read-only diagnostics. Run before changing Docker, DNS, or Port configuration.',
+  },
+  {
     command: 'port shell-hook <bash|zsh|fish>',
     cliName: 'shell-hook',
     category: 'recommended',
