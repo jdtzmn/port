@@ -72,6 +72,13 @@ test('Help includes the onboard command', async () => {
   expect(instance).toBeInTheConsole()
 })
 
+test('Help includes the doctor command', async () => {
+  const { findByText } = await renderCLI(['--help'])
+
+  const instance = await findByText('doctor')
+  expect(instance).toBeInTheConsole()
+})
+
 test('Help includes the shell-hook command', async () => {
   const { findByText } = await renderCLI(['--help'])
 
