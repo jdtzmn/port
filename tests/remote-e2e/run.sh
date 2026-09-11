@@ -47,6 +47,7 @@ step 600 build "${compose[@]}" build
 # via the runner's Docker CLI; never mount a host Docker socket in any fixture.
 step 120 smoke-pull docker pull busybox:1.37.0
 step 120 proxy-pull docker pull traefik:v3.6
+step 180 postgres-pull docker pull postgres:17.4-bookworm
 version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$root/package.json")
 handler_image="ghcr.io/jdtzmn/port-404-handler:$version"
 step 300 handler-build docker build --pull=false -t "$handler_image" "$root/packages/404-app"
@@ -60,6 +61,7 @@ step 120 proxy-probe-build bun build "$here/proxy-probe.ts" --outdir "$image_dir
 cp "$root/package.json" "$image_dir/app/package.json"
 chmod -R a+rX "$image_dir/app"
 step 60 smoke-save docker image save --output "$image_dir/smoke.tar" busybox:1.37.0
+step 60 postgres-save docker image save --output "$image_dir/postgres.tar" postgres:17.4-bookworm
 step 60 proxy-save docker image save --output "$image_dir/proxy.tar" traefik:v3.6
 step 60 handler-save docker image save --output "$image_dir/handler.tar" "$handler_image"
 step 210 readiness "${compose[@]}" up -d --wait --wait-timeout 150
@@ -72,6 +74,12 @@ for daemon in docker docker-a docker-b; do
   step 60 "smoke-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /smoke.tar
   step 10 "smoke-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /smoke.tar
 done
+for daemon in docker-a docker-b; do
+  step 30 "postgres-copy-$daemon" "${compose[@]}" cp "$image_dir/postgres.tar" "$daemon:/postgres.tar"
+  step 60 "postgres-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /postgres.tar
+  step 10 "postgres-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /postgres.tar
+done
+
 # Production Port starts Traefik and the 404 handler in every participating daemon.
 for daemon in docker docker-a docker-b; do
   step 30 "proxy-copy-$daemon" "${compose[@]}" cp "$image_dir/proxy.tar" "$daemon:/proxy.tar"

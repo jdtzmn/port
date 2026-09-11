@@ -19,6 +19,19 @@ import tempfile
 import stat
 import time
 import uuid
+from baseline import database_identity
+
+
+def wait_for_database(host, database, remote):
+    end = time.monotonic() + 45
+    last = None
+    while time.monotonic() < end:
+        try:
+            return database_identity(host, database, remote)
+        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
+            last = error
+            time.sleep(0.2)
+    raise RuntimeError(f'automatic PostgreSQL route did not become ready for {host}: {last}')
 
 
 def require(condition, message):
@@ -580,6 +593,9 @@ def automatic_runtime(shell, machine):
                     'automatic TLS/SNI route reached the wrong endpoint')
         finally:
             connection.close()
+    database = f'{machine.replace("-", "_")}_automatic'
+    wait_for_database('feature.port', database, machine)
+    wait_for_database(f'feature.{machine}.ssh', database, machine)
     connection = http.client.HTTPConnection('feature.port', 3100, timeout=3)
     try:
         connection.request('POST', '/cgi-bin/sentinel', body=b'port-runtime-sentinel')

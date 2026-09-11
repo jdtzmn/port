@@ -32,5 +32,17 @@ trap 'kill "$ssh_pid" "$pg_pid" "$http_pid" "$dns_pid" 2>/dev/null || true; wait
 trap 'exit 143' TERM
 trap 'exit 130' INT
 touch /tmp/ssh-ready
-wait -n "$ssh_pid" "$pg_pid" "$http_pid" "$dns_pid"
+# The product-routing fixture must claim Traefik's original PostgreSQL port. After
+# baseline checks finish, the unprivileged fixture creates this explicit marker to
+# retire only this disposable baseline database before its Compose database starts.
+while [[ ! -f /tmp/port-product-postgres.stop ]]; do
+  for pid in "$ssh_pid" "$pg_pid" "$http_pid" "$dns_pid"; do
+    kill -0 "$pid" 2>/dev/null || exit 1
+  done
+  sleep 0.1
+done
+kill "$pg_pid" 2>/dev/null || true
+wait "$pg_pid" 2>/dev/null || true
+touch /tmp/port-product-postgres.stopped
+wait -n "$ssh_pid" "$http_pid" "$dns_pid"
 exit 1

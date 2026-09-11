@@ -1,6 +1,6 @@
 // Disposable remote-a fixture seed, NOT the product's `port up` route.
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { parse, stringify } from 'yaml'
 import { generateOverrideContent } from '../../src/lib/compose.ts'
 import { buildProjectName } from '../../src/lib/projectName.ts'
@@ -144,10 +144,27 @@ exec httpd -f -p 8080 -h /www`
           ports: ['3100:8080'],
           command: ['sh', '-c', script],
         },
+        db: {
+          image: 'postgres:17.4-bookworm',
+          ports: ['5432:5432'],
+          environment: {
+            POSTGRES_DB: `${machine.replace('-', '_')}_automatic`,
+            POSTGRES_HOST_AUTH_METHOD: 'trust',
+          },
+        },
       },
     }),
     { mode: 0o600, flag: 'wx' }
   )
+  if (!existsSync('/tmp/port-product-postgres.stopped')) {
+    if (!existsSync('/tmp/port-product-postgres.stop'))
+      writeFileSync('/tmp/port-product-postgres.stop', '', { mode: 0o600, flag: 'wx' })
+    const deadline = Date.now() + 10_000
+    while (!existsSync('/tmp/port-product-postgres.stopped')) {
+      if (Date.now() >= deadline) throw new Error('Product PostgreSQL port was not released')
+      execFileSync('sleep', ['0.1'])
+    }
+  }
   execFileSync('/usr/local/bin/port', ['up'], { cwd: tree, timeout: 60_000, stdio: 'inherit' })
   const ids = docker([
     'ps',
