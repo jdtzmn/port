@@ -763,7 +763,8 @@ def concurrent_owners():
             status, body = request(f'feature.{machine}.ssh', 3100)
             require(
                 status == 200 and body == b'1',
-                f'qualified route did not preserve one sentinel mutation for {machine}',
+                f'qualified route did not preserve one sentinel mutation for {machine}: '
+                f'status={status} body={body[:128]!r}',
             )
 
         shell_b.send('exit 19\n')
