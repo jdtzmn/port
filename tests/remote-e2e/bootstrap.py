@@ -761,13 +761,8 @@ def concurrent_owners():
         )
         status, _ = request('feature.port', 3100, 'POST')
         require(status == 409, 'ambiguous POST did not fail closed')
-        for machine in ('remote-a', 'remote-b'):
-            status, body = request(f'feature.{machine}.ssh', 3100, 'GET', '/cgi-bin/sentinel')
-            require(
-                status == 200 and body == b'1',
-                f'qualified route did not preserve one sentinel mutation for {machine}: '
-                f'status={status} body={body[:128]!r}',
-            )
+        shell_a.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-verify-count')
+        shell_b.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-verify-count')
 
         shell_b.send('exit 19\n')
         shell_b.wait_for(lambda: not directory_b.exists())
