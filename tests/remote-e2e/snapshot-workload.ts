@@ -166,11 +166,13 @@ exec httpd -f -p 8080 -h /www`
     }
   }
   execFileSync('/usr/local/bin/port', ['up'], { cwd: tree, timeout: 60_000, stdio: 'inherit' })
+  const project = buildProjectName(repo, branch)
   const ids = docker([
     'ps',
     '--no-trunc',
     '--filter',
     'label=com.docker.compose.service=ui',
+    `label=com.docker.compose.project=${project}`,
     '--format',
     '{{.ID}}',
   ])
