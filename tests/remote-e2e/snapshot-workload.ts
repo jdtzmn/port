@@ -1,6 +1,6 @@
 // Disposable remote-a fixture seed, NOT the product's `port up` route.
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { parse, stringify } from 'yaml'
 import { generateOverrideContent } from '../../src/lib/compose.ts'
 import { buildProjectName } from '../../src/lib/projectName.ts'
@@ -176,6 +176,7 @@ function productStop(): void {
     timeout: 60_000,
     stdio: 'inherit',
   })
+  rmSync(repo, { recursive: true, force: true })
   console.log('PRODUCT_RUNTIME_STOPPED')
 }
 async function probe(): Promise<void> {
