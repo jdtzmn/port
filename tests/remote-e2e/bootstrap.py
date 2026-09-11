@@ -686,6 +686,31 @@ def concurrent_owners():
             status, body = request(f'feature.{machine}.ssh', 3100, 'POST')
             require(status == 200 and body == b'accepted', 'qualified sentinel mutation failed')
 
+
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+
+        def tls_request(host):
+            connection = http.client.HTTPSConnection(host, 3100, timeout=3, context=context)
+            try:
+                connection.request('GET', '/')
+                response = connection.getresponse()
+                return response.status, response.read(1024)
+            finally:
+                connection.close()
+
+        try:
+            tls_request('feature.port')
+            raise RuntimeError('ambiguous TLS/SNI route reached an application response')
+        except (OSError, http.client.HTTPException):
+            pass
+        for machine in ('remote-a', 'remote-b'):
+            status, body = tls_request(f'feature.{machine}.ssh')
+            require(
+                status == 200 and body == f'{machine}-product-runtime'.encode(),
+                f'qualified TLS/SNI route did not reach {machine}: status={status} body={body[:128]!r}',
+            )
         status, _ = request('feature.port', 3100, 'POST')
         require(status == 409, 'ambiguous POST did not fail closed')
         shell_a.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-verify-count')
@@ -705,6 +730,16 @@ def concurrent_owners():
             except (OSError, http.client.HTTPException):
                 pass
             time.sleep(0.1)
+        status, body = tls_request('feature.port')
+        require(
+            status == 200 and body == b'remote-a-product-runtime',
+            f'surviving owner did not recover default TLS/SNI route: status={status} body={body[:128]!r}',
+        )
+        try:
+            tls_request('feature.remote-b.ssh')
+            raise RuntimeError('disconnected explicit TLS/SNI owner was retargeted')
+        except (OSError, http.client.HTTPException):
+            pass
         status, _ = request('ui.feature.remote-b.ssh', 80)
         require(
             status == 503,
