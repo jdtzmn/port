@@ -47,6 +47,44 @@ def wait_for_database(host, database):
     raise RuntimeError(f'automatic PostgreSQL route did not become ready for {host}: {last}')
 
 
+def websocket_attempt(host, port):
+    program = '''
+const url = process.argv.at(-1)
+const messages = []
+const timer = setTimeout(() => process.exit(1), 5000)
+const socket = new WebSocket(url)
+socket.onerror = () => process.exit(1)
+socket.onmessage = event => {
+  messages.push(String(event.data))
+  if (messages.length === 1) socket.send('port-websocket-probe')
+  else {
+    clearTimeout(timer)
+    console.log(JSON.stringify(messages))
+    socket.close()
+  }
+}
+'''
+    return subprocess.run(
+        ['/usr/local/bin/bun', '-e', program, f'ws://{host}:{port}/ws'],
+        env={'PATH': os.environ['PATH'], 'HOME': '/tmp/bootstrap-empty-home', 'LC_ALL': 'C'},
+        text=True,
+        capture_output=True,
+        timeout=7,
+    )
+
+
+def websocket_messages(host, port, machine):
+    result = websocket_attempt(host, port)
+    require(result.returncode == 0, f'WebSocket route unavailable for {host}')
+    require(
+        json.loads(result.stdout) == [
+            f'{machine}-product-runtime-ws-ready',
+            f'{machine}-product-runtime-ws-echo:port-websocket-probe',
+        ],
+        f'WebSocket route reached the wrong endpoint for {host}',
+    )
+
+
 def require(condition, message):
     if not condition:
         raise RuntimeError(message)
@@ -606,6 +644,8 @@ def automatic_runtime(shell, machine):
                     'automatic TLS/SNI route reached the wrong endpoint')
         finally:
             connection.close()
+    websocket_messages('feature.port', 3100, machine)
+    websocket_messages(f'feature.{machine}.ssh', 3100, machine)
     database = f'{machine.replace("-", "_")}_automatic'
     wait_for_database('feature.port', database)
     wait_for_database(f'feature.{machine}.ssh', database)
@@ -727,6 +767,13 @@ def concurrent_owners():
             require(status == 200 and body == b'accepted', 'qualified sentinel mutation failed')
 
 
+        conflict_websocket = websocket_attempt('feature.port', 3100)
+        require(
+            conflict_websocket.returncode != 0,
+            'ambiguous WebSocket route reached an application backend',
+        )
+        for machine in ('remote-a', 'remote-b'):
+            websocket_messages(f'feature.{machine}.ssh', 3100, machine)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
@@ -783,6 +830,12 @@ def concurrent_owners():
             except (OSError, http.client.HTTPException):
                 pass
             time.sleep(0.1)
+        websocket_messages('feature.port', 3100, 'remote-a')
+        disconnected_websocket = websocket_attempt('feature.remote-b.ssh', 3100)
+        require(
+            disconnected_websocket.returncode != 0,
+            'disconnected qualified WebSocket owner was retargeted',
+        )
         wait_for_database('feature.port', 'remote_a_automatic')
         disconnected_database = psql('feature.remote-b.ssh', 'remote_b_automatic')
         require(

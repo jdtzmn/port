@@ -122,26 +122,37 @@ function productStart(machine: string): void {
     { stdio: 'ignore' }
   )
   execFileSync('git', ['-C', main, 'worktree', 'add', '-b', branch, tree], { stdio: 'ignore' })
-  const script = `mkdir -p /www/cgi-bin
-printf ${machine}-product-runtime > /www/index.html
-printf 0 > /www/sentinel-count
-cat > /www/cgi-bin/sentinel <<'CGI'
-#!/bin/sh
-[ "$$REQUEST_METHOD" = GET ] && { printf 'Content-Type: text/plain\\r\\n\\r\\n'; cat /www/sentinel-count; exit; }
-body=$$(dd bs=1 count="$\${CONTENT_LENGTH:-0}" 2>/dev/null)
-[ "$$REQUEST_METHOD" = POST ] && [ "$$body" = port-runtime-sentinel ] || { printf 'Status: 400 Bad Request\\r\\nContent-Type: text/plain\\r\\n\\r\\nmethod=%s length=%s body=%s' "$$REQUEST_METHOD" "$\${CONTENT_LENGTH:-unset}" "$$body"; exit; }
-count=$$(cat /www/sentinel-count)
-printf %s "$$((count + 1))" > /www/sentinel-count
-printf 'Content-Type: text/plain\\r\\n\\r\\naccepted'
-CGI
-chmod 700 /www/cgi-bin/sentinel
-exec httpd -f -p 8080 -h /www`
+  const script = `cat > /server.ts <<'SERVER'
+const identity = '${machine}-product-runtime'
+let count = 0
+Bun.serve({
+  port: 8080,
+  async fetch(request, server) {
+    const url = new URL(request.url)
+    if (url.pathname === '/ws' && server.upgrade(request)) return
+    if (url.pathname === '/cgi-bin/sentinel') {
+      if (request.method === 'GET') return new Response(String(count))
+      if (request.method === 'POST' && (await request.text()) === 'port-runtime-sentinel') {
+        count += 1
+        return new Response('accepted')
+      }
+      return new Response('invalid sentinel request', { status: 400 })
+    }
+    return new Response(identity)
+  },
+  websocket: {
+    open(socket) { socket.send(identity + '-ws-ready') },
+    message(socket, message) { socket.send(identity + '-ws-echo:' + message) },
+  },
+})
+SERVER
+exec bun /server.ts`
   writeFileSync(
     `${tree}/docker-compose.yml`,
     stringify({
       services: {
         ui: {
-          image: 'busybox:1.37.0',
+          image: 'oven/bun:1.3.3',
           ports: ['3100:8080'],
           command: ['sh', '-c', script],
         },
