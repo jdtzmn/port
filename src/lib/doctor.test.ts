@@ -94,14 +94,25 @@ describe('collectDoctorReport', () => {
     mocks.readFile.mockResolvedValue(
       JSON.stringify({
         projects: [],
-        hostServices: [{ repo: '/repo', branch: 'feature', logicalPort: 3000, actualPort: 49152, pid: 42, configFile: '/tmp/service.yml' }],
+        hostServices: [
+          {
+            repo: '/repo',
+            branch: 'feature',
+            logicalPort: 3000,
+            actualPort: 49152,
+            pid: 42,
+            configFile: '/tmp/service.yml',
+          },
+        ],
       })
     )
     mocks.isProcessRunning.mockReturnValue(false)
 
     const report = await collectDoctorReport()
 
-    expect(report.checks.find(result => result.id === 'host-services')).toMatchObject({ status: 'warn' })
+    expect(report.checks.find(result => result.id === 'host-services')).toMatchObject({
+      status: 'warn',
+    })
   })
 
   test('is useful outside Port projects', async () => {

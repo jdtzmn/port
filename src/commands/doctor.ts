@@ -1,5 +1,10 @@
 import chalk from 'chalk'
-import { assertDoctorHealthy, collectDoctorReport, type DoctorCheck, type DoctorStatus } from '../lib/doctor.ts'
+import {
+  assertDoctorHealthy,
+  collectDoctorReport,
+  type DoctorCheck,
+  type DoctorStatus,
+} from '../lib/doctor.ts'
 import * as output from '../lib/output.ts'
 
 const STATUS_SYMBOL: Record<DoctorStatus, string> = {
@@ -44,7 +49,10 @@ export async function doctor(options: { verbose?: boolean } = {}): Promise<void>
   const report = await collectDoctorReport()
   printContext(report)
 
-  printGroup('Prerequisites', report.checks.filter(result => result.category === 'prerequisites'))
+  printGroup(
+    'Prerequisites',
+    report.checks.filter(result => result.category === 'prerequisites')
+  )
 
   const attention = report.checks.filter(result => result.status === 'warn')
   const blockers = report.checks.filter(result => result.status === 'fail')
@@ -55,7 +63,10 @@ export async function doctor(options: { verbose?: boolean } = {}): Promise<void>
       ['Project', 'project'],
       ['State', 'state'],
     ] as const) {
-      printGroup(title, report.checks.filter(result => result.category === category))
+      printGroup(
+        title,
+        report.checks.filter(result => result.category === category)
+      )
     }
   } else {
     printGroup('Needs attention', attention)

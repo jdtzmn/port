@@ -48,7 +48,10 @@ function check(
 function hasValidRegistry(value: unknown): value is Registry {
   if (typeof value !== 'object' || value === null) return false
   const registry = value as Partial<Registry>
-  return Array.isArray(registry.projects) && (registry.hostServices === undefined || Array.isArray(registry.hostServices))
+  return (
+    Array.isArray(registry.projects) &&
+    (registry.hostServices === undefined || Array.isArray(registry.hostServices))
+  )
 }
 
 async function readRegistry(): Promise<{ registry?: Registry; check: DoctorCheck }> {
@@ -93,7 +96,13 @@ async function checkDocker(): Promise<DoctorCheck> {
     await execAsync('docker info', { timeout: 5000 })
     return check('docker', 'prerequisites', 'pass', 'Docker is running.')
   } catch {
-    return check('docker', 'prerequisites', 'fail', 'Docker is not available.', 'Start Docker, then retry.')
+    return check(
+      'docker',
+      'prerequisites',
+      'fail',
+      'Docker is not available.',
+      'Start Docker, then retry.'
+    )
   }
 }
 
@@ -184,7 +193,9 @@ async function checkRouting(registry: Registry | undefined): Promise<DoctorCheck
       )
     )
   } else {
-    checks.push(check('entrypoints', 'routing', 'pass', 'Required Traefik entrypoints are configured.'))
+    checks.push(
+      check('entrypoints', 'routing', 'pass', 'Required Traefik entrypoints are configured.')
+    )
   }
   return checks
 }
@@ -247,7 +258,13 @@ async function collectProjectChecks(context: DoctorContext): Promise<DoctorCheck
 }
 
 async function checkStaleWorktrees(repoRoot: string | undefined): Promise<DoctorCheck> {
-  if (!repoRoot) return check('stale-worktrees', 'state', 'info', 'No repository available to inspect worktrees.')
+  if (!repoRoot)
+    return check(
+      'stale-worktrees',
+      'state',
+      'info',
+      'No repository available to inspect worktrees.'
+    )
   const stale = await getStaleWorktreeCandidates(repoRoot)
   if (stale.length < STALE_WORKTREE_WARNING_THRESHOLD) {
     return check('stale-worktrees', 'state', 'pass', 'No excessive stale worktrees found.')

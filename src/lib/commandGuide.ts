@@ -68,7 +68,8 @@ export const COMMAND_GUIDE: CommandGuideEntry[] = [
     description: 'Diagnose Port prerequisites, routing, and project configuration',
     how: 'Run when setup or routing is not working; add --verbose to show every check.',
     why: 'Reports actionable blockers and warnings without changing Port state.',
-    agentGuidance: 'Safe, read-only diagnostics. Run before changing Docker, DNS, or Port configuration.',
+    agentGuidance:
+      'Safe, read-only diagnostics. Run before changing Docker, DNS, or Port configuration.',
   },
   {
     command: 'port shell-hook <bash|zsh|fish>',

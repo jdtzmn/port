@@ -25,8 +25,20 @@ const report = {
   checks: [
     { id: 'docker', category: 'prerequisites', status: 'pass', summary: 'Docker is running.' },
     { id: 'traefik', category: 'routing', status: 'pass', summary: 'Traefik is running.' },
-    { id: 'stale-worktrees', category: 'state', status: 'warn', summary: '13 stale worktrees found.', remediation: 'Review them with `port prune --dry-run`.' },
-    { id: 'dns', category: 'domains', status: 'fail', summary: '*.port does not resolve locally.', remediation: 'Run `port install --domain port`, then retry.' },
+    {
+      id: 'stale-worktrees',
+      category: 'state',
+      status: 'warn',
+      summary: '13 stale worktrees found.',
+      remediation: 'Review them with `port prune --dry-run`.',
+    },
+    {
+      id: 'dns',
+      category: 'domains',
+      status: 'fail',
+      summary: '*.port does not resolve locally.',
+      remediation: 'Run `port install --domain port`, then retry.',
+    },
   ],
 } as const
 
@@ -69,7 +81,9 @@ describe('doctor command', () => {
   test('prints a green success message when no checks need attention', async () => {
     mocks.collectDoctorReport.mockResolvedValue({
       context: report.context,
-      checks: [{ id: 'docker', category: 'prerequisites', status: 'pass', summary: 'Docker is running.' }],
+      checks: [
+        { id: 'docker', category: 'prerequisites', status: 'pass', summary: 'Docker is running.' },
+      ],
     })
 
     await doctor()
