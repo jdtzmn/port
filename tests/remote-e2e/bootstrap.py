@@ -686,11 +686,13 @@ def concurrent_owners():
             timeout=90,
         )
 
-        def request(host, port, method='GET'):
+        def request(host, port, method='GET', path=None):
             connection = http.client.HTTPConnection(host, port, timeout=3)
             try:
                 body = b'port-runtime-sentinel' if method == 'POST' else None
-                connection.request(method, '/cgi-bin/sentinel' if method == 'POST' else '/', body=body)
+                if path is None:
+                    path = '/cgi-bin/sentinel' if method == 'POST' else '/'
+                connection.request(method, path, body=body)
                 response = connection.getresponse()
                 return response.status, response.read(1024)
             finally:
@@ -760,7 +762,7 @@ def concurrent_owners():
         status, _ = request('feature.port', 3100, 'POST')
         require(status == 409, 'ambiguous POST did not fail closed')
         for machine in ('remote-a', 'remote-b'):
-            status, body = request(f'feature.{machine}.ssh', 3100)
+            status, body = request(f'feature.{machine}.ssh', 3100, 'GET', '/cgi-bin/sentinel')
             require(
                 status == 200 and body == b'1',
                 f'qualified route did not preserve one sentinel mutation for {machine}: '
