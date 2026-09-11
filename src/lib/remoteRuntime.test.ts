@@ -119,4 +119,26 @@ describe('connected coordinator runtime', () => {
     await wake()
     await vi.waitFor(async () => expect((await response()).status).toBe(200), { timeout: 8000 })
   }, 25000)
+
+  it('keeps coordinating when local snapshots contain only custom domains', async () => {
+    snapshot = {
+      ...snapshot,
+      worktrees: snapshot.worktrees.map(worktree => ({
+        ...worktree,
+        namespace: 'feature.custom',
+      })),
+    }
+    await start()
+
+    await vi.waitFor(async () => {
+      const result = await requestRemoteCoordinator(join(root, 'control'), {
+        version: 1,
+        action: 'ping',
+      })
+      expect(result?.status).toBe('ok')
+    })
+    await expect(
+      readFile(join(dynamicDirectory, 'port-remote-routes.yml'), 'utf8')
+    ).rejects.toThrow()
+  }, 10000)
 })

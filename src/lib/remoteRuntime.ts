@@ -33,6 +33,7 @@ import {
   registerRemotePin,
   type RemoteRuntimeCheckpoint,
 } from './remoteRuntimeStore.ts'
+import { selectSupportedRemoteWorktrees } from './remoteRoutePolicy.ts'
 import type { RemoteSnapshot } from './remoteSnapshot.ts'
 
 /** One serial resource worker. Control admissions are journalled separately from route frames. */
@@ -203,11 +204,16 @@ export async function startRemoteRuntime(options: {
       }
       const sources: RemoteReconcilerSource[] = state
         .desired(Date.now())
+        .map(source => ({
+          ...source,
+          snapshot: selectSupportedRemoteWorktrees(source.snapshot),
+        }))
         .filter(source => source.snapshot.worktrees.length > 0)
-      if (local)
+      const routedLocal = local ? selectSupportedRemoteWorktrees(local) : null
+      if (routedLocal)
         sources.push({
           owner: { id: 'local', kind: 'local', label: 'local' },
-          snapshot: local,
+          snapshot: routedLocal,
           available: localReady,
         })
       frame = {
