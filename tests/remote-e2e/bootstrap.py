@@ -19,16 +19,29 @@ import tempfile
 import stat
 import time
 import uuid
-from baseline import database_identity
+from baseline import psql
 
 
-def wait_for_database(host, database, remote):
+def wait_for_database(host, database):
     end = time.monotonic() + 45
     last = None
     while time.monotonic() < end:
+        result = psql(
+            host,
+            database,
+            query=('SELECT current_database(), inet_server_port(), '
+                   '(SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid())'),
+        )
         try:
-            return database_identity(host, database, remote)
-        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
+            require(result.returncode == 0, result.stderr[-2048:])
+            require('SSL connection (protocol: TLS' in result.stdout, result.stdout[-2048:])
+            fields = result.stdout.strip().splitlines()[-1].split('|')
+            require(
+                fields == [database, '5432', 'f'],
+                f'automatic PostgreSQL reached the wrong backend: {fields}',
+            )
+            return
+        except RuntimeError as error:
             last = error
             time.sleep(0.2)
     raise RuntimeError(f'automatic PostgreSQL route did not become ready for {host}: {last}')
@@ -594,8 +607,8 @@ def automatic_runtime(shell, machine):
         finally:
             connection.close()
     database = f'{machine.replace("-", "_")}_automatic'
-    wait_for_database('feature.port', database, machine)
-    wait_for_database(f'feature.{machine}.ssh', database, machine)
+    wait_for_database('feature.port', database)
+    wait_for_database(f'feature.{machine}.ssh', database)
     connection = http.client.HTTPConnection('feature.port', 3100, timeout=3)
     try:
         connection.request('POST', '/cgi-bin/sentinel', body=b'port-runtime-sentinel')
