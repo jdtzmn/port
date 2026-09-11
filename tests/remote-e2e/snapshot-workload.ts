@@ -167,9 +167,16 @@ exec httpd -f -p 8080 -h /www`
   }
   execFileSync('/usr/local/bin/port', ['up'], { cwd: tree, timeout: 60_000, stdio: 'inherit' })
   console.log('PRODUCT_START: find UI')
-  console.log(`PRODUCT_START: project=${buildProjectName(repo, branch)}`)
-  const project = buildProjectName(repo, branch)
-  const ids = docker(['inspect', '--type', 'container', '--format', '{{.Id}}', `${project}-ui-1`])
+  const ids = docker([
+    'compose',
+    '-f',
+    `${tree}/docker-compose.yml`,
+    '-f',
+    `${tree}/.port/override.yml`,
+    'ps',
+    '-q',
+    'ui',
+  ])
     .split('\n')
     .filter(Boolean)
   if (ids.length !== 1 || !/^[a-f0-9]{64}$/.test(ids[0]!))
