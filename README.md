@@ -115,6 +115,29 @@ port install --no-shell-hook
 port install --shell-hook-only
 ```
 
+### Remote VM services (optional, Bash)
+
+Enable remote service routing during the same one-time setup:
+
+```bash
+port install --remote-services
+
+# If DNS is already configured and only the shell hook needs updating
+port install --remote-services --shell-hook-only
+```
+
+Afterward, use ordinary SSH normally:
+
+```bash
+ssh devbox
+# On devbox
+port up
+```
+
+While that SSH session is active, remote services use the same local URLs as local worktrees, such as `ui.feature.port` and `feature.port:3000`. If the same worktree exists in more than one place, use the stable machine-qualified `.ssh` alias shown by Port, such as `ui.feature.devbox.ssh`. Ambiguous default URLs fail closed instead of selecting a machine silently.
+
+The initial integration supports Bash, HTTP routing, and TLS/SNI routing. `command ssh ...` bypasses Port's SSH integration. Plaintext protocols that do not carry a hostname remain limited by Port's existing routing model; broader support is tracked in [#149](https://github.com/jdtzmn/port/issues/149). The remote machine must have a compatible `port` executable, but missing or incompatible remote support never blocks the SSH login.
+
 #### Linux DNS Setup
 
 On Linux systems with `systemd-resolved` running (most modern Ubuntu/Debian systems), the install command automatically:
