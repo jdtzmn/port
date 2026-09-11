@@ -619,6 +619,106 @@ def automatic_runtime(shell, machine):
         flush=True,
     )
 
+def concurrent_owners():
+    before_a = session_directories()
+    shell_a = LocalShell()
+    shell_b = LocalShell()
+    try:
+        shell_a.marker(
+            'SHELL=/bin/bash command port install --remote-services --shell-hook-only --yes '
+            '>/tmp/remote-install.log && eval "$(command port shell-hook bash)"',
+            timeout=60,
+        )
+        shell_b.marker('eval "$(port shell-hook bash --remote-services)"; declare -F ssh >/dev/null')
+        shell_a.send('ssh remote-a\n')
+        shell_a.marker('test -t 0 && test "$(id -un)" = fixture')
+        shell_a.wait_for(lambda: len(session_directories() - before_a) == 1)
+        directory_a = private_session(before_a)
+        shell_a.marker(
+            '/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-start remote-a',
+            timeout=90,
+        )
+        before_b = session_directories()
+        shell_b.send('ssh remote-b\n')
+        shell_b.marker('test -t 0 && test "$(id -un)" = fixture')
+        shell_b.wait_for(lambda: len(session_directories() - before_b) == 1)
+        directory_b = private_session(before_b)
+        shell_b.marker(
+            '/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-start remote-b',
+            timeout=90,
+        )
+
+        def request(host, port, method='GET'):
+            connection = http.client.HTTPConnection(host, port, timeout=3)
+            try:
+                body = b'port-runtime-sentinel' if method == 'POST' else None
+                connection.request(method, '/cgi-bin/sentinel' if method == 'POST' else '/', body=body)
+                response = connection.getresponse()
+                return response.status, response.read(1024)
+            finally:
+                connection.close()
+
+        end = time.monotonic() + 45
+        while True:
+            remaining = end - time.monotonic()
+            require(remaining > 0, 'simultaneous owner conflict publication timed out')
+            try:
+                status, body = request('ui.feature.port', 80)
+                if status == 409:
+                    conflict = json.loads(body)
+                    candidates = conflict.get('candidates', [])
+                    addresses = {item.get('hostname') for item in candidates}
+                    require(
+                        addresses == {'ui.feature.remote-a.ssh', 'ui.feature.remote-b.ssh'},
+                        f'conflict alternatives were not explicit: {conflict!r}',
+                    )
+                    break
+            except (OSError, http.client.HTTPException, json.JSONDecodeError):
+                pass
+            time.sleep(0.1)
+
+        for machine in ('remote-a', 'remote-b'):
+            status, body = request(f'ui.feature.{machine}.ssh', 80)
+            require(
+                status == 200 and body == f'{machine}-product-runtime'.encode(),
+                f'qualified route did not reach {machine}: status={status} body={body[:128]!r}',
+            )
+            status, body = request(f'feature.{machine}.ssh', 3100, 'POST')
+            require(status == 200 and body == b'accepted', 'qualified sentinel mutation failed')
+
+        status, _ = request('feature.port', 3100, 'POST')
+        require(status == 409, 'ambiguous POST did not fail closed')
+        shell_a.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-verify-count')
+        shell_b.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-verify-count')
+
+        shell_b.send('exit 19\n')
+        shell_b.wait_for(lambda: not directory_b.exists())
+        shell_b.marker('test "$?" -eq 19')
+        end = time.monotonic() + 30
+        while True:
+            remaining = end - time.monotonic()
+            require(remaining > 0, 'surviving owner did not recover default route')
+            try:
+                status, body = request('ui.feature.port', 80)
+                if status == 200 and body == b'remote-a-product-runtime':
+                    break
+            except (OSError, http.client.HTTPException):
+                pass
+            time.sleep(0.1)
+        status, _ = request('ui.feature.remote-b.ssh', 80)
+        require(status == 503, 'disconnected explicit owner was retargeted')
+
+        shell_a.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-stop', timeout=90)
+        shell_a.send('exit 17\n')
+        shell_a.wait_for(lambda: not directory_a.exists())
+        shell_a.marker('test "$?" -eq 17')
+        require(session_directories() == before_a, 'concurrent owner test leaked session state')
+        print('PASS simultaneous remote owners: conflict alternatives, qualified routes, POST isolation, and disconnect recovery', flush=True)
+    finally:
+        shell_a.close()
+        shell_b.close()
+
+
 def missing_port_only():
     before = session_directories()
     shell = LocalShell()
@@ -680,6 +780,7 @@ def main():
         print('PASS product shell preserves status 7 and removes session state', flush=True)
         automatic_runtime(shell, 'remote-a')
         automatic_runtime(shell, 'remote-b')
+        concurrent_owners()
 
         shell.send('ssh -J remote-b remote-a\n')
         shell.marker('test -t 0 && test "$(id -un)" = fixture')
