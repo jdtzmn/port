@@ -177,6 +177,7 @@ function productStop(): void {
     stdio: 'inherit',
   })
   rmSync(repo, { recursive: true, force: true })
+  rmSync(`${root}/product-container-id`, { force: true })
   console.log('PRODUCT_RUNTIME_STOPPED')
 }
 async function probe(): Promise<void> {
