@@ -706,7 +706,10 @@ def concurrent_owners():
                 pass
             time.sleep(0.1)
         status, _ = request('ui.feature.remote-b.ssh', 80)
-        require(status == 503, 'disconnected explicit owner was retargeted')
+        require(
+            status == 503,
+            f'disconnected explicit owner was retargeted: status={status} body={_[:128]!r}',
+        )
 
         shell_a.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-stop', timeout=90)
         shell_a.send('exit 17\n')

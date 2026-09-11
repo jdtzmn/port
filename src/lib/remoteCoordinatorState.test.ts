@@ -497,7 +497,18 @@ describe('remote coordinator metadata state', () => {
     state.disconnect('b')
     expect(desired(12).selectedSessionId).toBe('a')
     state.disconnect('a')
-    expect(desired(12).snapshot.worktrees).toEqual([])
+    const unavailable = desired(12)
+    expect(unavailable).toMatchObject({
+      available: false,
+      snapshot: { worktrees: [expect.anything()] },
+    })
+    // Availability is enforced by the reconciler: resolved ownership without a backend
+    // is rendered through an unavailable guard rather than falling back to another owner.
+    expect(
+      compileRemoteRoutePlan([unavailable]).find(plan => plan.hostname === 'main.host.ssh')
+    ).toMatchObject({
+      resolution: { status: 'resolved' },
+    })
   })
   it('fails terminally rather than dropping overflowing retained claims', () => {
     const { state, observe } = setup()

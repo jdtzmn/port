@@ -202,13 +202,9 @@ export function restoreRemoteCoordinatorState(
           live.some(([, frame]) => frame!.observedAt > watermark)
         )
           fail()
-      } else if (
-        item.selected !== null ||
-        item.watermark !== 0 ||
-        item.selectionFloor !== 0 ||
-        item.claims.length
-      )
-        fail()
+      } else if (item.selected !== null) {
+        return fail()
+      }
       const claims: OwnerState['claims'] = new Map()
       for (const claim of item.claims) {
         if (
@@ -417,10 +413,10 @@ function coordinator(
       const state = owners.get(frame.ownerId)!
       const remaining = active(frame.ownerId)
       if (!remaining.length) {
-        state.claims.clear()
+        // Retain historical claims as unavailable guards. Dropping them would remove
+        // owner-qualified routes, permitting stale proxy config to fall back elsewhere.
         state.selected = undefined
-        state.watermark = 0
-        state.selectionFloor = 0
+        state.selectionFloor = state.watermark
       } else if (state.selected === sessionId) {
         state.selected = remaining[0]![0]
         state.selectionFloor = state.watermark
