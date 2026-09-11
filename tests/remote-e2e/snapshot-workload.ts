@@ -173,6 +173,7 @@ exec httpd -f -p 8080 -h /www`
     '--filter',
     'label=com.docker.compose.service=ui',
     `label=com.docker.compose.project=${project}`,
+    `name=^/${project}-ui-1$`,
     '--format',
     '{{.ID}}',
   ])
