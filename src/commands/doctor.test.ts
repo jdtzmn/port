@@ -90,4 +90,19 @@ describe('doctor command', () => {
 
     expect(mocks.success).toHaveBeenCalledWith('Port is ready.')
   })
+
+  test('suggests initialization outside a Port project', async () => {
+    mocks.collectDoctorReport.mockResolvedValue({
+      context: { ...report.context, projectDetected: false },
+      checks: [
+        { id: 'docker', category: 'prerequisites', status: 'pass', summary: 'Docker is running.' },
+      ],
+    })
+
+    await doctor()
+
+    expect(mocks.success).toHaveBeenCalledWith(
+      'Port prerequisites are ready. Run `port init` to initialize this repository.'
+    )
+  })
 })

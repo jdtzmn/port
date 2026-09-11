@@ -74,7 +74,11 @@ export async function doctor(options: { verbose?: boolean } = {}): Promise<void>
   }
 
   if (blockers.length === 0 && attention.length === 0) {
-    output.success('Port is ready.')
+    output.success(
+      report.context.projectDetected
+        ? 'Port is ready.'
+        : 'Port prerequisites are ready. Run `port init` to initialize this repository.'
+    )
   }
 
   assertDoctorHealthy(report)
