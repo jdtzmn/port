@@ -171,7 +171,7 @@ function productVerifyCount(): void {
   console.log('PASS product sentinel count=1')
 }
 function productStop(): void {
-  execFileSync('/usr/local/bin/port', ['down'], {
+  execFileSync('/usr/local/bin/port', ['down', '--yes'], {
     cwd: `${repo}/.port/trees/${branch}`,
     timeout: 60_000,
     stdio: 'inherit',
