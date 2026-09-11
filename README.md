@@ -310,6 +310,7 @@ Shows archived branches created by `port remove` and asks for confirmation befor
 | `port compose <args...>` (alias: `dc`)                              | Run docker compose with auto `-f` flags                             |
 | `port list`                                                         | Print worktree names, one per line                                  |
 | `port status`                                                       | Show service status across all worktrees                            |
+| `port doctor [--verbose]`                                           | Diagnose Port prerequisites, routing, and project configuration     |
 | `port urls [service]`                                               | Show service URLs for current worktree                              |
 | `port uninstall [--yes] [--domain DOMAIN]`                          | Remove DNS configuration for wildcard domain                        |
 | `port hook [hook-name] [--list]`                                    | List or manually run a configured lifecycle hook                    |

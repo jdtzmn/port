@@ -49,6 +49,7 @@ describe('getSubcommands', () => {
     expect(cmds).toContain('open')
     expect(cmds).toContain('down')
     expect(cmds).toContain('completion')
+    expect(cmds).toContain('doctor')
   })
 
   test('includes aliases', () => {
@@ -177,6 +178,7 @@ describe('shouldAutoRegisterWorktree', () => {
     expect(shouldAutoRegisterWorktree('install')).toBe(false)
     expect(shouldAutoRegisterWorktree('cleanup')).toBe(false)
     expect(shouldAutoRegisterWorktree('prune')).toBe(false)
+    expect(shouldAutoRegisterWorktree('doctor')).toBe(false)
     expect(shouldAutoRegisterWorktree('uninstall')).toBe(false)
     expect(shouldAutoRegisterWorktree('--help')).toBe(false)
     expect(shouldAutoRegisterWorktree('-V')).toBe(false)
@@ -188,6 +190,7 @@ describe('shouldSkipEarlyWork', () => {
     expect(shouldSkipEarlyWork('enter')).toBe(true)
     expect(shouldSkipEarlyWork('completion')).toBe(true)
     expect(shouldSkipEarlyWork('shell-hook')).toBe(true)
+    expect(shouldSkipEarlyWork('doctor')).toBe(true)
     expect(shouldSkipEarlyWork('status')).toBe(false)
     expect(shouldSkipEarlyWork(undefined)).toBe(false)
   })

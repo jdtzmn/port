@@ -17,6 +17,7 @@ import { run } from './commands/run.ts'
 import { handleCliError } from './lib/cli.ts'
 import { kill } from './commands/kill.ts'
 import { status } from './commands/status.ts'
+import { doctor } from './commands/doctor.ts'
 import { cleanup } from './commands/cleanup.ts'
 import { prune } from './commands/prune.ts'
 import { urls } from './commands/urls.ts'
@@ -130,6 +131,13 @@ program.command('list').alias('ls').description('Print worktree names, one per l
 
 // port status
 program.command('status').description('Show service status across all worktrees').action(status)
+
+// port doctor
+program
+  .command('doctor')
+  .description('Diagnose Port prerequisites, routing, and project configuration')
+  .option('-v, --verbose', 'Show all diagnostic checks')
+  .action(doctor)
 
 // port enter <branch...>
 // Variadic so bare multi-word names (`port enter my feature`) are joined into a

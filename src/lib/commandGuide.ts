@@ -45,6 +45,23 @@ export const COMMAND_GUIDE: CommandGuideEntry[] = [
     privileged: true,
   },
   {
+    command: 'port status',
+    category: 'recommended',
+    description: 'Show service status across all worktrees',
+    how: 'Run anytime when you need service-level visibility.',
+    why: 'Shows running/stopped services across all worktrees.',
+    agentGuidance: 'Use before changing service state or diagnosing routing problems.',
+  },
+  {
+    command: 'port doctor',
+    category: 'useful',
+    description: 'Diagnose Port prerequisites, routing, and project configuration',
+    how: 'Run when setup or routing is not working; add --verbose to show every check.',
+    why: 'Reports actionable blockers and warnings without changing Port state.',
+    agentGuidance:
+      'Safe, read-only diagnostics. Run before changing Docker, DNS, or Port configuration.',
+  },
+  {
     command: 'port list',
     cliName: 'list',
     aliases: ['ls'],
@@ -53,14 +70,6 @@ export const COMMAND_GUIDE: CommandGuideEntry[] = [
     how: 'Run when you need a compact list of known worktrees. Alias: port ls.',
     why: 'Shows which worktrees Port knows about without changing state.',
     agentGuidance: 'Safe read-only inspection command; prefer before cleanup or branch selection.',
-  },
-  {
-    command: 'port status',
-    category: 'recommended',
-    description: 'Show service status across all worktrees',
-    how: 'Run anytime when you need service-level visibility.',
-    why: 'Shows running/stopped services across all worktrees.',
-    agentGuidance: 'Use before changing service state or diagnosing routing problems.',
   },
   {
     command: 'port shell-hook <bash|zsh|fish>',

@@ -66,6 +66,7 @@ describe('onboard command', () => {
       '   Why: Creates or enters the branch worktree and changes into it, reusing an existing checked-out worktree when needed.'
     )
     expect(mocks.info).toHaveBeenCalledWith('Useful checks:')
+    expect(mocks.dim).toHaveBeenCalledWith(expect.stringContaining('port doctor'))
   })
 
   test('does not write file when --md is not passed', async () => {
