@@ -39,6 +39,7 @@ services:
       POSTGRES_HOST_AUTH_METHOD: trust
     volumes:
       - public-keys:/public-keys
+      - remote-b-state:/home/fixture/.port
     network_mode: 'service:docker-b'
     depends_on:
       docker-b:
@@ -105,6 +106,7 @@ services:
         aliases: [remote-b]
     volumes:
       - docker-b-data:/var/lib/docker
+      - remote-b-state:/home/fixture/.port
 networks:
   fixture:
     internal: true
@@ -115,3 +117,4 @@ volumes:
   docker-b-data:
   client-state:
   remote-a-state:
+  remote-b-state:

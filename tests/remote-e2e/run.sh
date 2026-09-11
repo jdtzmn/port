@@ -72,8 +72,8 @@ for daemon in docker docker-a docker-b; do
   step 60 "smoke-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /smoke.tar
   step 10 "smoke-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /smoke.tar
 done
-# Production Port starts Traefik and the 404 handler in both participating daemons.
-for daemon in docker docker-a; do
+# Production Port starts Traefik and the 404 handler in every participating daemon.
+for daemon in docker docker-a docker-b; do
   step 30 "proxy-copy-$daemon" "${compose[@]}" cp "$image_dir/proxy.tar" "$daemon:/proxy.tar"
   step 60 "proxy-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /proxy.tar
   step 10 "proxy-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /proxy.tar
@@ -84,7 +84,9 @@ done
 step 150 proof "${compose[@]}" exec -T client python3 /fixture/harness.py
 step 90 multiplexing "${compose[@]}" exec -T client python3 /fixture/mux.py
 step 90 baseline "${compose[@]}" exec -T client python3 /fixture/baseline.py
-# Remove only the disposable fixture's CLI, after gates that need both remotes.
-step 10 missing-port "${compose[@]}" exec -T remote-b mv /usr/local/bin/port /usr/local/bin/port-unavailable
 step 210 bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py
+
+# Preserve ordinary login fallback after both Port-enabled remote product scenarios.
+step 10 missing-port "${compose[@]}" exec -T remote-b mv /usr/local/bin/port /usr/local/bin/port-unavailable
+step 90 missing-port-bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py --missing-port-only
 printf 'remote-e2e: transport, SSH compatibility, failure-path components, and automatic port up HTTP/TLS-SNI routing passed\n'

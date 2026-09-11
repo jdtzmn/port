@@ -5,6 +5,7 @@ import http.client
 import json
 import ipaddress
 import re
+import sys
 import os
 from pathlib import Path
 import pty
@@ -525,22 +526,29 @@ def runtime_diagnostics():
         'traefik': container,
     }, sort_keys=True), flush=True)
 
-def automatic_runtime(shell):
+def automatic_runtime(shell, machine):
     before = session_directories()
     shell.marker(
         'SHELL=/bin/bash command port install --remote-services --shell-hook-only --yes '
         '>/tmp/remote-install.log && eval "$(command port shell-hook bash)"; declare -F ssh >/dev/null',
         timeout=60,
     )
-    shell.send('ssh remote-a\n')
+    shell.send(f'ssh {machine}\n')
     shell.marker('test -t 0 && test "$(id -un)" = fixture')
     shell.wait_for(lambda: any((path / 'handshake.json').exists() for path in session_directories() - before))
     directory = private_session(before)
-    shell.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-start', timeout=90)
+    shell.marker(
+        f'/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-start {machine}',
+        timeout=90,
+    )
 
-    expected = b'remote-a-product-runtime'
-    routes = [('ui.feature.port', 80), ('feature.port', 3100),
-              ('ui.feature.remote-a.ssh', 80), ('feature.remote-a.ssh', 3100)]
+    expected = f'{machine}-product-runtime'.encode()
+    routes = [
+        ('ui.feature.port', 80),
+        ('feature.port', 3100),
+        (f'ui.feature.{machine}.ssh', 80),
+        (f'feature.{machine}.ssh', 3100),
+    ]
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
@@ -563,7 +571,7 @@ def automatic_runtime(shell):
             finally:
                 connection.close()
             time.sleep(0.1)
-    for host in ('feature.port', 'feature.remote-a.ssh'):
+    for host in ('feature.port', f'feature.{machine}.ssh'):
         connection = http.client.HTTPSConnection(host, 3100, timeout=3, context=context)
         try:
             connection.request('GET', '/')
@@ -606,8 +614,30 @@ def automatic_runtime(shell):
     shell.wait_for(lambda: not directory.exists())
     shell.marker('test "$?" -eq 17')
     require(session_directories() == before, 'automatic runtime login leaked session state')
-    print('PASS ordinary SSH -> port up -> automatic HTTP/TLS-SNI routing; removal and status 17 preserved',
-          flush=True)
+    print(
+        f'PASS {machine}: ordinary SSH -> port up -> automatic HTTP/TLS-SNI routing; removal and status 17 preserved',
+        flush=True,
+    )
+
+def missing_port_only():
+    before = session_directories()
+    shell = LocalShell()
+    try:
+        shell.marker('eval "$(port shell-hook bash --remote-services)"; declare -F ssh >/dev/null')
+        shell.send('ssh remote-b\n')
+        shell.marker('test -t 0 && test "$(id -un)" = fixture && ! command -v port')
+        directory = private_session(before)
+        shell.wait_for(lambda: observer_finished(directory))
+        require(directory.exists(), 'missing-Port login lost its session prematurely')
+        require(not (directory / 'handshake.json').exists(), 'missing Port produced a handshake')
+        shell.send('exit 9\n')
+        shell.wait_for(lambda: not directory.exists())
+        shell.marker('test "$?" -eq 9')
+        require(session_directories() == before, 'missing-Port login leaked session state')
+        print('PASS missing remote Port: interactive login, no handshake, status 9, cleanup', flush=True)
+    finally:
+        shell.close()
+
 
 def main():
     # Install the fixture's normal SSH config, not command-specific test options.
@@ -648,7 +678,8 @@ def main():
         shell.wait_for(lambda: observer_finished(directory))
         require(session_directories() == before, 'live-discovery login leaked local session state')
         print('PASS product shell preserves status 7 and removes session state', flush=True)
-        automatic_runtime(shell)
+        automatic_runtime(shell, 'remote-a')
+        automatic_runtime(shell, 'remote-b')
 
         shell.send('ssh -J remote-b remote-a\n')
         shell.marker('test -t 0 && test "$(id -un)" = fixture')
@@ -689,17 +720,6 @@ def main():
             subprocess.run(['ssh-keygen', '-q', '-p', '-P', passphrase, '-N', '', '-f', key],
                            check=True, capture_output=True, timeout=5)
 
-        shell.send('ssh remote-b\n')
-        shell.marker('test -t 0 && test "$(id -un)" = fixture && ! command -v port')
-        directory = private_session(before)
-        shell.wait_for(lambda: observer_finished(directory))
-        require(directory.exists(), 'missing-Port login lost its session prematurely')
-        require(not (directory / 'handshake.json').exists(), 'missing Port produced a handshake')
-        shell.send('exit 9\n')
-        shell.wait_for(lambda: not directory.exists())
-        shell.marker('test "$?" -eq 9')
-        require(session_directories() == before, 'missing-Port login leaked session state')
-        print('PASS missing remote Port: interactive login, no handshake, status 9, cleanup', flush=True)
 
         def no_new_sessions():
             require(session_directories() == before, 'noninteractive SSH created session state')
@@ -716,4 +736,9 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    if sys.argv[1:] == ['--missing-port-only']:
+        missing_port_only()
+    elif len(sys.argv) == 1:
+        main()
+    else:
+        raise RuntimeError('invalid arguments')

@@ -99,7 +99,8 @@ exec httpd -f -p 8080 -h /www`,
       ])
   )
 }
-function productStart(): void {
+function productStart(machine: string): void {
+  if (!/^remote-[ab]$/.test(machine)) throw new Error('Invalid fixture machine')
   const main = `${repo}/main`
   const tree = `${repo}/.port/trees/${branch}`
   mkdirSync(`${repo}/.port/trees`, { recursive: true, mode: 0o700 })
@@ -122,7 +123,7 @@ function productStart(): void {
   )
   execFileSync('git', ['-C', main, 'worktree', 'add', '-b', branch, tree], { stdio: 'ignore' })
   const script = `mkdir -p /www/cgi-bin
-printf remote-a-product-runtime > /www/index.html
+printf ${machine}-product-runtime > /www/index.html
 printf 0 > /www/sentinel-count
 cat > /www/cgi-bin/sentinel <<'CGI'
 #!/bin/sh
@@ -195,13 +196,14 @@ async function probe(): Promise<void> {
   console.log('SNAPSHOT_FIXTURE_REACHABLE=' + address)
 }
 try {
-  if (process.argv.length !== 3) throw new Error('Expected one fixture mode')
+  if (process.argv.length < 3 || process.argv.length > 4)
+    throw new Error('Expected one fixture mode and optional machine')
   switch (process.argv[2]) {
     case 'start':
       start()
       break
     case 'product-start':
-      productStart()
+      productStart(process.argv[3] ?? 'remote-a')
       break
     case 'product-verify-count':
       productVerifyCount()
