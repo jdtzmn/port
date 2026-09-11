@@ -16,11 +16,20 @@ export interface RemoteRouteSource {
   snapshot: RemoteSnapshot
 }
 
+export interface RemoteRouteAlternative {
+  owner: { id: string; kind: 'local' | 'ssh'; label: string }
+  worktreeId: string
+  hostname: string
+  port: number
+}
+
 export interface RemoteRoutePlan {
   hostname: string
   port: number
   transport: RemoteTransport
   resolution: RouteResolution
+  /** Exact owner-qualified addresses for a conflicting request. */
+  alternatives?: RemoteRouteAlternative[]
   endpoint?: { ownerId: string; worktreeId: string; endpointId: string }
 }
 
@@ -139,6 +148,21 @@ export function compileRemoteRoutePlan(
     const resolution = resolve(request)
     if (resolution.status === 'invalid') return fail()
     const plan: RemoteRoutePlan = { hostname, port, transport, resolution }
+    if (resolution.status === 'conflict') {
+      const suffix = `.${domain}`
+      const branch = request.namespace.slice(0, -suffix.length)
+      const prefix = 'name' in request.service ? `${request.service.name}.` : ''
+      plan.alternatives = resolution.candidates.map(candidate => {
+        const qualifier = owners.get(candidate.owner.id)
+        if (!qualifier) return fail()
+        return {
+          owner: { ...candidate.owner },
+          worktreeId: candidate.worktreeId,
+          hostname: `${prefix}${branch}.${qualifier}`,
+          port,
+        }
+      })
+    }
     if (resolution.status === 'resolved') {
       const { owner, worktreeId, service } = resolution
       const endpointId = references.get(identity(owner.id, worktreeId, service.id))

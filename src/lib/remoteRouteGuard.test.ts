@@ -68,6 +68,32 @@ describe('startRemoteRouteGuard', () => {
     })
   })
 
+  it('returns exact explicit alternatives in conflict responses', async () => {
+    const input = plan()
+    input.alternatives = [
+      {
+        owner: { id: 'a', kind: 'local', label: 'Local' },
+        worktreeId: 'wt-a',
+        hostname: 'app.feature.local.port',
+        port: 8080,
+      },
+      {
+        owner: { id: 'b', kind: 'ssh', label: 'Remote' },
+        worktreeId: 'wt-b',
+        hostname: 'app.feature.remote.ssh',
+        port: 8080,
+      },
+    ]
+    const response = await exchange(await start(input), get(input.hostname))
+    expect(JSON.parse(response.split('\r\n\r\n')[1]!)).toMatchObject({
+      status: 'conflict',
+      candidates: [
+        { hostname: 'app.feature.local.port', port: 8080 },
+        { hostname: 'app.feature.remote.ssh', port: 8080 },
+      ],
+    })
+  })
+
   it('returns unavailable for a resolved plan whose backend is not ready', async () => {
     const input = plan()
     input.resolution = {

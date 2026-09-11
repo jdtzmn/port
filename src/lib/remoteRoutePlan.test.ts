@@ -76,13 +76,26 @@ describe('compileRemoteRoutePlan', () => {
         },
       ])
       const inputs = [a, b]
+      const qualifier = other === 'local' ? 'local.port' : 'second.ssh'
       for (const route of compileRemoteRoutePlan(inputs).filter(
         p => p.hostname === 'feature.port' || p.hostname === 'ui.feature.port'
       )) {
         expect(route.resolution.status).toBe('conflict')
         expect(route.endpoint).toBeUndefined()
+        const explicit = route.hostname.startsWith('ui.') ? 'ui.' : ''
+        expect(route.alternatives).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              hostname: `${explicit}feature.remote.ssh`,
+              port: route.port,
+            }),
+            expect.objectContaining({
+              hostname: `${explicit}feature.${qualifier}`,
+              port: route.port,
+            }),
+          ])
+        )
       }
-      const qualifier = other === 'local' ? 'local.port' : 'second.ssh'
       expect(lookup(inputs, `ui.feature.${qualifier}`, 80)?.resolution.status).toBe('unavailable')
       expect(lookup(inputs, `feature.${qualifier}`)?.resolution.status).toBe('unavailable')
       expect(lookup(inputs, 'feature.remote.ssh', 5432, 'tls-sni')?.resolution.status).toBe(

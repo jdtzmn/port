@@ -11,7 +11,12 @@ import { createRemoteRelayIdentity } from './remoteRelayIdentity'
 import type { RemoteRoutePlan } from './remoteRoutePlan.ts'
 
 type Status = 'conflict' | 'unavailable'
-type Candidate = { owner: { id: string; kind: 'local' | 'ssh'; label: string }; worktreeId: string }
+type Candidate = {
+  owner: { id: string; kind: 'local' | 'ssh'; label: string }
+  worktreeId: string
+  hostname?: string
+  port?: number
+}
 const MAX_BODY = 1024 * 1024
 const TIMEOUT = 5000
 const MAX_CONNECTIONS = 128
@@ -63,6 +68,32 @@ function snapshot(plan: RemoteRoutePlan, status: Status) {
       if (previous && JSON.stringify(previous) !== JSON.stringify(item)) return invalid()
       candidates.set(key, item)
     }
+  }
+  if (plan.alternatives !== undefined) {
+    if (!Array.isArray(plan.alternatives) || plan.alternatives.length !== candidates.size)
+      return invalid()
+    for (const alternative of plan.alternatives) {
+      const owner = alternative?.owner
+      if (
+        !owner ||
+        !text(owner.id) ||
+        !text(owner.label) ||
+        (owner.kind !== 'local' && owner.kind !== 'ssh') ||
+        !text(alternative.worktreeId) ||
+        !dns(alternative.hostname) ||
+        !Number.isInteger(alternative.port) ||
+        alternative.port < 1 ||
+        alternative.port > 65535
+      )
+        return invalid()
+      const key = JSON.stringify([owner.id, alternative.worktreeId])
+      const candidate = candidates.get(key)
+      if (!candidate || JSON.stringify(candidate.owner) !== JSON.stringify(owner)) return invalid()
+      candidate.hostname = alternative.hostname.toLowerCase()
+      candidate.port = alternative.port
+    }
+    if ([...candidates.values()].some(candidate => !candidate.hostname || !candidate.port))
+      return invalid()
   }
   const ordered = [...candidates.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
   const body = Buffer.from(
