@@ -63,6 +63,20 @@ describe('compileRemoteRoutePlan', () => {
       }
     }
   })
+  it('excludes unavailable owners from defaults while retaining their qualified guard plans', () => {
+    const active = source()
+    const unavailable: RemoteRouteSource = { ...source('second'), available: false }
+    const defaultRoute = lookup([active, unavailable], 'ui.feature.port', 80)
+    expect(defaultRoute).toMatchObject({
+      resolution: { status: 'resolved' },
+      endpoint: { ownerId: 'remote' },
+    })
+    expect(lookup([active, unavailable], 'ui.feature.second.ssh', 80)).toMatchObject({
+      resolution: { status: 'resolved' },
+      endpoint: { ownerId: 'second' },
+    })
+  })
+
   it.each(['local', 'second'])(
     'preserves remote/%s conflicts before transport or name filtering',
     other => {

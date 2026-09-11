@@ -14,6 +14,8 @@ export interface RemoteRouteSource {
   /** Canonical DNS label(s) allocated by the trusted coordinator. */
   alias?: string
   snapshot: RemoteSnapshot
+  /** Unavailable owners retain only their qualified guard routes. */
+  available?: boolean
 }
 
 export interface RemoteRouteAlternative {
@@ -59,6 +61,7 @@ export function compileRemoteRoutePlan(
 ): RemoteRoutePlan[] {
   if (!dns(domain) || sources.length > LIMIT) return fail()
   const records: WorktreeRoutes[] = []
+  const availableOwners = new Set<string>()
   const owners = new Map<string, string>()
   const qualifiers = new Set<string>()
   const references = new Map<string, string>()
@@ -66,20 +69,22 @@ export function compileRemoteRoutePlan(
   let endpointCount = 0
   let worktreeCount = 0
 
-  for (const { owner, alias, snapshot } of sources) {
+  for (const { owner, alias, snapshot, available = true } of sources) {
     if (
       !owner.id?.trim() ||
       !owner.label?.trim() ||
       (owner.kind !== 'local' && owner.kind !== 'ssh') ||
       owners.has(owner.id) ||
       (owner.kind === 'local' && alias !== undefined) ||
-      (owner.kind === 'ssh' && (alias === undefined || !dns(alias)))
+      (owner.kind === 'ssh' && (alias === undefined || !dns(alias))) ||
+      typeof available !== 'boolean'
     )
       return fail()
     const qualifier = owner.kind === 'local' ? `local.${domain}` : `${alias}.ssh`
     if (!dns(qualifier) || qualifiers.has(qualifier)) return fail()
     owners.set(owner.id, qualifier)
     qualifiers.add(qualifier)
+    if (available) availableOwners.add(owner.id)
 
     for (const worktree of snapshot.worktrees) {
       if (++worktreeCount > LIMIT) return fail()
@@ -131,9 +136,12 @@ export function compileRemoteRoutePlan(
     }
   }
 
-  const resolve = createRouteResolver(records)
+  const resolveQualified = createRouteResolver(records)
+  const resolveUnqualified = createRouteResolver(
+    records.filter(record => availableOwners.has(record.owner.id))
+  )
   const plans = new Map<string, { requestKey: string; plan: RemoteRoutePlan }>()
-  function add(hostname: string, request: RouteRequest): void {
+  function add(hostname: string, request: RouteRequest, qualified: boolean): void {
     if (!dns(hostname)) return fail()
     const transport = request.protocol === 'http' ? 'http' : 'tls-sni'
     const port = 'port' in request.service ? request.service.port : 80
@@ -145,7 +153,7 @@ export function compileRemoteRoutePlan(
       return
     }
     if (plans.size >= LIMIT) return fail()
-    const resolution = resolve(request)
+    const resolution = (qualified ? resolveQualified : resolveUnqualified)(request)
     if (resolution.status === 'invalid') return fail()
     const plan: RemoteRoutePlan = { hostname, port, transport, resolution }
     if (resolution.status === 'conflict') {
@@ -175,10 +183,10 @@ export function compileRemoteRoutePlan(
   for (const [namespace, { branch, selectors }] of namespaces) {
     for (const request of selectors.values()) {
       const prefix = 'name' in request.service ? `${request.service.name}.` : ''
-      add(`${prefix}${namespace}`, request)
+      add(`${prefix}${namespace}`, request, false)
       // Include absent owners too: explicit qualification must never fall back.
       for (const [ownerId, qualifier] of owners) {
-        add(`${prefix}${branch}.${qualifier}`, { ...request, ownerId })
+        add(`${prefix}${branch}.${qualifier}`, { ...request, ownerId }, true)
       }
     }
   }
