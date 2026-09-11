@@ -111,6 +111,12 @@ describe('connected coordinator runtime', () => {
       async () => expect(await response()).toEqual({ status: 200, body: 'correct-owner' }),
       { timeout: 8000 }
     )
+    const checkpoint = JSON.parse(await readFile(join(root, 'checkpoint.json'), 'utf8'))
+    expect(checkpoint.routes.version).toBe(1)
+    expect(checkpoint.routes.routes).toContainEqual(
+      expect.objectContaining({ hostname: 'ui.feature.port', availability: 'ready' })
+    )
+    expect(JSON.stringify(checkpoint.routes)).not.toContain('127.0.0.1')
     await runtime!.close()
     broken = true
     await start()

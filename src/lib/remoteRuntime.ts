@@ -34,6 +34,7 @@ import {
   type RemoteRuntimeCheckpoint,
 } from './remoteRuntimeStore.ts'
 import { selectSupportedRemoteWorktrees } from './remoteRoutePolicy.ts'
+import { buildRemoteRouteSnapshot } from './remoteRouteSnapshot.ts'
 import type { RemoteSnapshot } from './remoteSnapshot.ts'
 
 /** One serial resource worker. Control admissions are journalled separately from route frames. */
@@ -220,6 +221,7 @@ export async function startRemoteRuntime(options: {
         version: 1,
         pins: [...handles.values()].map(handle => handle.checkpoint()),
         ownership: state.checkpoint(),
+        routes: buildRemoteRouteSnapshot(sources),
         local,
       }
       await reconciler!.reconcile(sources)

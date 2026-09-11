@@ -13,6 +13,7 @@ import {
   type RemoteSessionObservationPin,
 } from './remoteSession.ts'
 import { parseRemoteSnapshot, type RemoteSnapshot } from './remoteSnapshot.ts'
+import { parseRemoteRouteSnapshot, type RemoteRouteSnapshot } from './remoteRouteSnapshot.ts'
 
 const LIMIT = 16 * 1024 * 1024
 const fail = (): never => {
@@ -147,13 +148,18 @@ export interface RemoteRuntimeCheckpoint {
   pins: RemoteSessionObservationPin[]
   ownership: RemoteCoordinatorCheckpoint
   local: RemoteSnapshot | null
+  /** Optional so an existing v1 checkpoint can be upgraded by the next published frame. */
+  routes?: RemoteRouteSnapshot
 }
 
 function checkpoint(value: unknown, owners: RemoteOwnerRegistryState): RemoteRuntimeCheckpoint {
   const data = value as RemoteRuntimeCheckpoint
+  const keys = Object.keys(data ?? {})
+    .sort()
+    .join(',')
   if (
     !data ||
-    Object.keys(data).sort().join(',') !== 'local,ownership,pins,version' ||
+    (keys !== 'local,ownership,pins,version' && keys !== 'local,ownership,pins,routes,version') ||
     data.version !== 1
   )
     return fail()
@@ -183,6 +189,7 @@ function checkpoint(value: unknown, owners: RemoteOwnerRegistryState): RemoteRun
     pins: catalog,
     ownership,
     local: data.local === null ? null : parseRemoteSnapshot(JSON.stringify(data.local)),
+    ...(data.routes ? { routes: parseRemoteRouteSnapshot(JSON.stringify(data.routes)) } : {}),
   }
 }
 
