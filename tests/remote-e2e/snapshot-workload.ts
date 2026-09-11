@@ -172,6 +172,8 @@ exec httpd -f -p 8080 -h /www`
     .filter(Boolean)
   if (ids.length !== 1 || !/^[a-f0-9]{64}$/.test(ids[0]!))
     throw new Error(`Invalid product UI container identity count: ${ids.length}`)
+  if (existsSync(`${root}/product-container-id`))
+    throw new Error('Product identity marker already exists')
   writeFileSync(`${root}/product-container-id`, ids[0]!, { mode: 0o600, flag: 'wx' })
   console.log('PRODUCT_RUNTIME_STARTED')
 }
@@ -251,7 +253,11 @@ try {
 } catch (error) {
   // Do not dump Docker errors/inspect data or registry contents into PTY artifacts.
   const message = error instanceof Error ? error.message : ''
-  if (message.startsWith('Invalid product UI container identity count:')) console.error(message)
+  if (
+    message.startsWith('Invalid product UI container identity count:') ||
+    message === 'Product identity marker already exists'
+  )
+    console.error(message)
   else console.error('Snapshot fixture operation failed')
   process.exitCode = 1
 }
