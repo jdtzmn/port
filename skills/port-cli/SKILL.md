@@ -73,15 +73,6 @@ Set up DNS and the shell hook for the wildcard domain (default from config)
 - **Why**: Configures wildcard DNS so branch domains resolve locally, and installs the shell hook so port enter/exit can change directories.
 - **Agent guidance**: Ask before running because this can require administrator privileges and changes machine DNS.
 
-### `port list`
-
-Print worktree names, one per line
-
-- **How**: Run when you need a compact list of known worktrees. Alias: port ls.
-- **Why**: Shows which worktrees Port knows about without changing state.
-- **Agent guidance**: Safe read-only inspection command; prefer before cleanup or branch selection.
-- **Aliases**: `port ls`
-
 ### `port status`
 
 Show service status across all worktrees
@@ -97,6 +88,15 @@ Diagnose Port prerequisites, routing, and project configuration
 - **How**: Run when setup or routing is not working; add --verbose to show every check.
 - **Why**: Reports actionable blockers and warnings without changing Port state.
 - **Agent guidance**: Safe, read-only diagnostics. Run before changing Docker, DNS, or Port configuration.
+
+### `port list`
+
+Print worktree names, one per line
+
+- **How**: Run when you need a compact list of known worktrees. Alias: port ls.
+- **Why**: Shows which worktrees Port knows about without changing state.
+- **Agent guidance**: Safe read-only inspection command; prefer before cleanup or branch selection.
+- **Aliases**: `port ls`
 
 ### `port shell-hook <bash|zsh|fish>`
 

@@ -45,16 +45,6 @@ export const COMMAND_GUIDE: CommandGuideEntry[] = [
     privileged: true,
   },
   {
-    command: 'port list',
-    cliName: 'list',
-    aliases: ['ls'],
-    category: 'useful',
-    description: 'Print worktree names, one per line',
-    how: 'Run when you need a compact list of known worktrees. Alias: port ls.',
-    why: 'Shows which worktrees Port knows about without changing state.',
-    agentGuidance: 'Safe read-only inspection command; prefer before cleanup or branch selection.',
-  },
-  {
     command: 'port status',
     category: 'recommended',
     description: 'Show service status across all worktrees',
@@ -70,6 +60,16 @@ export const COMMAND_GUIDE: CommandGuideEntry[] = [
     why: 'Reports actionable blockers and warnings without changing Port state.',
     agentGuidance:
       'Safe, read-only diagnostics. Run before changing Docker, DNS, or Port configuration.',
+  },
+  {
+    command: 'port list',
+    cliName: 'list',
+    aliases: ['ls'],
+    category: 'useful',
+    description: 'Print worktree names, one per line',
+    how: 'Run when you need a compact list of known worktrees. Alias: port ls.',
+    why: 'Shows which worktrees Port knows about without changing state.',
+    agentGuidance: 'Safe read-only inspection command; prefer before cleanup or branch selection.',
   },
   {
     command: 'port shell-hook <bash|zsh|fish>',

@@ -85,8 +85,8 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 
 ## Useful Checks
 
-- `port list`: Print worktree names, one per line
 - `port doctor`: Diagnose Port prerequisites, routing, and project configuration
+- `port list`: Print worktree names, one per line
 - `port run <port> -- <command...>`: Run a host process with Traefik routing
 - `port kill [port]`: Stop host services (optionally by logical port)
 - `port cleanup`: Delete archived branches created by port remove
