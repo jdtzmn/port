@@ -127,6 +127,7 @@ printf ${machine}-product-runtime > /www/index.html
 printf 0 > /www/sentinel-count
 cat > /www/cgi-bin/sentinel <<'CGI'
 #!/bin/sh
+[ "$$REQUEST_METHOD" = GET ] && { printf 'Content-Type: text/plain\\r\\n\\r\\n'; cat /www/sentinel-count; exit; }
 body=$$(dd bs=1 count="$\${CONTENT_LENGTH:-0}" 2>/dev/null)
 [ "$$REQUEST_METHOD" = POST ] && [ "$$body" = port-runtime-sentinel ] || { printf 'Status: 400 Bad Request\\r\\nContent-Type: text/plain\\r\\n\\r\\nmethod=%s length=%s body=%s' "$$REQUEST_METHOD" "$\${CONTENT_LENGTH:-unset}" "$$body"; exit; }
 count=$$(cat /www/sentinel-count)
@@ -166,32 +167,7 @@ exec httpd -f -p 8080 -h /www`
     }
   }
   execFileSync('/usr/local/bin/port', ['up'], { cwd: tree, timeout: 60_000, stdio: 'inherit' })
-  console.log('PRODUCT_START: find UI')
-  const ids = docker([
-    'compose',
-    '-f',
-    `${tree}/docker-compose.yml`,
-    '-f',
-    `${tree}/.port/override.yml`,
-    'ps',
-    '-q',
-    'ui',
-  ])
-    .split('\n')
-    .filter(Boolean)
-  if (ids.length !== 1 || !/^[a-f0-9]{64}$/.test(ids[0]!))
-    throw new Error(`Invalid product UI container identity count: ${ids.length}`)
-  console.log('PRODUCT_START: persist UI identity')
-  if (existsSync(`${root}/product-container-id`))
-    throw new Error('Product identity marker already exists')
-  writeFileSync(`${root}/product-container-id`, ids[0]!, { mode: 0o600, flag: 'wx' })
   console.log('PRODUCT_RUNTIME_STARTED')
-}
-function productVerifyCount(): void {
-  const id = readFileSync(`${root}/product-container-id`, 'utf8')
-  if (!/^[a-f0-9]{64}$/.test(id) || docker(['exec', id, 'cat', '/www/sentinel-count']) !== '1')
-    throw new Error('Unexpected product sentinel count')
-  console.log('PASS product sentinel count=1')
 }
 function productStop(): void {
   execFileSync('/usr/local/bin/port', ['down', '--yes'], {
@@ -200,7 +176,6 @@ function productStop(): void {
     stdio: 'inherit',
   })
   rmSync(repo, { recursive: true, force: true })
-  rmSync(`${root}/product-container-id`, { force: true })
   console.log('PRODUCT_RUNTIME_STOPPED')
 }
 async function probe(): Promise<void> {
@@ -229,9 +204,6 @@ try {
       break
     case 'product-start':
       productStart(process.argv[3] ?? 'remote-a')
-      break
-    case 'product-verify-count':
-      productVerifyCount()
       break
     case 'product-stop':
       productStop()
