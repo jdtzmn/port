@@ -9,6 +9,7 @@ import {
   createRemotePublisher,
   readRemoteCatalog,
   readRemoteCheckpoint,
+  readRemoteRouteView,
   registerRemotePin,
   type RemoteRuntimeCheckpoint,
 } from './remoteRuntimeStore.ts'
@@ -72,6 +73,32 @@ describe('runtime recovery and publication', () => {
     expect(await readRemoteCheckpoint(root, owners)).toEqual(empty())
     await registerRemotePin(root, pin('one'))
     expect(await readRemoteCatalog(root)).toHaveLength(2)
+  })
+
+  it('reads only the sanitized persisted route view', async () => {
+    const publisher = createRemotePublisher({
+      root,
+      dynamicDirectory,
+      incarnation: a,
+      isCurrent: async () => true,
+    })
+    const state: RemoteRuntimeCheckpoint = {
+      ...empty(),
+      routes: {
+        version: 1,
+        routes: [
+          {
+            hostname: 'ui.feature.port',
+            port: 80,
+            transport: 'http',
+            availability: 'ready',
+          },
+        ],
+      },
+    }
+    await publisher.activate(owners)
+    await publisher.publish(owners, state, 'http: {}\n')
+    expect(await readRemoteRouteView(root)).toEqual(state.routes)
   })
 
   it('fences old publishers after replacement and preserves existing YAML', async () => {

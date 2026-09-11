@@ -218,6 +218,30 @@ export async function registerRemotePin(
   })
 }
 
+/** Read only the bounded, sanitized route view; never expose checkpoint internals to callers. */
+export async function readRemoteRouteView(root: string): Promise<RemoteRouteSnapshot | undefined> {
+  await directory(root)
+  const text = await read(join(root, 'checkpoint.json'))
+  if (text === undefined) return undefined
+  let data: unknown
+  try {
+    data = JSON.parse(text)
+  } catch {
+    return fail()
+  }
+  const value = data as { version?: unknown; routes?: unknown }
+  const keys = value && typeof value === 'object' ? Object.keys(value).sort().join(',') : ''
+  if (
+    !value ||
+    value.version !== 1 ||
+    (keys !== 'local,ownership,pins,version' && keys !== 'local,ownership,pins,routes,version')
+  )
+    return fail()
+  return value.routes === undefined
+    ? undefined
+    : parseRemoteRouteSnapshot(JSON.stringify(value.routes))
+}
+
 export async function readRemoteCheckpoint(
   root: string,
   owners: RemoteOwnerRegistryState
