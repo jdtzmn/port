@@ -649,7 +649,7 @@ def automatic_runtime(shell, machine):
             connection.close()
         time.sleep(0.1)
     shell.send('exit 17\n')
-    shell.wait_for(lambda: not directory.exists())
+    shell.wait_for(lambda: not directory.exists(), timeout=45)
     shell.marker('test "$?" -eq 17')
     require(session_directories() == before, 'automatic runtime login leaked session state')
     print(
