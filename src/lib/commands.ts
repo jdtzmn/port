@@ -26,6 +26,7 @@ export const NON_WORKTREE_COMMANDS = new Set([
   'uninstall',
   'onboard',
   'shell-hook',
+  'doctor',
 ])
 
 /**
@@ -34,7 +35,7 @@ export const NON_WORKTREE_COMMANDS = new Set([
  * Use this for startup-time checks that should not run for commands like
  * `enter`, `completion`, or `shell-hook`.
  */
-const SKIP_EARLY_WORK_COMMANDS = new Set(['enter', 'completion', 'shell-hook'])
+const SKIP_EARLY_WORK_COMMANDS = new Set(['enter', 'completion', 'shell-hook', 'doctor'])
 
 // ---------------------------------------------------------------------------
 // Core introspection
