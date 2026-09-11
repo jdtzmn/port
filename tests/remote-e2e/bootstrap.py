@@ -740,6 +740,14 @@ def concurrent_owners():
                 status == 200 and body == f'{machine}-product-runtime'.encode(),
                 f'qualified TLS/SNI route did not reach {machine}: status={status} body={body[:128]!r}',
             )
+        for machine in ('remote-a', 'remote-b'):
+            database = f'{machine.replace("-", "_")}_automatic'
+            wait_for_database(f'feature.{machine}.ssh', database)
+        conflict_database = psql('feature.port', 'remote_a_automatic')
+        require(
+            conflict_database.returncode != 0,
+            'ambiguous PostgreSQL TLS/SNI route reached an application backend',
+        )
         status, _ = request('feature.port', 3100, 'POST')
         require(status == 409, 'ambiguous POST did not fail closed')
         shell_a.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-verify-count')
@@ -759,6 +767,12 @@ def concurrent_owners():
             except (OSError, http.client.HTTPException):
                 pass
             time.sleep(0.1)
+        wait_for_database('feature.port', 'remote_a_automatic')
+        disconnected_database = psql('feature.remote-b.ssh', 'remote_b_automatic')
+        require(
+            disconnected_database.returncode != 0,
+            'disconnected qualified PostgreSQL owner was retargeted',
+        )
         status, body = tls_request('feature.port')
         require(
             status == 200 and body == b'remote-a-product-runtime',
