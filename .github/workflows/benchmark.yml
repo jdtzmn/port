@@ -153,7 +153,7 @@ jobs:
           summary-always: true
           alert-threshold: 125%
           fail-on-alert: false
-          skip-fetch-gh-pages: ${{ steps.history.outputs.exists != 'true' }}
+          skip-fetch-gh-pages: true
       - name: Publish Docker comparison
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
         with:
@@ -167,7 +167,7 @@ jobs:
           summary-always: true
           alert-threshold: 125%
           fail-on-alert: false
-          skip-fetch-gh-pages: ${{ steps.history.outputs.exists != 'true' }}
+          skip-fetch-gh-pages: true
       - name: Enforce p95 budgets
         run: bun scripts/check-benchmark-budgets.ts
 
@@ -221,6 +221,7 @@ jobs:
           summary-always: true
           alert-threshold: 125%
           fail-on-alert: false
+          skip-fetch-gh-pages: true
       - name: Publish Docker history
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
         with:
@@ -234,5 +235,6 @@ jobs:
           summary-always: true
           alert-threshold: 125%
           fail-on-alert: false
+          skip-fetch-gh-pages: true
       - name: Enforce p95 budgets
         run: bun scripts/check-benchmark-budgets.ts
