@@ -3,44 +3,11 @@
 import { Command } from 'commander'
 import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
-import { init } from './commands/init.ts'
-import { list } from './commands/list.ts'
-import { install } from './commands/install.ts'
-import { enter } from './commands/enter.ts'
-import { exit } from './commands/exit.ts'
-import { up } from './commands/up.ts'
-import { down } from './commands/down.ts'
-import { remove } from './commands/remove.ts'
-import { uninstall } from './commands/uninstall.ts'
-import { compose } from './commands/compose.ts'
-import { run } from './commands/run.ts'
-import { handleCliError } from './lib/cli.ts'
-import { kill } from './commands/kill.ts'
-import { status } from './commands/status.ts'
-import { doctor } from './commands/doctor.ts'
-import { cleanup } from './commands/cleanup.ts'
-import { prune } from './commands/prune.ts'
-import { urls } from './commands/urls.ts'
-import { onboard } from './commands/onboard.ts'
-import { shellHook } from './commands/shell-hook.ts'
-import {
-  dispatchRemoteInternalCommand,
-  isRemoteInternalCommand,
-} from './commands/remote-internal.ts'
-import { completion } from './commands/completion.ts'
-import { hook } from './commands/hook.ts'
-import { open } from './commands/open.ts'
-import { rename } from './commands/rename.ts'
 import {
   isReservedCommand,
   shouldAutoRegisterWorktree,
   shouldSkipEarlyWork,
 } from './lib/commands.ts'
-import { ensureCurrentWorktreeRegistered } from './lib/worktreeRegistration.ts'
-import { detectWorktree } from './lib/worktree.ts'
-import { branchExists } from './lib/git.ts'
-import { loadConfig, configExists } from './lib/config.ts'
-import * as output from './lib/output.ts'
 
 export const program = new Command()
 program.enablePositionalOptions()
@@ -88,13 +55,15 @@ async function maybeWarnCommandBranchCollision(): Promise<void> {
 
   let repoRoot: string
   try {
-    repoRoot = detectWorktree().repoRoot
+    repoRoot = (await import('./lib/worktree.ts')).detectWorktree().repoRoot
   } catch {
     return
   }
 
-  if (await branchExists(repoRoot, token)) {
-    output.dim(`Hint: branch "${token}" matches a command. Use "port enter ${token}".`)
+  if (await (await import('./lib/git.ts')).branchExists(repoRoot, token)) {
+    ;(await import('./lib/output.ts')).dim(
+      `Hint: branch "${token}" matches a command. Use "port enter ${token}".`
+    )
   }
 }
 
@@ -107,14 +76,18 @@ program
 program
   .command('init')
   .description('Initialize .port/ directory in the current project')
-  .action(init)
+  .action(async () => {
+    await (await import('./commands/init.ts')).init()
+  })
 
 // port onboard
 program
   .command('onboard')
   .description('Show recommended Port workflow and command guide')
   .option('--md', 'Write an ONBOARD.md file to the repo root')
-  .action(onboard)
+  .action(async (...args) => {
+    await (await import('./commands/onboard.ts')).onboard(...args)
+  })
 
 // port install
 program
@@ -129,20 +102,35 @@ program
   .option('--no-shell-hook', 'Skip adding the shell hook to your shell profile')
   .option('--shell-hook-only', 'Only add the shell hook, skipping DNS setup')
   .option('--remote-services', 'Enable local routing for ordinary Bash SSH sessions')
-  .action(install)
+  .action(async (...args) => {
+    await (await import('./commands/install.ts')).install(...args)
+  })
 
 // port list
-program.command('list').alias('ls').description('Print worktree names, one per line').action(list)
+program
+  .command('list')
+  .alias('ls')
+  .description('Print worktree names, one per line')
+  .action(async () => {
+    await (await import('./commands/list.ts')).list()
+  })
 
 // port status
-program.command('status').description('Show service status across all worktrees').action(status)
+program
+  .command('status')
+  .description('Show service status across all worktrees')
+  .action(async () => {
+    await (await import('./commands/status.ts')).status()
+  })
 
 // port doctor
 program
   .command('doctor')
   .description('Diagnose Port prerequisites, routing, and project configuration')
   .option('-v, --verbose', 'Show all diagnostic checks')
-  .action(doctor)
+  .action(async (...args) => {
+    await (await import('./commands/doctor.ts')).doctor(...args)
+  })
 
 // port enter <branch...>
 // Variadic so bare multi-word names (`port enter my feature`) are joined into a
@@ -156,7 +144,7 @@ program
       program.help()
       return
     }
-    await enter(branch)
+    await (await import('./commands/enter.ts')).enter(branch)
   })
 
 // port exit
@@ -164,7 +152,7 @@ program
   .command('exit')
   .description('Exit the current worktree and return to the repository root')
   .action(async () => {
-    await exit()
+    await (await import('./commands/exit.ts')).exit()
   })
 
 // port shell-hook <shell>
@@ -172,29 +160,35 @@ program
   .command('shell-hook <shell>')
   .description('Print shell integration code for automatic cd (bash, zsh, or fish)')
   .option('--remote-services', 'Opt into the experimental SSH bootstrap bridge (bash only)')
-  .action(shellHook)
+  .action(async (shell: string, options: { remoteServices?: boolean }) => {
+    await (await import('./commands/shell-hook.ts')).shellHook(shell, options)
+  })
 
 // port urls [service]
 program
   .command('urls [service]')
   .description('Show service URLs for the current worktree')
   .option('--remote', 'Show all discovered remote routes, including other worktrees')
-  .action((service, options) => urls(service, options))
+  .action(async (...args) => {
+    await (await import('./commands/urls.ts')).urls(...args)
+  })
 
 // port up
 program
   .command('up [services...]')
   .description('Start docker-compose services in the current worktree')
-  .action(up)
+  .action(async (...args) => {
+    await (await import('./commands/up.ts')).up(...args)
+  })
 
 // port down
 program
   .command('down [services...]')
   .description('Stop docker-compose services in the current worktree')
   .option('-y, --yes', 'Skip confirmation prompt for stopping Traefik')
-  .action((services: string[] | undefined, options: { yes?: boolean }) =>
-    down(services ?? [], options)
-  )
+  .action(async (services: string[] | undefined, options: { yes?: boolean }) => {
+    await (await import('./commands/down.ts')).down(services ?? [], options)
+  })
 
 // port remove [branch]
 program
@@ -208,10 +202,12 @@ program
     'Clean up Docker images without prompting (defaults to interactive prompt with No)'
   )
   .action(
-    (
+    async (
       branch: string | undefined,
       options: { force?: boolean; keepBranch?: boolean; cleanupImages?: boolean }
-    ) => remove(branch, options)
+    ) => {
+      await (await import('./commands/remove.ts')).remove(branch, options)
+    }
   )
 
 // port uninstall
@@ -221,7 +217,9 @@ program
   .option('-y, --yes', 'Skip confirmation prompt')
   .option('--domain <domain>', 'Domain suffix to remove (default: config domain or port)')
   .option('--no-shell-hook', 'Leave the shell hook in your shell profile')
-  .action(uninstall)
+  .action(async (...args) => {
+    await (await import('./commands/uninstall.ts')).uninstall(...args)
+  })
 
 // port compose <args>
 program
@@ -231,7 +229,9 @@ program
   .allowUnknownOption()
   .allowExcessArguments()
   .argument('[args...]', 'Arguments to pass to docker compose')
-  .action(compose)
+  .action(async (args: string[]) => {
+    await (await import('./commands/compose.ts')).compose(args)
+  })
 
 // port run <port> -- <command...>
 program
@@ -243,14 +243,16 @@ program
   .option('-d, --detached', 'Run the process in detached mode (similar to docker run -d)')
   .action(async (port: string, command: string[], options: { detached?: boolean }) => {
     const portNum = parseInt(port, 10)
-    await run(portNum, command, options)
+    await (await import('./commands/run.ts')).run(portNum, command, options)
   })
 
 // port kill [port]
 program
   .command('kill [port]')
   .description('Stop host services listed in port ls (optionally by logical port)')
-  .action(kill)
+  .action(async (...args) => {
+    await (await import('./commands/kill.ts')).kill(...args)
+  })
 
 // port cleanup
 program
@@ -260,7 +262,9 @@ program
     '--cleanup-images',
     'Clean up Docker images (requires explicit opt-in in non-interactive mode)'
   )
-  .action(cleanup)
+  .action(async (...args) => {
+    await (await import('./commands/cleanup.ts')).cleanup(...args)
+  })
 
 // port prune
 program
@@ -274,20 +278,26 @@ program
     '--cleanup-images',
     'Clean up Docker images (requires explicit opt-in in non-interactive mode)'
   )
-  .action(prune)
+  .action(async (...args) => {
+    await (await import('./commands/prune.ts')).prune(args[0])
+  })
 
 // port hook [hook-name]
 program
   .command('hook [hook-name]')
   .description('Re-run a hook script in the current worktree')
   .option('-l, --list', 'List available hooks and their status')
-  .action(hook)
+  .action(async (hookName: string | undefined, options: { list?: boolean }) => {
+    await (await import('./commands/hook.ts')).hook(hookName, options)
+  })
 
 // port open
 program
   .command('open')
   .description('Run the post-up hook in the current repo/worktree context')
-  .action(open)
+  .action(async () => {
+    await (await import('./commands/open.ts')).open()
+  })
 
 // port rename <branch>
 program
@@ -295,14 +305,16 @@ program
   .alias('mv')
   .description('Rename the current worktree and branch')
   .action(async (branch: string) => {
-    await rename(branch)
+    await (await import('./commands/rename.ts')).rename(branch)
   })
 
 // port completion <shell>
 program
   .command('completion <shell>')
   .description('Generate shell completion script (bash, zsh, or fish)')
-  .action(completion)
+  .action(async (shell: string) => {
+    await (await import('./commands/completion.ts')).completion(shell)
+  })
 
 // port <branch> - default command to enter a worktree
 // This must be last to act as a catch-all for branch names
@@ -320,7 +332,7 @@ program
         program.help()
         return
       }
-      await enter(branch)
+      await (await import('./commands/enter.ts')).enter(branch)
     } else {
       if (!process.stdout.isTTY) {
         program.help()
@@ -329,10 +341,11 @@ program
 
       // No argument provided — launch TUI
       try {
-        const info = detectWorktree()
+        const info = (await import('./lib/worktree.ts')).detectWorktree()
+        const { configExists, loadConfig } = await import('./lib/config.ts')
 
         if (!configExists(info.repoRoot)) {
-          output.error('Not in a port project. Run `port init` first.')
+          ;(await import('./lib/output.ts')).error('Not in a port project. Run `port init` first.')
           process.exit(1)
         }
 
@@ -344,7 +357,9 @@ program
         await launchTui(startView as 'dashboard' | 'worktree', info, config)
       } catch {
         // Not in a git repo — eventually this will show the project list
-        output.error('Not in a git repository. Run `port` inside a port project.')
+        ;(await import('./lib/output.ts')).error(
+          'Not in a git repository. Run `port` inside a port project.'
+        )
         process.exit(1)
       }
     }
@@ -354,16 +369,23 @@ if (import.meta.main) {
   const entryToken = process.argv[2]
 
   try {
-    if (isRemoteInternalCommand(entryToken)) {
-      await dispatchRemoteInternalCommand(entryToken!, process.argv.slice(3))
-    } else {
+    let handledRemoteCommand = false
+    if (entryToken?.startsWith('__remote-')) {
+      const remote = await import('./commands/remote-internal.ts')
+      if (remote.isRemoteInternalCommand(entryToken)) {
+        await remote.dispatchRemoteInternalCommand(entryToken, process.argv.slice(3))
+        handledRemoteCommand = true
+      }
+    }
+
+    if (!handledRemoteCommand) {
       if (shouldAutoRegisterWorktree(entryToken)) {
-        await ensureCurrentWorktreeRegistered()
+        await (await import('./lib/worktreeRegistration.ts')).ensureCurrentWorktreeRegistered()
       }
 
       await program.parseAsync()
     }
   } catch (error) {
-    handleCliError(error)
+    ;(await import('./lib/cli.ts')).handleCliError(error)
   }
 }
