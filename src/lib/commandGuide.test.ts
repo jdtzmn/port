@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { program } from '../index.ts'
+import { program } from '../program.ts'
 import { COMMAND_GUIDE, cliCommandName } from './commandGuide.ts'
 import { generatePortSkillMarkdown } from '../../scripts/generate-port-skill.ts'
 

@@ -8,18 +8,11 @@ const mocks = vi.hoisted(() => ({
   getStaleWorktreeCandidates: vi.fn(),
 }))
 
-vi.mock('../lib/worktree.ts', () => ({
+vi.mock('../lib/listWorktrees.ts', () => ({
   detectWorktree: mocks.detectWorktree,
-}))
-
-vi.mock('../lib/config.ts', () => ({
   getTreesDir: mocks.getTreesDir,
-}))
-
-vi.mock('../lib/git.ts', () => ({
   listWorktrees: mocks.listWorktrees,
 }))
-
 vi.mock('../lib/staleWorktrees.ts', () => ({
   getStaleWorktreeCandidates: mocks.getStaleWorktreeCandidates,
 }))

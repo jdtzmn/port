@@ -1,8 +1,6 @@
 import { existsSync, readdirSync } from 'fs'
-import { detectWorktree } from '../lib/worktree.ts'
-import { getTreesDir } from '../lib/config.ts'
+import { detectWorktree, getTreesDir, listWorktrees } from '../lib/listWorktrees.ts'
 import { sanitizeBranchName, sanitizeFolderName } from '../lib/sanitize.ts'
-import { listWorktrees } from '../lib/git.ts'
 
 /**
  * Get worktree names from the .port/trees/ directory without any expensive

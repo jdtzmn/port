@@ -1,9 +1,13 @@
 #!/usr/bin/env bun
 
-import { runCli } from './program.ts'
-
-export { joinBranchArgs, program } from './program.ts'
+import { isListInvocation } from './lib/cliEntry.ts'
 
 if (import.meta.main) {
-  await runCli()
+  const args = process.argv.slice(2)
+
+  if (isListInvocation(args)) {
+    await (await import('./commands/list.ts')).list()
+  } else {
+    await (await import('./program.ts')).runCli()
+  }
 }

@@ -4,6 +4,7 @@ import { Command } from 'commander'
 import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { shouldAutoRegisterWorktree, shouldSkipEarlyWork } from './lib/earlyWork.ts'
+import { handleCliError } from './lib/cli.ts'
 
 export const program = new Command()
 program.enablePositionalOptions()
@@ -382,6 +383,6 @@ export async function runCli(): Promise<void> {
       await program.parseAsync()
     }
   } catch (error) {
-    ;(await import('./lib/cli.ts')).handleCliError(error)
+    handleCliError(error)
   }
 }
