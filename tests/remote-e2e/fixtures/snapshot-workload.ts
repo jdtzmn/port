@@ -20,8 +20,6 @@ const snapshotContainer = 'port-snapshot-fixture-ui'
 const network = 'traefik-network'
 const snapshotRepo = '/home/fixture/snapshot-project'
 const snapshotBranch = 'feature'
-const productRoot = `${root}/product-fixtures`
-const productLock = `${productRoot}/operation-lock`
 const owners = ['local', 'remote-a', 'remote-b'] as const
 const profiles = ['full', 'ui-only', 'db-only'] as const
 const branchPattern = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
@@ -195,8 +193,16 @@ function expectArgCount(args: string[], minimum: number, maximum = minimum): voi
   if (args.length < minimum || args.length > maximum) throw new Error('Invalid fixture arguments')
 }
 
+function productRoot(owner: Owner): string {
+  return owner === 'local' ? '/root/.port/product-fixtures' : `${root}/product-fixtures`
+}
+
+function productLock(owner: Owner): string {
+  return `${productRoot(owner)}/operation-lock`
+}
+
 function ownerRoot(owner: Owner): string {
-  return `${productRoot}/${owner}`
+  return `${productRoot(owner)}/${owner}`
 }
 
 function productRepo(owner: Owner): string {
@@ -307,13 +313,13 @@ function listRuntimeStates(owner?: Owner): ProductRuntimeState[] {
   )
 }
 
-function withProductLock<T>(operation: () => T): T {
-  mkdirSync(productRoot, { recursive: true, mode: 0o700 })
-  mkdirSync(productLock, { mode: 0o700 })
+function withProductLock<T>(owner: Owner, operation: () => T): T {
+  mkdirSync(productRoot(owner), { recursive: true, mode: 0o700 })
+  mkdirSync(productLock(owner), { mode: 0o700 })
   try {
     return operation()
   } finally {
-    rmSync(productLock, { recursive: true, force: true })
+    rmSync(productLock(owner), { recursive: true, force: true })
   }
 }
 
@@ -538,69 +544,80 @@ function productStart(args: string[]): void {
   const profile = parseProfile(args[2], 'full')
   // Existing one-machine callers retain feature.port:3100 and PostgreSQL :5432.
   const legacy = args.length <= 1 && branch === 'feature' && profile === 'full'
-
-  withProductLock(() => {
-    mkdirSync(stateDirectory(owner), { recursive: true, mode: 0o700 })
-    const file = statePath(owner, branch)
-    const tree = productTree(owner, branch)
-    if (existsSync(file) || existsSync(tree)) throw new Error('Product runtime already exists')
-    initializeProductRepository(owner)
-    const repo = productRepo(owner)
-    const project = buildProjectName(repo, branch)
-    const services = allocateServices(owner, branch, profile, legacy)
-    const state: ProductRuntimeState = {
-      version: 1,
-      owner,
-      branch,
-      profile,
-      project,
-      repo,
-      tree,
-      ...services,
-    }
-    execFileSync('git', ['-C', `${repo}/main`, 'worktree', 'add', '-b', branch, tree], {
-      stdio: 'ignore',
-    })
-
-    const composeServices: Record<string, unknown> = {}
-    if (state.ui) {
-      composeServices.ui = {
-        image: 'oven/bun:1.3.3',
-        container_name: state.ui.container,
-        ports: [`${state.ui.publishedPort}:${state.ui.targetPort}`],
-        command: ['sh', '-c', productServerScript(state)],
+  let stage = 'initializing'
+  try {
+    withProductLock(owner, () => {
+      mkdirSync(stateDirectory(owner), { recursive: true, mode: 0o700 })
+      const file = statePath(owner, branch)
+      const tree = productTree(owner, branch)
+      if (existsSync(file) || existsSync(tree)) throw new Error('Product runtime already exists')
+      initializeProductRepository(owner)
+      const repo = productRepo(owner)
+      const project = buildProjectName(repo, branch)
+      const services = allocateServices(owner, branch, profile, legacy)
+      const state: ProductRuntimeState = {
+        version: 1,
+        owner,
+        branch,
+        profile,
+        project,
+        repo,
+        tree,
+        ...services,
       }
-    }
-    if (state.db) {
-      composeServices.db = {
-        image: 'postgres:17.4-bookworm',
-        container_name: state.db.container,
-        ports: [`${state.db.publishedPort}:${state.db.targetPort}`],
-        command: ['postgres', '-c', `port=${state.db.targetPort}`],
-        environment: {
-          POSTGRES_DB: state.database,
-          POSTGRES_HOST_AUTH_METHOD: 'trust',
-        },
+      stage = 'creating worktree'
+      execFileSync('git', ['-C', `${repo}/main`, 'worktree', 'add', '-b', branch, tree], {
+        stdio: 'ignore',
+      })
+
+      const composeServices: Record<string, unknown> = {}
+      if (state.ui) {
+        composeServices.ui = {
+          image: 'oven/bun:1.3.3',
+          container_name: state.ui.container,
+          ports: [`${state.ui.publishedPort}:${state.ui.targetPort}`],
+          command: ['sh', '-c', productServerScript(state)],
+        }
       }
-      if (state.db.publishedPort === 5432) releaseProductPostgresPort()
-    }
-    writeFileSync(`${tree}/docker-compose.yml`, stringify({ services: composeServices }), {
-      mode: 0o600,
-      flag: 'wx',
+      if (state.db) {
+        composeServices.db = {
+          image: 'postgres:17.4-bookworm',
+          container_name: state.db.container,
+          ports: [`${state.db.publishedPort}:${state.db.targetPort}`],
+          command: ['postgres', '-c', `port=${state.db.targetPort}`],
+          environment: {
+            POSTGRES_DB: state.database,
+            POSTGRES_HOST_AUTH_METHOD: 'trust',
+          },
+        }
+        if (state.db.publishedPort === 5432) releaseProductPostgresPort()
+      }
+      stage = 'writing fixture state'
+      writeFileSync(`${tree}/docker-compose.yml`, stringify({ services: composeServices }), {
+        mode: 0o600,
+        flag: 'wx',
+      })
+      writeFileSync(file, JSON.stringify(state), { mode: 0o600, flag: 'wx' })
+      stage = 'running port up'
+      execFileSync('/usr/local/bin/port', ['up'], { cwd: tree, timeout: 60_000, stdio: 'inherit' })
+      console.log('PRODUCT_RUNTIME=' + JSON.stringify(state))
+      console.log('PRODUCT_RUNTIME_STARTED')
     })
-    writeFileSync(file, JSON.stringify(state), { mode: 0o600, flag: 'wx' })
-    execFileSync('/usr/local/bin/port', ['up'], { cwd: tree, timeout: 60_000, stdio: 'inherit' })
-    console.log('PRODUCT_RUNTIME=' + JSON.stringify(state))
-    console.log('PRODUCT_RUNTIME_STARTED')
-  })
+  } catch {
+    throw new Error(`Product start failed at ${stage}`)
+  }
 }
 
-function removeWorktree(state: ProductRuntimeState): void {
+function stopProductRuntime(state: ProductRuntimeState): void {
   execFileSync('/usr/local/bin/port', ['down', '--yes'], {
     cwd: state.tree,
     timeout: 60_000,
     stdio: 'inherit',
   })
+}
+
+function removeWorktree(state: ProductRuntimeState): void {
+  stopProductRuntime(state)
   execFileSync('git', ['-C', `${state.repo}/main`, 'worktree', 'remove', '--force', state.tree], {
     stdio: 'ignore',
   })
@@ -617,32 +634,51 @@ function removeEmptyOwner(owner: Owner): void {
 
 function productStop(args: string[]): void {
   expectArgCount(args, 0, 2)
-  withProductLock(() => {
-    if (args.length === 0) {
-      const states = listRuntimeStates()
-      for (const state of states) removeWorktree(state)
-      rmSync(productRoot, { recursive: true, force: true })
-      console.log(`PRODUCT_RUNTIMES_STOPPED=${states.length}`)
-      console.log('PRODUCT_RUNTIME_STOPPED')
-      return
-    }
-    const owner = parseOwner(args[0])
-    const branch = parseBranch(args[1], 'feature')
-    const state = readRuntimeState(owner, branch)
-    removeWorktree(state)
-    removeEmptyOwner(owner)
-    console.log('PRODUCT_RUNTIME_STOPPED=' + JSON.stringify({ owner, branch }))
-  })
+  const lockOwner = args.length === 0 ? 'remote-a' : parseOwner(args[0])
+  let stage = 'initializing'
+  try {
+    withProductLock(lockOwner, () => {
+      if (args.length === 0) {
+        const states = listRuntimeStates()
+        for (const state of states) {
+          stage = `stopping ${state.owner}/${state.branch}`
+          stopProductRuntime(state)
+        }
+        for (const owner of owners) rmSync(productRoot(owner), { recursive: true, force: true })
+        console.log(`PRODUCT_RUNTIMES_STOPPED=${states.length}`)
+        console.log('PRODUCT_RUNTIME_STOPPED')
+        return
+      }
+      const owner = lockOwner
+      const branch = parseBranch(args[1], 'feature')
+      stage = `stopping ${owner}/${branch}`
+      const state = readRuntimeState(owner, branch)
+      removeWorktree(state)
+      removeEmptyOwner(owner)
+      console.log('PRODUCT_RUNTIME_STOPPED=' + JSON.stringify({ owner, branch }))
+    })
+  } catch (error) {
+    const code =
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      typeof error.code === 'string'
+        ? error.code
+        : 'UNKNOWN'
+    throw new Error(`Product stop failed at ${stage} (${code})`)
+  }
 }
 
 function productStopAll(args: string[]): void {
   expectArgCount(args, 0, 1)
   const owner = args.length === 1 ? parseOwner(args[0]) : undefined
-  withProductLock(() => {
+  withProductLock(owner ?? 'remote-a', () => {
     const states = listRuntimeStates(owner)
     for (const state of states) removeWorktree(state)
     if (owner) removeEmptyOwner(owner)
-    else rmSync(productRoot, { recursive: true, force: true })
+    else
+      for (const candidate of owners)
+        rmSync(productRoot(candidate), { recursive: true, force: true })
     console.log(`PRODUCT_RUNTIMES_STOPPED=${states.length}`)
   })
 }
@@ -799,7 +835,13 @@ try {
   const message = error instanceof Error ? error.message : ''
   if (
     message.startsWith('Invalid product UI container identity count:') ||
-    message === 'Product identity marker already exists'
+    message === 'Product identity marker already exists' ||
+    /^Product start failed at (initializing|creating worktree|writing fixture state|running port up)$/.test(
+      message
+    ) ||
+    /^Product stop failed at (initializing|stopping (local|remote-a|remote-b)\/[a-z][a-z0-9-]{0,31}) \([A-Z0-9_]+\)$/.test(
+      message
+    )
   ) {
     console.error(message)
   } else {
