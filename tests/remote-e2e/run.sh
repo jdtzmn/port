@@ -9,29 +9,46 @@ command -v docker >/dev/null
 project="remote-e2e-$(python3 -c 'import uuid; print(uuid.uuid4().hex[:16])')"
 artifacts="$root/.remote-e2e-artifacts/$project"
 mkdir -p "$artifacts"
+timings="$artifacts/timings.tsv"
+printf 'phase\tduration_ms\tstatus\n' > "$timings"
+run_started_ns=$(python3 -c 'import time; print(time.monotonic_ns())')
 # Disable implicit .env loading, including while validating the Compose model.
 export COMPOSE_DISABLE_ENV_FILE=1
 compose=(docker compose --env-file /dev/null --project-directory "$here" -p "$project" -f "$here/compose.yaml")
 image_dir=''
 step() {
-  local seconds=$1 label=$2
+  local seconds=$1 label=$2 started_ns finished_ns duration_ms step_status
   shift 2
   printf 'remote-e2e: %s\n' "$label"
-  python3 "$here/scenarios/bounded.py" "$seconds" "$artifacts/$label.log" "$@"
+  started_ns=$(python3 -c 'import time; print(time.monotonic_ns())')
+  if python3 "$here/scenarios/bounded.py" "$seconds" "$artifacts/$label.log" "$@"; then
+    step_status=0
+  else
+    step_status=$?
+  fi
+  finished_ns=$(python3 -c 'import time; print(time.monotonic_ns())')
+  duration_ms=$(( (finished_ns - started_ns) / 1000000 ))
+  printf '%s\t%s\t%s\n' "$label" "$duration_ms" "$step_status" >> "$timings"
+  printf 'remote-e2e: timing %s=%sms status=%s\n' "$label" "$duration_ms" "$step_status"
+  return "$step_status"
 }
 cleanup() {
-  local status=$?
+  local status=$? cleanup_status finished_ns total_ms
   trap - EXIT INT TERM
   set +e
   # Only bounded known-service logs and status, never inspect/env/key dumps.
   step 15 status "${compose[@]}" ps -a
   step 15 fixture-logs "${compose[@]}" logs --no-color --tail 80 remote-a remote-b client docker docker-a docker-b traefik
   step 60 cleanup "${compose[@]}" down --volumes --remove-orphans --timeout 5
-  local cleanup_status=$?
+  cleanup_status=$?
   [[ -z "$image_dir" ]] || rm -rf -- "$image_dir"
   if [[ $status -eq 0 && $cleanup_status -ne 0 ]]; then
     status=$cleanup_status
   fi
+  finished_ns=$(python3 -c 'import time; print(time.monotonic_ns())')
+  total_ms=$(( (finished_ns - run_started_ns) / 1000000 ))
+  printf 'total\t%s\t%s\n' "$total_ms" "$status" >> "$timings"
+  printf 'remote-e2e: timing total=%sms status=%s\n' "$total_ms" "$status"
   printf 'remote-e2e: exit=%s; artifacts=%s\n' "$status" "$artifacts"
   if [[ $cleanup_status -ne 0 ]]; then
     printf 'Cleanup failed; retry Compose down for project %s with %s\n' "$project" "$here/compose.yaml" >&2

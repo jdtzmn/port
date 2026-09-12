@@ -1,0 +1,21 @@
+{
+  "metric": "remote-e2e workflow critical-path wall-clock duration",
+  "recordedAt": "2026-09-12T20:45:31Z",
+  "source": {
+    "runId": 34718014673,
+    "jobId": 103618632910,
+    "url": "https://github.com/jdtzmn/port/actions/runs/34718014673"
+  },
+  "durationMs": {
+    "job": 378000,
+    "harnessStep": 369000,
+    "composeBuild": 67969,
+    "handlerBuild": 42891,
+    "fixtureReadiness": 12115,
+    "imageDistribution": 69878,
+    "acceptanceScenarios": 147076,
+    "bootstrapScenario": 138097,
+    "cleanup": 7077
+  },
+  "targetMs": 180000
+}
