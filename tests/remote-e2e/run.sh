@@ -92,24 +92,18 @@ step 120 proxy-probe-build bun build "$here/fixtures/proxy-probe.ts" --outdir "$
 cp "$root/package.json" "$image_dir/app/package.json"
 chmod -R a+rX "$image_dir/app"
 
-# Save once while the outer fixture becomes healthy. Each private daemon imports the same exact bundle.
-pids=()
-step 120 fixture-images-save docker image save --output "$image_dir/fixture-images.tar" \
-  busybox:1.37.0 postgres:17.4-bookworm oven/bun:1.3.3 traefik:v3.6 "$handler_image" & pids+=("$!")
-step 210 readiness "${compose[@]}" up -d --wait --wait-timeout 150 & pids+=("$!")
-wait_jobs "${pids[@]}"
+step 210 readiness "${compose[@]}" up -d --wait --wait-timeout 150
 
-# Copy artifacts and seed independent DinD daemons concurrently.
+# Copy artifacts and stream exact image manifests into independent DinD daemons concurrently.
 pids=()
 for machine in client remote-a remote-b; do
   step 30 "port-copy-$machine" "${compose[@]}" cp "$image_dir/app/." "$machine:/opt/port/" & pids+=("$!")
 done
-for daemon in docker docker-a docker-b; do
-  (
-    step 60 "fixture-images-copy-$daemon" "${compose[@]}" cp "$image_dir/fixture-images.tar" "$daemon:/fixture-images.tar"
-    step 120 "fixture-images-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /fixture-images.tar
-    step 10 "fixture-images-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /fixture-images.tar
-  ) & pids+=("$!")
+step 180 fixture-images-docker "$here/seed-images.sh" "$project" "$here" docker \
+  busybox:1.37.0 oven/bun:1.3.3 traefik:v3.6 "$handler_image" & pids+=("$!")
+for daemon in docker-a docker-b; do
+  step 180 "fixture-images-$daemon" "$here/seed-images.sh" "$project" "$here" "$daemon" \
+    busybox:1.37.0 postgres:17.4-bookworm oven/bun:1.3.3 traefik:v3.6 "$handler_image" & pids+=("$!")
 done
 wait_jobs "${pids[@]}"
 step 150 proof "${compose[@]}" exec -T client python3 /fixture/harness.py
