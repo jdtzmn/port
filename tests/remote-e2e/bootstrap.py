@@ -671,6 +671,18 @@ def route_fixture_stats(host, port=3100):
     finally:
         connection.close()
 
+def database_sessions(host, database):
+    result = psql(
+        host,
+        database,
+        query='SELECT pg_stat_force_next_flush(); SELECT COALESCE(sum(sessions), 0) FROM pg_stat_database',
+    )
+    require(result.returncode == 0, f'could not read PostgreSQL session counter for {host}: {result.stderr[-1024:]}')
+    try:
+        return int(result.stdout.strip().splitlines()[-1])
+    except (IndexError, ValueError):
+        raise RuntimeError(f'invalid PostgreSQL session counter for {host}: {result.stdout[-1024:]!r}') from None
+
 def product_runtime_port(shell, owner, branch):
     matches = re.findall(
         rb'^PRODUCT_RUNTIME=(\{[^\n]+\})$',
@@ -964,11 +976,25 @@ def concurrent_owners():
         for machine in ('remote-a', 'remote-b'):
             database = f'{machine.replace("-", "_")}_automatic'
             wait_for_database(f'feature.{machine}.ssh', database)
+        database_sessions_before = {}
+        for machine in ('remote-a', 'remote-b'):
+            database = f'{machine.replace("-", "_")}_automatic'
+            first = database_sessions(f'feature.{machine}.ssh', database)
+            second = database_sessions(f'feature.{machine}.ssh', database)
+            require(second == first + 1, f'PostgreSQL session counter is not monotonic for {machine}')
+            database_sessions_before[machine] = second
         conflict_database = psql('feature.port', 'remote_a_automatic')
         require(
             conflict_database.returncode != 0,
             'ambiguous PostgreSQL TLS/SNI route reached an application backend',
         )
+        for machine in ('remote-a', 'remote-b'):
+            database = f'{machine.replace("-", "_")}_automatic'
+            sessions = database_sessions(f'feature.{machine}.ssh', database)
+            require(
+                sessions == database_sessions_before[machine] + 1,
+                f'ambiguous PostgreSQL route contacted {machine}',
+            )
         status, _ = request('feature.port', 3100, 'POST')
         require(status == 409, 'ambiguous POST did not fail closed')
         for machine in ('remote-a', 'remote-b'):
