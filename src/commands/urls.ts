@@ -3,9 +3,13 @@ import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../li
 import { parseComposeFile, getServicePorts, composePs } from '../lib/compose.ts'
 import { buildProjectName as getProjectName } from '../lib/projectName.ts'
 import { formatHostname, formatHostnameLabel } from '../lib/hostname.ts'
-import { findRemoteRuntimePaths } from '../lib/remoteRuntimePaths.ts'
-import { readRemoteRouteView } from '../lib/remoteRuntimeStore.ts'
-import { describeRemoteRoute, remoteHttpRoutes, remoteRouteUrl } from '../lib/remoteRouteView.ts'
+import { findRemoteRuntimePaths } from '../lib/remote/coordinator/paths.ts'
+import { readRemoteRouteView } from '../lib/remote/coordinator/store.ts'
+import {
+  describeRemoteRoute,
+  remoteHttpRoutes,
+  remoteRouteUrl,
+} from '../lib/remote/routing/view.ts'
 import * as output from '../lib/output.ts'
 
 /**

@@ -1,7 +1,7 @@
 import * as output from '../lib/output.ts'
-import { generateSshIntegrationHook } from '../lib/sshIntegrationHook.ts'
+import { generateSshIntegrationHook } from '../lib/remote/session/integrationHook.ts'
 import { SUPPORTED_SHELLS, type Shell } from '../lib/shell.ts'
-import { isRemoteRuntimeEnabled } from '../lib/remoteEnabled.ts'
+import { isRemoteRuntimeEnabled } from '../lib/remote/coordinator/enabled.ts'
 
 /**
  * Generate shell hook code that the user adds to their shell profile.

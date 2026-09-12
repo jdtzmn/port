@@ -549,7 +549,7 @@ export async function install(options?: {
         return
       }
     }
-    await (await import('../lib/remoteSupervisor.ts')).enableRemoteRuntime()
+    await (await import('../lib/remote/coordinator/supervisor.ts')).enableRemoteRuntime()
     if (options.shellHook !== false) await setupShellHook(options)
     output.success('Remote services enabled. Reload Bash to activate ordinary SSH integration.')
     return

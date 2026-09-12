@@ -9,9 +9,9 @@ import {
   STALE_WORKTREE_WARNING_THRESHOLD,
   formatStaleWorktreeWarning,
 } from '../lib/staleWorktrees.ts'
-import { findRemoteRuntimePaths } from '../lib/remoteRuntimePaths.ts'
-import { readRemoteRouteView } from '../lib/remoteRuntimeStore.ts'
-import { describeRemoteRoute } from '../lib/remoteRouteView.ts'
+import { findRemoteRuntimePaths } from '../lib/remote/coordinator/paths.ts'
+import { readRemoteRouteView } from '../lib/remote/coordinator/store.ts'
+import { describeRemoteRoute } from '../lib/remote/routing/view.ts'
 import * as output from '../lib/output.ts'
 
 /**

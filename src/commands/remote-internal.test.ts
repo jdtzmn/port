@@ -8,9 +8,9 @@ const mocks = vi.hoisted(() => ({
   cleanupRemoteSession: vi.fn(),
   remoteHandshake: vi.fn(() => ({ kind: 'port-handshake', version: 1 })),
 }))
-vi.mock('../lib/remoteSession.ts', () => mocks)
-vi.mock('../lib/remoteIdentity.ts', () => mocks)
-vi.mock('../lib/remoteSnapshotCollector.ts', () => mocks)
+vi.mock('../lib/remote/session/session.ts', () => mocks)
+vi.mock('../lib/remote/session/identity.ts', () => mocks)
+vi.mock('../lib/remote/session/snapshotCollector.ts', () => mocks)
 import { dispatchRemoteInternalCommand, isRemoteInternalCommand } from './remote-internal.ts'
 
 describe('private remote dispatch', () => {

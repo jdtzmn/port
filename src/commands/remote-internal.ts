@@ -1,12 +1,12 @@
-import { getRemoteInstanceId } from '../lib/remoteIdentity.ts'
-import { parseRemoteSnapshot } from '../lib/remoteSnapshot.ts'
-import { collectRemoteSnapshot } from '../lib/remoteSnapshotCollector.ts'
+import { getRemoteInstanceId } from '../lib/remote/session/identity.ts'
+import { parseRemoteSnapshot } from '../lib/remote/session/snapshot.ts'
+import { collectRemoteSnapshot } from '../lib/remote/session/snapshotCollector.ts'
 import {
   cleanupRemoteSession,
   observeRemoteSession,
   prepareRemoteSession,
   remoteHandshake,
-} from '../lib/remoteSession.ts'
+} from '../lib/remote/session/session.ts'
 
 const tokens = new Set([
   '__remote-prepare',
@@ -29,8 +29,8 @@ export async function dispatchRemoteInternalCommand(token: string, args: string[
     if (token === '__remote-runtime' || token === '__remote-supervise') {
       if (args.length !== 0) throw new Error('Invalid arguments')
       if (token === '__remote-runtime')
-        await (await import('../lib/remoteRuntime.ts')).runRemoteRuntime()
-      else await (await import('../lib/remoteSupervisor.ts')).runRemoteSupervisor()
+        await (await import('../lib/remote/coordinator/runtime.ts')).runRemoteRuntime()
+      else await (await import('../lib/remote/coordinator/supervisor.ts')).runRemoteSupervisor()
     } else if (token === '__remote-handshake') {
       if (args.length !== 0) throw new Error('Invalid arguments')
       process.stdout.write(JSON.stringify(remoteHandshake()) + '\n')
@@ -57,7 +57,9 @@ export async function dispatchRemoteInternalCommand(token: string, args: string[
       }
       if (token === '__remote-observe') {
         await observeRemoteSession(args[0]!, undefined, async () => {
-          await (await import('../lib/remoteSupervisor.ts')).registerRemoteRuntimeSession(args[0]!)
+          await (
+            await import('../lib/remote/coordinator/supervisor.ts')
+          ).registerRemoteRuntimeSession(args[0]!)
         })
       } else await cleanupRemoteSession(args[0]!)
     }
