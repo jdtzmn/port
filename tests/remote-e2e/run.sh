@@ -106,12 +106,15 @@ for daemon in docker-a docker-b; do
     busybox:1.37.0 postgres:17.4-bookworm oven/bun:1.3.3 traefik:v3.6 "$handler_image" & pids+=("$!")
 done
 wait_jobs "${pids[@]}"
-step 150 proof "${compose[@]}" exec -T client python3 /fixture/harness.py
-step 90 multiplexing "${compose[@]}" exec -T client python3 /fixture/mux.py
-step 90 baseline "${compose[@]}" exec -T client python3 /fixture/baseline.py
-step 600 bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py
-
-# Preserve ordinary login fallback after both Port-enabled remote product scenarios.
-step 10 missing-port "${compose[@]}" exec -T remote-b mv /usr/local/bin/port /usr/local/bin/port-unavailable
-step 90 missing-port-bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py --missing-port-only
+export REMOTE_E2E_PROJECT="$project"
+export REMOTE_E2E_FIXTURE_ROOT="$here"
+export REMOTE_E2E_ARTIFACTS="$artifacts"
+export REMOTE_E2E_TIMINGS="$timings"
+shard=${REMOTE_E2E_SHARD:-1/1}
+if step 700 acceptance bunx vitest run --config "$here/vitest.config.ts" --shard="$shard"; then
+  cat "$artifacts/acceptance.log"
+else
+  cat "$artifacts/acceptance.log" >&2
+  exit 1
+fi
 printf 'remote-e2e: transport, SSH compatibility, failure-path components, and automatic port up HTTP/TLS-SNI routing passed\n'

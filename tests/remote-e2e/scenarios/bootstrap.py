@@ -1079,10 +1079,30 @@ def missing_port_only():
         shell.close()
 
 
-def main():
-    # Install the fixture's normal SSH config, not command-specific test options.
+def configure_ssh():
     shutil.copyfile('/fixture/ssh_config', '/root/.ssh/config')
     os.chmod('/root/.ssh/config', 0o600)
+
+
+def automatic_runtime_only(machine):
+    configure_ssh()
+    shell = LocalShell()
+    try:
+        automatic_runtime(shell, machine)
+    finally:
+        shell.close()
+        print(f'--- {machine} automatic runtime PTY (last 16 KiB) ---', flush=True)
+        print(shell.output.decode(errors='replace'), flush=True)
+
+
+def concurrent_owners_only():
+    configure_ssh()
+    concurrent_owners()
+
+
+def main(include_product_scenarios=True):
+    # Install the fixture's normal SSH config, not command-specific test options.
+    configure_ssh()
     before = set(Path('/tmp').glob('port-ssh-*'))
     shell = LocalShell()
     try:
@@ -1118,9 +1138,10 @@ def main():
         shell.wait_for(lambda: observer_finished(directory))
         require(session_directories() == before, 'live-discovery login leaked local session state')
         print('PASS product shell preserves status 7 and removes session state', flush=True)
-        automatic_runtime(shell, 'remote-a')
-        automatic_runtime(shell, 'remote-b')
-        concurrent_owners()
+        if include_product_scenarios:
+            automatic_runtime(shell, 'remote-a')
+            automatic_runtime(shell, 'remote-b')
+            concurrent_owners()
 
         shell.send('ssh -J remote-b remote-a\n')
         shell.marker('test -t 0 && test "$(id -un)" = fixture')
@@ -1179,6 +1200,14 @@ def main():
 if __name__ == '__main__':
     if sys.argv[1:] == ['--missing-port-only']:
         missing_port_only()
+    elif sys.argv[1:] == ['--foundation-only']:
+        main(include_product_scenarios=False)
+    elif sys.argv[1:] == ['--automatic-runtime', 'remote-a']:
+        automatic_runtime_only('remote-a')
+    elif sys.argv[1:] == ['--automatic-runtime', 'remote-b']:
+        automatic_runtime_only('remote-b')
+    elif sys.argv[1:] == ['--concurrent-owners']:
+        concurrent_owners_only()
     elif len(sys.argv) == 1:
         main()
     else:

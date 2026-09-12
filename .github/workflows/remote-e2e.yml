@@ -10,10 +10,34 @@ permissions:
   contents: read
 
 jobs:
-  remote-e2e:
-    name: Linux SSH and same-port networking
+  plan-shards:
+    name: Plan auto-scaled remote E2E shards
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.3
+      - id: plan
+        name: Calculate shard matrix
+        run: |
+          matrix=$(bun tests/remote-e2e/plan-shards.ts)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "### Remote E2E shard plan" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          echo "$matrix" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  remote-e2e:
+    name: Linux SSH and same-port networking (${{ matrix.index }}/${{ matrix.count }})
+    needs: plan-shards
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan-shards.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -22,12 +46,33 @@ jobs:
       - name: Install build dependencies
         run: bun install --frozen-lockfile
       - name: Run isolated feasibility harness
+        env:
+          REMOTE_E2E_SHARD: ${{ matrix.index }}/${{ matrix.count }}
         run: bash tests/remote-e2e/run.sh
+      - name: Summarize shard timing
+        if: always()
+        run: |
+          timing=$(find .remote-e2e-artifacts -name timings.tsv -print -quit 2>/dev/null || true)
+          if [[ -n "$timing" ]]; then
+            echo "### Remote E2E shard ${{ matrix.index }}/${{ matrix.count }}" >> "$GITHUB_STEP_SUMMARY"
+            echo '| Phase | Duration (s) | Status |' >> "$GITHUB_STEP_SUMMARY"
+            echo '|---|---:|---:|' >> "$GITHUB_STEP_SUMMARY"
+            awk -F '\t' 'NR > 1 { printf "| %s | %.3f | %s |\n", $1, $2 / 1000, $3 }' "$timing" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload shard timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: remote-e2e-timing-${{ matrix.index }}-of-${{ matrix.count }}
+          path: .remote-e2e-artifacts/**/timings.tsv
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 30
       - name: Upload safe diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: remote-e2e-diagnostics
+          name: remote-e2e-diagnostics-${{ matrix.index }}-of-${{ matrix.count }}
           path: .remote-e2e-artifacts/
           include-hidden-files: true
           if-no-files-found: ignore
