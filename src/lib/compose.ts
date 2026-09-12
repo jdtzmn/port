@@ -873,6 +873,34 @@ export async function isTraefikRunning(): Promise<boolean> {
   }
 }
 
+type DockerPortBinding = { HostPort?: unknown }
+
+function parseDockerHostPort(binding: unknown): number | undefined {
+  if (!binding || typeof binding !== 'object' || Array.isArray(binding)) return undefined
+
+  const hostPort = (binding as DockerPortBinding).HostPort
+  if (typeof hostPort !== 'string' || !/^\d{1,5}$/.test(hostPort)) return undefined
+
+  const port = Number(hostPort)
+  return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : undefined
+}
+
+function parseDockerPortBindings(value: unknown): number[] | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+
+  const ports = new Set<number>()
+  for (const bindings of Object.values(value)) {
+    if (!Array.isArray(bindings) || bindings.length === 0) return undefined
+    for (const binding of bindings) {
+      const port = parseDockerHostPort(binding)
+      if (port === undefined) return undefined
+      ports.add(port)
+    }
+  }
+
+  return [...ports].sort((a, b) => a - b)
+}
+
 /**
  * Check which host port bindings the running Traefik container actually has.
  *
@@ -887,23 +915,7 @@ export async function getTraefikBoundPorts(): Promise<number[]> {
     const { stdout } = await execAsync(
       'docker inspect --format "{{json .HostConfig.PortBindings}}" port-traefik'
     )
-    const value: unknown = JSON.parse(stdout)
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return []
-
-    const ports = new Set<number>()
-    for (const bindings of Object.values(value)) {
-      if (!Array.isArray(bindings) || bindings.length === 0) return []
-      for (const binding of bindings) {
-        if (!binding || typeof binding !== 'object' || Array.isArray(binding)) return []
-        const hostPort = (binding as { HostPort?: unknown }).HostPort
-        if (typeof hostPort !== 'string' || !/^\d{1,5}$/.test(hostPort)) return []
-        const port = Number(hostPort)
-        if (!Number.isInteger(port) || port < 1 || port > 65535) return []
-        ports.add(port)
-      }
-    }
-
-    return [...ports].sort((a, b) => a - b)
+    return parseDockerPortBindings(JSON.parse(stdout)) ?? []
   } catch {
     return []
   }
