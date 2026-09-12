@@ -32,6 +32,15 @@ step() {
   printf 'remote-e2e: timing %s=%sms status=%s\n' "$label" "$duration_ms" "$step_status"
   return "$step_status"
 }
+wait_jobs() {
+  local status=0 pid
+  for pid in "$@"; do
+    if ! wait "$pid"; then
+      status=1
+    fi
+  done
+  return "$status"
+}
 cleanup() {
   local status=$? cleanup_status finished_ns total_ms
   trap - EXIT INT TERM
@@ -59,16 +68,20 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 step 15 config "${compose[@]}" config --quiet
-step 600 build "${compose[@]}" build
-# The private DinD network has no registry egress. Seed all three local daemons
-# via the runner's Docker CLI; never mount a host Docker socket in any fixture.
-step 120 smoke-pull docker pull busybox:1.37.0
-step 120 proxy-pull docker pull traefik:v3.6
-step 180 postgres-pull docker pull postgres:17.4-bookworm
-step 180 bun-pull docker pull oven/bun:1.3.3
+# Build independent host-side prerequisites concurrently. The fixture topology remains isolated.
 version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$root/package.json")
 handler_image="ghcr.io/jdtzmn/port-404-handler:$version"
-step 300 handler-build docker build --pull=false -t "$handler_image" "$root/packages/404-app"
+pids=()
+step 600 build "${compose[@]}" build & pids+=("$!")
+# The private DinD network has no registry egress. Seed all three local daemons
+# via the runner's Docker CLI; never mount a host Docker socket in any fixture.
+step 120 smoke-pull docker pull busybox:1.37.0 & pids+=("$!")
+step 120 proxy-pull docker pull traefik:v3.6 & pids+=("$!")
+step 180 postgres-pull docker pull postgres:17.4-bookworm & pids+=("$!")
+step 180 bun-pull docker pull oven/bun:1.3.3 & pids+=("$!")
+step 300 handler-build docker build --pull=false -t "$handler_image" "$root/packages/404-app" & pids+=("$!")
+wait_jobs "${pids[@]}"
+
 image_dir=$(mktemp -d "${TMPDIR:-/tmp}/remote-e2e-image.XXXXXXXX")
 # Build the actual checkout into a fresh, artifact-only directory; no source or secrets enter fixtures.
 mkdir -p "$image_dir/app"
@@ -78,42 +91,27 @@ step 120 forward-probe-build bun build "$here/fixtures/forward-probe.ts" --outdi
 step 120 proxy-probe-build bun build "$here/fixtures/proxy-probe.ts" --outdir "$image_dir/app/fixtures" --target bun
 cp "$root/package.json" "$image_dir/app/package.json"
 chmod -R a+rX "$image_dir/app"
-step 60 smoke-save docker image save --output "$image_dir/smoke.tar" busybox:1.37.0
-step 60 postgres-save docker image save --output "$image_dir/postgres.tar" postgres:17.4-bookworm
-step 60 bun-save docker image save --output "$image_dir/bun.tar" oven/bun:1.3.3
-step 60 proxy-save docker image save --output "$image_dir/proxy.tar" traefik:v3.6
-step 60 handler-save docker image save --output "$image_dir/handler.tar" "$handler_image"
-step 210 readiness "${compose[@]}" up -d --wait --wait-timeout 150
+
+# Save once while the outer fixture becomes healthy. Each private daemon imports the same exact bundle.
+pids=()
+step 120 fixture-images-save docker image save --output "$image_dir/fixture-images.tar" \
+  busybox:1.37.0 postgres:17.4-bookworm oven/bun:1.3.3 traefik:v3.6 "$handler_image" & pids+=("$!")
+step 210 readiness "${compose[@]}" up -d --wait --wait-timeout 150 & pids+=("$!")
+wait_jobs "${pids[@]}"
+
+# Copy artifacts and seed independent DinD daemons concurrently.
+pids=()
 for machine in client remote-a remote-b; do
-  step 30 "port-copy-$machine" "${compose[@]}" cp "$image_dir/app/." "$machine:/opt/port/"
+  step 30 "port-copy-$machine" "${compose[@]}" cp "$image_dir/app/." "$machine:/opt/port/" & pids+=("$!")
 done
-# DinD creates a private /tmp mount; use the root filesystem for docker cp.
 for daemon in docker docker-a docker-b; do
-  step 30 "smoke-copy-$daemon" "${compose[@]}" cp "$image_dir/smoke.tar" "$daemon:/smoke.tar"
-  step 60 "smoke-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /smoke.tar
-  step 10 "smoke-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /smoke.tar
+  (
+    step 60 "fixture-images-copy-$daemon" "${compose[@]}" cp "$image_dir/fixture-images.tar" "$daemon:/fixture-images.tar"
+    step 120 "fixture-images-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /fixture-images.tar
+    step 10 "fixture-images-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /fixture-images.tar
+  ) & pids+=("$!")
 done
-for daemon in docker-a docker-b; do
-  step 30 "postgres-copy-$daemon" "${compose[@]}" cp "$image_dir/postgres.tar" "$daemon:/postgres.tar"
-  step 60 "postgres-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /postgres.tar
-  step 10 "postgres-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /postgres.tar
-done
-
-for daemon in docker docker-a docker-b; do
-  step 30 "bun-copy-$daemon" "${compose[@]}" cp "$image_dir/bun.tar" "$daemon:/bun.tar"
-  step 60 "bun-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /bun.tar
-  step 10 "bun-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /bun.tar
-done
-
-# Production Port starts Traefik and the 404 handler in every participating daemon.
-for daemon in docker docker-a docker-b; do
-  step 30 "proxy-copy-$daemon" "${compose[@]}" cp "$image_dir/proxy.tar" "$daemon:/proxy.tar"
-  step 60 "proxy-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /proxy.tar
-  step 10 "proxy-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /proxy.tar
-  step 30 "handler-copy-$daemon" "${compose[@]}" cp "$image_dir/handler.tar" "$daemon:/handler.tar"
-  step 60 "handler-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /handler.tar
-  step 10 "handler-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /handler.tar
-done
+wait_jobs "${pids[@]}"
 step 150 proof "${compose[@]}" exec -T client python3 /fixture/harness.py
 step 90 multiplexing "${compose[@]}" exec -T client python3 /fixture/mux.py
 step 90 baseline "${compose[@]}" exec -T client python3 /fixture/baseline.py
