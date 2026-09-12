@@ -10,8 +10,8 @@ RUN sed -i 's|http://|https://|g' /etc/apt/sources.list.d/* \
     && useradd --create-home --shell /bin/bash fixture && passwd -d fixture \
     && mkdir -p /run/sshd
 COPY --from=bun-runtime /usr/local/bin/bun /usr/local/bin/bun
-COPY port-cli.sh /usr/local/bin/port
+COPY fixtures/port-cli.sh /usr/local/bin/port
 RUN chmod 755 /usr/local/bin/port && mkdir -p /opt/port
-COPY sshd_config /etc/ssh/sshd_config
-COPY remote.sh identity.ts /fixture/
+COPY docker/sshd_config /etc/ssh/sshd_config
+COPY docker/remote.sh fixtures/identity.ts /fixture/
 ENTRYPOINT ["bash", "/fixture/remote.sh"]

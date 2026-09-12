@@ -1,17 +1,9 @@
 # Allowlist the build context: never send incidental secrets or artifacts.
 *
-!Dockerfile.client
-!Dockerfile.remote
-!client.sh
-!remote.sh
-!harness.py
-!mux.py
-!ssh_config
-!sshd_config
-!port-cli.sh
-!bootstrap.py
-!baseline.py
-!identity.ts
-!Dockerfile.traefik
-!traefik.yaml
-!traefik-dynamic.yaml
+!docker/
+!docker/**
+!fixtures/
+!fixtures/identity.ts
+!fixtures/port-cli.sh
+!scenarios/
+!scenarios/**

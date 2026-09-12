@@ -17,7 +17,7 @@ step() {
   local seconds=$1 label=$2
   shift 2
   printf 'remote-e2e: %s\n' "$label"
-  python3 "$here/bounded.py" "$seconds" "$artifacts/$label.log" "$@"
+  python3 "$here/scenarios/bounded.py" "$seconds" "$artifacts/$label.log" "$@"
 }
 cleanup() {
   local status=$?
@@ -56,9 +56,9 @@ image_dir=$(mktemp -d "${TMPDIR:-/tmp}/remote-e2e-image.XXXXXXXX")
 # Build the actual checkout into a fresh, artifact-only directory; no source or secrets enter fixtures.
 mkdir -p "$image_dir/app"
 step 120 port-build bun build "$root/src/index.ts" --outdir "$image_dir/app/dist" --target bun --splitting
-step 120 snapshot-fixture-build bun build "$here/snapshot-workload.ts" --outdir "$image_dir/app/fixtures" --target bun
-step 120 forward-probe-build bun build "$here/forward-probe.ts" --outdir "$image_dir/app/fixtures" --target bun
-step 120 proxy-probe-build bun build "$here/proxy-probe.ts" --outdir "$image_dir/app/fixtures" --target bun
+step 120 snapshot-fixture-build bun build "$here/fixtures/snapshot-workload.ts" --outdir "$image_dir/app/fixtures" --target bun
+step 120 forward-probe-build bun build "$here/fixtures/forward-probe.ts" --outdir "$image_dir/app/fixtures" --target bun
+step 120 proxy-probe-build bun build "$here/fixtures/proxy-probe.ts" --outdir "$image_dir/app/fixtures" --target bun
 cp "$root/package.json" "$image_dir/app/package.json"
 chmod -R a+rX "$image_dir/app"
 step 60 smoke-save docker image save --output "$image_dir/smoke.tar" busybox:1.37.0

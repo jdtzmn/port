@@ -1,12 +1,20 @@
 # Remote services: transport feasibility, Traefik baseline, SSH bootstrap and live discovery
 
 The networking proof uses explicit test-only `ssh -L` arguments. Separately,
-`bootstrap.py` exercises the actual built Port CLI, opt-in Bash shell hook, and
+`scenarios/bootstrap.py` exercises the actual built Port CLI, opt-in Bash shell hook, and
 plain SSH logins with automatic remote handshakes, missing-Port fallback, jump
 hosts, encrypted keys, and ordinary noninteractive passthrough. Component gates
 exercise discovery and authenticated forwarding in isolation. The final product
 gate enables the one-time integration marker, runs real `port up` on remote-a,
 and requires automatic local HTTP and TLS/SNI routing through production Traefik.
+
+
+## Layout
+
+- `docker/`: container build files, entrypoints, SSH configuration, and Traefik fixtures.
+- `fixtures/`: compiled helpers and the disposable product-workload controller.
+- `scenarios/`: executable Python acceptance scenarios and their bounded runner.
+- `compose.yaml` and `run.sh`: topology and orchestration only.
 
 ## Run
 
@@ -42,7 +50,7 @@ handshake without breaking login. No remote install or special output occurs.
 
 ### Private transport component gate (not public routing)
 
-Inside the first plain `ssh remote-a` login, `bootstrap.py` launches the compiled
+Inside the first plain `ssh remote-a` login, `scenarios/bootstrap.py` launches the compiled
 `forward-probe.js` on the **client**, with only the original owned session directory.
 The helper calls the actual `openRemoteStream(directory, {address: '127.0.0.1',
 port: 5432})` API, which uses an owned Unix socket and mux `-O forward` / `-O cancel`
@@ -303,8 +311,8 @@ are independently bounded.
 
 ## Existing Traefik HTTP Host / TLS HostSNI baseline
 
-`baseline.py` exercises real **Traefik v3.6.0**, not an ingress-library stand-in.
-The allowlisted `Dockerfile.traefik`, `traefik.yaml`, and `traefik-dynamic.yaml`
+`scenarios/baseline.py` exercises real **Traefik v3.6.0**, not an ingress-library stand-in.
+The allowlisted `docker/Dockerfile.traefik`, `docker/traefik.yaml`, and `docker/traefik-dynamic.yaml`
 provide static entrypoints and explicit fixture routes. No Docker socket or host
 ports are exposed by this service. These hand-written routes preserve the existing
 `compose.ts` / `generateTraefikTcpLabels` baseline (`tls=true`, represented by
@@ -389,7 +397,7 @@ private key files or entire container filesystems for diagnostics.
 ## Lightweight validation (no fixture execution)
 
 ```sh
-bash -n tests/remote-e2e/run.sh tests/remote-e2e/client.sh tests/remote-e2e/remote.sh
+bash -n tests/remote-e2e/run.sh tests/remote-e2e/docker/client.sh tests/remote-e2e/docker/remote.sh
 python3 -c 'import ast,pathlib; [ast.parse(p.read_text()) for p in pathlib.Path("tests/remote-e2e").glob("*.py")]'
 COMPOSE_DISABLE_ENV_FILE=1 docker compose --env-file /dev/null \
   -p remote-e2e-config-check -f tests/remote-e2e/compose.yaml config --quiet
@@ -397,7 +405,7 @@ COMPOSE_DISABLE_ENV_FILE=1 docker compose --env-file /dev/null \
 
 ## Multiplexing lifecycle gate
 
-`mux.py` additionally probes a private mode-0700 ControlPath and bounded
+`scenarios/mux.py` additionally probes a private mode-0700 ControlPath and bounded
 ControlPersist. A clean companion invocation reuses the authenticated master
 without replaying login configuration; `ProxyCommand=false` prevents transport
 fallback when the socket is absent. The interactive primary must return exit

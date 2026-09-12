@@ -10,7 +10,7 @@ RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.l
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
 COPY --from=bun-runtime /usr/local/bin/bun /usr/local/bin/bun
-COPY port-cli.sh /usr/local/bin/port
+COPY fixtures/port-cli.sh /usr/local/bin/port
 RUN chmod 755 /usr/local/bin/port && mkdir -p /opt/port
-COPY client.sh harness.py mux.py bootstrap.py baseline.py identity.ts ssh_config /fixture/
+COPY docker/client.sh docker/ssh_config fixtures/identity.ts scenarios/ /fixture/
 ENTRYPOINT ["bash", "/fixture/client.sh"]

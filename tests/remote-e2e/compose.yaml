@@ -2,7 +2,7 @@ services:
   traefik:
     build:
       context: .
-      dockerfile: Dockerfile.traefik
+      dockerfile: docker/Dockerfile.traefik
     networks: [fixture]
     healthcheck:
       test: [CMD, traefik, healthcheck, --ping]
@@ -12,7 +12,7 @@ services:
   remote-a:
     build:
       context: .
-      dockerfile: Dockerfile.remote
+      dockerfile: docker/Dockerfile.remote
     environment:
       FIXTURE_NAME: remote-a
       POSTGRES_DB: remote_a
@@ -32,7 +32,7 @@ services:
   remote-b:
     build:
       context: .
-      dockerfile: Dockerfile.remote
+      dockerfile: docker/Dockerfile.remote
     environment:
       FIXTURE_NAME: remote-b
       POSTGRES_DB: remote_b
@@ -52,7 +52,7 @@ services:
   client:
     build:
       context: .
-      dockerfile: Dockerfile.client
+      dockerfile: docker/Dockerfile.client
     volumes:
       - public-keys:/public-keys
       - client-state:/root/.port

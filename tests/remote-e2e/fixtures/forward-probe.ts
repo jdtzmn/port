@@ -1,5 +1,5 @@
 import { chmodSync, mkdtempSync, rmdirSync, symlinkSync, unlinkSync } from 'node:fs'
-import { openRemoteStream } from '../../src/lib/remote/session/session.ts'
+import { openRemoteStream } from '../../../src/lib/remote/session/session.ts'
 
 // Private Unix transport component probe, not public plaintext routing acceptance.
 async function main(): Promise<void> {
