@@ -657,6 +657,20 @@ def wait_for_fixture_stats(host, owner, branch, port=80, timeout=45):
     runtime_diagnostics()
     raise RuntimeError(f'fixture stats timed out for {host}: {last!r}')
 
+def route_fixture_stats(host, port=3100):
+    connection = http.client.HTTPConnection(host, port, timeout=3)
+    try:
+        connection.request('GET', '/__fixture/stats')
+        response = connection.getresponse()
+        body = response.read(2048)
+        require(response.status == 200, f'fixture stats route failed for {host}: {response.status}')
+        payload = json.loads(body)
+        require(isinstance(payload, dict) and isinstance(payload.get('counters'), dict),
+                f'invalid fixture stats for {host}: {body[:256]!r}')
+        return payload
+    finally:
+        connection.close()
+
 def product_runtime_port(shell, owner, branch):
     matches = re.findall(
         rb'^PRODUCT_RUNTIME=(\{[^\n]+\})$',
@@ -895,31 +909,52 @@ def concurrent_owners():
         for machine in ('remote-a', 'remote-b'):
             wait_for_websocket_ready(f'feature.{machine}.ssh', 3100, machine)
 
+        websocket_counters = {
+            machine: route_fixture_stats(f'feature.{machine}.ssh')['counters']
+            for machine in ('remote-a', 'remote-b')
+        }
         conflict_websocket = websocket_attempt('feature.port', 3100)
         require(
             conflict_websocket.returncode != 0,
             'ambiguous WebSocket route reached an application backend',
         )
         for machine in ('remote-a', 'remote-b'):
+            counters = route_fixture_stats(f'feature.{machine}.ssh')['counters']
+            require(
+                counters['websocketOpens'] == websocket_counters[machine]['websocketOpens']
+                and counters['websocketMessages'] == websocket_counters[machine]['websocketMessages'],
+                f'ambiguous WebSocket route contacted {machine}',
+            )
+        for machine in ('remote-a', 'remote-b'):
             websocket_messages(f'feature.{machine}.ssh', 3100, machine)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
 
-        def tls_request(host):
+        def tls_request(host, path='/'):
             connection = http.client.HTTPSConnection(host, 3100, timeout=3, context=context)
             try:
-                connection.request('GET', '/')
+                connection.request('GET', path)
                 response = connection.getresponse()
                 return response.status, response.read(1024)
             finally:
                 connection.close()
 
+        tls_counters = {
+            machine: route_fixture_stats(f'feature.{machine}.ssh')['counters']
+            for machine in ('remote-a', 'remote-b')
+        }
         try:
-            tls_request('feature.port')
+            tls_request('feature.port', '/__fixture/probe/tls')
             raise RuntimeError('ambiguous TLS/SNI route reached an application response')
         except (OSError, http.client.HTTPException):
             pass
+        for machine in ('remote-a', 'remote-b'):
+            counters = route_fixture_stats(f'feature.{machine}.ssh')['counters']
+            require(
+                counters['tlsProbeRequests'] == tls_counters[machine]['tlsProbeRequests'],
+                f'ambiguous TLS/SNI route contacted {machine}',
+            )
         for machine in ('remote-a', 'remote-b'):
             status, body = tls_request(f'feature.{machine}.ssh')
             require(
