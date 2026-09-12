@@ -678,6 +678,22 @@ def product_runtime_port(shell, owner, branch):
             return ui['publishedPort']
     raise RuntimeError(f'missing published UI port for {owner}/{branch}')
 
+def port_command(*args, cwd=None, timeout=15):
+    result = subprocess.run(
+        ['/usr/local/bin/port', *args],
+        cwd=cwd,
+        env={'PATH': os.environ['PATH'], 'HOME': '/root', 'LC_ALL': 'C'},
+        text=True,
+        capture_output=True,
+        timeout=timeout,
+    )
+    output = re.sub(r'\x1b\[[0-9;]*m', '', result.stdout + result.stderr)
+    require(
+        result.returncode == 0,
+        f'port {" ".join(args)} failed: exit={result.returncode}; output={output[-2048:]!r}',
+    )
+    return output
+
 def automatic_runtime(shell, machine):
     before = session_directories()
     shell.marker(
@@ -736,6 +752,11 @@ def automatic_runtime(shell, machine):
             stats.get('profile') == 'ui-only' and stats.get('service') == 'ui',
             f'sibling worktree route did not preserve its service profile: {stats!r}',
         )
+    remote_urls = port_command('urls', '--remote')
+    require(
+        'feature.port' in remote_urls and 'sibling.port' in remote_urls,
+        f'port urls --remote omitted a live remote worktree: {remote_urls[-2048:]!r}',
+    )
     for host in ('feature.port', f'feature.{machine}.ssh'):
         connection = http.client.HTTPSConnection(host, 3100, timeout=3, context=context)
         try:
