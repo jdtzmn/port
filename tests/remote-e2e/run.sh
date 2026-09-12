@@ -82,7 +82,7 @@ for daemon in docker-a docker-b; do
   step 10 "postgres-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /postgres.tar
 done
 
-for daemon in docker-a docker-b; do
+for daemon in docker docker-a docker-b; do
   step 30 "bun-copy-$daemon" "${compose[@]}" cp "$image_dir/bun.tar" "$daemon:/bun.tar"
   step 60 "bun-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /bun.tar
   step 10 "bun-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /bun.tar
