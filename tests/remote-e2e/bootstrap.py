@@ -114,6 +114,7 @@ class LocalShell:
     def __init__(self):
         self.output = b""
         self.status = None
+        self.closed = False
         self.pid, self.fd = pty.fork()
         if self.pid == 0:
             os.execvp("bash", ["bash", "--noprofile", "--norc", "-i"])
@@ -149,7 +150,29 @@ class LocalShell:
                 self.output = (self.output + chunk)[-16384:]
         raise TimeoutError("plain-SSH bootstrap condition timed out")
 
+
+    def abort(self):
+        if self.closed:
+            return
+        try:
+            try:
+                os.killpg(self.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            end = time.monotonic() + 2
+            while time.monotonic() < end:
+                pid, status = os.waitpid(self.pid, os.WNOHANG)
+                if pid:
+                    self.status = os.waitstatus_to_exitcode(status)
+                    return
+                time.sleep(0.05)
+            raise RuntimeError("could not reap aborted local shell")
+        finally:
+            self.closed = True
+            os.close(self.fd)
     def close(self):
+        if self.closed:
+            return
         try:
             self.send("exit\n")
             for sig in (None, signal.SIGTERM, signal.SIGKILL):
@@ -167,8 +190,8 @@ class LocalShell:
                     time.sleep(0.05)
             raise RuntimeError("could not reap local shell")
         finally:
+            self.closed = True
             os.close(self.fd)
-
 
 def session_directories():
     return set(Path('/tmp').glob('port-ssh-*'))
