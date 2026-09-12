@@ -1,0 +1,28 @@
+name: Setup Port runtime
+description: Prepare the local Port command, Traefik runtime image, 404 handler image, and test DNS domain on Ubuntu runners.
+
+runs:
+  using: composite
+  steps:
+    - name: Create global `port` command
+      shell: bash
+      run: sudo ln -sf "$GITHUB_WORKSPACE/dist/index.js" /usr/local/bin/port && chmod +x dist/index.js
+
+    - name: Prepare Port runtime images
+      shell: bash
+      run: |
+        grep -roh "traefik:v[0-9.]*" src/lib/traefik.ts | head -1 | xargs docker pull &
+
+        VERSION=$(jq -r .version package.json)
+        docker build \
+          -t "ghcr.io/jdtzmn/port-404-handler:${VERSION}" \
+          -t "ghcr.io/jdtzmn/port-404-handler:latest" \
+          packages/404-app/ &
+
+        wait
+
+    - name: Configure test DNS
+      shell: bash
+      run: |
+        sudo env PATH=$PATH port install -y
+        sudo env PATH=$PATH port install --domain test -y

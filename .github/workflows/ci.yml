@@ -15,28 +15,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure git identity (required by tests)
-        run: |
-          git config --global user.email "ci@test.local"
-          git config --global user.name "CI Runner"
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Setup Port
+        uses: ./.github/actions/setup-port
         with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+          configure-git-identity: 'true'
 
       - name: Check formatting
         run: bun run format:check
 
       - name: Run linter
         run: bun run lint
-
-      - name: Build
-        run: bun run build
-
       - name: Check ONBOARD.md is up to date
         run: |
           bun -e "import { generateMarkdown } from './src/commands/onboard.ts'; require('fs').writeFileSync('ONBOARD.md', generateMarkdown());"

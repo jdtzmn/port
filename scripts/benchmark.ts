@@ -1,5 +1,6 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { existsSync } from 'fs'
 import { mkdtemp, mkdir, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { basename, join, resolve } from 'path'
@@ -61,6 +62,28 @@ async function run(
   })
 }
 
+async function containerExists(name: string): Promise<boolean> {
+  try {
+    await execFileAsync('docker', ['container', 'inspect', name], { maxBuffer: 1024 })
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function assertDockerRuntimeIsIsolated(): Promise<void> {
+  const [traefikExists, handlerExists] = await Promise.all([
+    containerExists('port-traefik'),
+    containerExists('port-404-handler'),
+  ])
+
+  if (traefikExists || handlerExists) {
+    throw new Error(
+      'Docker benchmarks require an unused Port runtime; stop port-traefik and port-404-handler first.'
+    )
+  }
+}
+
 async function runPort(fixture: Fixture, args: string[]): Promise<void> {
   await run('bun', [CLI_PATH, ...args], fixture.root, {
     ...process.env,
@@ -105,13 +128,31 @@ async function prepareFixture(worktreeCount: number): Promise<Fixture> {
 }
 
 async function cleanupFixture(fixture: Fixture): Promise<void> {
+  const traefikComposeFile = join(fixture.globalDir, 'traefik', 'docker-compose.yml')
+
+  if (INCLUDE_DOCKER && existsSync(traefikComposeFile)) {
+    try {
+      await run('docker', ['compose', '--file', traefikComposeFile, 'down', '--remove-orphans'])
+    } catch (error) {
+      await rm(fixture.root, { recursive: true, force: true })
+      throw new Error(
+        `Could not stop the private benchmark runtime. Its state remains at ${fixture.globalDir}.`,
+        { cause: error }
+      )
+    }
+  }
+
   await rm(fixture.root, { recursive: true, force: true })
   await rm(fixture.globalDir, { recursive: true, force: true })
 }
 
-async function measure(operation: () => Promise<void>): Promise<BenchmarkSummary> {
+async function measure(
+  operation: () => Promise<void>,
+  reset: () => Promise<void> = async () => {}
+): Promise<BenchmarkSummary> {
   for (let index = 0; index < WARMUP_COUNT; index += 1) {
     await operation()
+    await reset()
   }
 
   const samples: number[] = []
@@ -119,6 +160,7 @@ async function measure(operation: () => Promise<void>): Promise<BenchmarkSummary
     const start = performance.now()
     await operation()
     samples.push(performance.now() - start)
+    await reset()
   }
 
   return summarizeSamples(samples)
@@ -126,16 +168,21 @@ async function measure(operation: () => Promise<void>): Promise<BenchmarkSummary
 
 async function measureNewWorktree(fixture: Fixture, prefix: string): Promise<BenchmarkSummary> {
   let runNumber = 0
+  let branch = ''
+  let worktreePath = ''
 
-  return measure(async () => {
-    const branch = `${prefix}-${runNumber}`
-    const worktreePath = join(fixture.root, '.port', 'trees', branch)
-    runNumber += 1
-
-    await runPort(fixture, ['enter', branch])
-    await run('git', ['worktree', 'remove', '--force', worktreePath], fixture.root)
-    await run('git', ['branch', '--delete', '--force', branch], fixture.root)
-  })
+  return measure(
+    async () => {
+      branch = `${prefix}-${runNumber}`
+      worktreePath = join(fixture.root, '.port', 'trees', branch)
+      runNumber += 1
+      await runPort(fixture, ['enter', branch])
+    },
+    async () => {
+      await run('git', ['worktree', 'remove', '--force', worktreePath], fixture.root)
+      await run('git', ['branch', '--delete', '--force', branch], fixture.root)
+    }
+  )
 }
 
 async function resetDockerProject(fixture: Fixture): Promise<void> {
@@ -150,10 +197,10 @@ async function measureWarmUp(fixture: Fixture): Promise<BenchmarkSummary> {
   await runPort(fixture, ['up'])
   await resetDockerProject(fixture)
 
-  return measure(async () => {
-    await runPort(fixture, ['up'])
-    await resetDockerProject(fixture)
-  })
+  return measure(
+    () => runPort(fixture, ['up']),
+    () => resetDockerProject(fixture)
+  )
 }
 
 function result(definition: BenchmarkDefinition, summary: BenchmarkSummary): BenchmarkResult {
@@ -200,6 +247,10 @@ async function writeResults(results: BenchmarkResult[]): Promise<void> {
 
 async function main(): Promise<void> {
   assertValidRunSettings()
+
+  if (INCLUDE_DOCKER) {
+    await assertDockerRuntimeIsIsolated()
+  }
 
   const smallFixture = await prepareFixture(1)
   const largeFixture = await prepareFixture(LARGE_WORKTREE_COUNT)

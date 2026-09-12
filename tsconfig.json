@@ -33,6 +33,6 @@
       "@tests/*": ["./tests/*"]
     }
   },
-  "include": ["src/**/*", "tests/**/*", "vitest-setup.ts"],
+  "include": ["src/**/*", "tests/**/*", "scripts/**/*", "vitest-setup.ts"],
   "exclude": ["tests/samples/**/*"]
 }

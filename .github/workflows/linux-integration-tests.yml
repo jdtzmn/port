@@ -32,28 +32,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure git identity (required by tests)
-        run: |
-          git config --global user.email "ci@test.local"
-          git config --global user.name "CI Runner"
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Setup Port
+        uses: ./.github/actions/setup-port
         with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Build
-        run: bun run build
-
+          configure-git-identity: 'true'
       - name: Install extra shells (for shell integration tests)
         run: sudo apt-get update && sudo apt-get install -y zsh fish
 
-      - name: Create global `port` command
-        run: |
-          sudo ln -s "$(pwd)/dist/index.js" /usr/local/bin/port && chmod +x dist/index.js
+      - name: Setup Port runtime
+        uses: ./.github/actions/setup-port-runtime
 
       - name: Pre-pull and build Docker images used by integration tests
         run: |
@@ -64,24 +51,7 @@ jobs:
               docker compose -f "$dir/docker-compose.yml" build &
             fi
           done
-
-          # Pull the Traefik image referenced in source code
-          grep -roh "traefik:v[0-9.]*" src/lib/traefik.ts | head -1 | xargs docker pull &
-
-          # Build the 404 handler image locally (not yet published for this branch)
-          # Tag both versioned and :latest so either get404HandlerImage() path works
-          VERSION=$(jq -r .version package.json)
-          docker build \
-            -t "ghcr.io/jdtzmn/port-404-handler:${VERSION}" \
-            -t "ghcr.io/jdtzmn/port-404-handler:latest" \
-            packages/404-app/ &
-
           wait
-
-      - name: Configure DNS
-        run: |
-          sudo env PATH=$PATH port install -y
-          sudo env PATH=$PATH port install --domain test -y
 
       - name: Run tests
         run: bunx vitest --shard=${{ matrix.shard }}/${{ inputs.total-shards }}
