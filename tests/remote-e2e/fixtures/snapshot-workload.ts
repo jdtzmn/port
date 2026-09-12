@@ -644,7 +644,9 @@ function productStop(args: string[]): void {
           stage = `stopping ${state.owner}/${state.branch}`
           stopProductRuntime(state)
         }
-        for (const owner of owners) rmSync(productRoot(owner), { recursive: true, force: true })
+        for (const owner of new Set(states.map(state => state.owner))) {
+          rmSync(productRoot(owner), { recursive: true, force: true })
+        }
         console.log(`PRODUCT_RUNTIMES_STOPPED=${states.length}`)
         console.log('PRODUCT_RUNTIME_STOPPED')
         return
@@ -677,8 +679,9 @@ function productStopAll(args: string[]): void {
     for (const state of states) removeWorktree(state)
     if (owner) removeEmptyOwner(owner)
     else
-      for (const candidate of owners)
+      for (const candidate of new Set(states.map(state => state.owner))) {
         rmSync(productRoot(candidate), { recursive: true, force: true })
+      }
     console.log(`PRODUCT_RUNTIMES_STOPPED=${states.length}`)
   })
 }
