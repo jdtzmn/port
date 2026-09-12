@@ -20,7 +20,16 @@ import {
 const execFileAsync = promisify(execFile)
 const WARMUP_COUNT = Number.parseInt(process.env.BENCHMARK_WARMUPS ?? '5', 10)
 const SAMPLE_COUNT = Number.parseInt(process.env.BENCHMARK_SAMPLES ?? '20', 10)
-const INCLUDE_DOCKER = process.env.BENCHMARK_INCLUDE_DOCKER === '1'
+const configuredCategories = process.env.BENCHMARK_CATEGORIES?.split(',').filter(Boolean)
+const categoryValues =
+  configuredCategories ??
+  ([
+    'cli',
+    'worktree',
+    ...(process.env.BENCHMARK_INCLUDE_DOCKER === '1' ? ['docker'] : []),
+  ] as BenchmarkCategory[])
+const BENCHMARK_CATEGORIES = new Set<BenchmarkCategory>(categoryValues as BenchmarkCategory[])
+const INCLUDE_DOCKER = BENCHMARK_CATEGORIES.has('docker')
 const OUTPUT_DIR = resolve(process.env.BENCHMARK_OUTPUT_DIR ?? 'benchmark-results')
 const CLI_PATH = resolve('dist/index.js')
 const LARGE_WORKTREE_COUNT = 32
@@ -46,6 +55,15 @@ function assertValidRunSettings(): void {
 
   if (!Number.isInteger(SAMPLE_COUNT) || SAMPLE_COUNT < 1) {
     throw new Error('BENCHMARK_SAMPLES must be a positive integer')
+  }
+
+  if (
+    BENCHMARK_CATEGORIES.size === 0 ||
+    Array.from(BENCHMARK_CATEGORIES).some(
+      category => !['cli', 'worktree', 'docker'].includes(category)
+    )
+  ) {
+    throw new Error('BENCHMARK_CATEGORIES must contain cli, worktree, and/or docker')
   }
 }
 
@@ -258,45 +276,50 @@ async function main(): Promise<void> {
   try {
     const results: BenchmarkResult[] = []
 
-    results.push(
-      result(BENCHMARK_DEFINITIONS.help, await measure(() => run('bun', [CLI_PATH, '--help'])))
-    )
-    results.push(
-      result(
-        BENCHMARK_DEFINITIONS['list-small'],
-        await measure(() => runPort(smallFixture, ['list']))
+    if (BENCHMARK_CATEGORIES.has('cli')) {
+      results.push(
+        result(BENCHMARK_DEFINITIONS.help, await measure(() => run('bun', [CLI_PATH, '--help'])))
       )
-    )
-    results.push(
-      result(
-        BENCHMARK_DEFINITIONS['list-large'],
-        await measure(() => runPort(largeFixture, ['list']))
+      results.push(
+        result(
+          BENCHMARK_DEFINITIONS['list-small'],
+          await measure(() => runPort(smallFixture, ['list']))
+        )
       )
-    )
-    results.push(
-      result(
-        BENCHMARK_DEFINITIONS['enter-existing-small'],
-        await measure(() => runPort(smallFixture, ['enter', 'benchmark-0']))
+      results.push(
+        result(
+          BENCHMARK_DEFINITIONS['list-large'],
+          await measure(() => runPort(largeFixture, ['list']))
+        )
       )
-    )
-    results.push(
-      result(
-        BENCHMARK_DEFINITIONS['enter-existing-large'],
-        await measure(() => runPort(largeFixture, ['enter', 'benchmark-0']))
+    }
+
+    if (BENCHMARK_CATEGORIES.has('worktree')) {
+      results.push(
+        result(
+          BENCHMARK_DEFINITIONS['enter-existing-small'],
+          await measure(() => runPort(smallFixture, ['enter', 'benchmark-0']))
+        )
       )
-    )
-    results.push(
-      result(
-        BENCHMARK_DEFINITIONS['enter-new-small'],
-        await measureNewWorktree(smallFixture, 'new-small')
+      results.push(
+        result(
+          BENCHMARK_DEFINITIONS['enter-existing-large'],
+          await measure(() => runPort(largeFixture, ['enter', 'benchmark-0']))
+        )
       )
-    )
-    results.push(
-      result(
-        BENCHMARK_DEFINITIONS['enter-new-large'],
-        await measureNewWorktree(largeFixture, 'new-large')
+      results.push(
+        result(
+          BENCHMARK_DEFINITIONS['enter-new-small'],
+          await measureNewWorktree(smallFixture, 'new-small')
+        )
       )
-    )
+      results.push(
+        result(
+          BENCHMARK_DEFINITIONS['enter-new-large'],
+          await measureNewWorktree(largeFixture, 'new-large')
+        )
+      )
+    }
 
     if (INCLUDE_DOCKER) {
       results.push(
