@@ -10,8 +10,8 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { parse, stringify } from 'yaml'
-import { generateOverrideContent } from '../../src/lib/compose.ts'
-import { buildProjectName } from '../../src/lib/projectName.ts'
+import { generateOverrideContent } from '../../../src/lib/compose.ts'
+import { buildProjectName } from '../../../src/lib/projectName.ts'
 
 const root = '/home/fixture/.port'
 const registry = `${root}/registry.json`

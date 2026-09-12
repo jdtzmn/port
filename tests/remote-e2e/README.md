@@ -8,7 +8,6 @@ exercise discovery and authenticated forwarding in isolation. The final product
 gate enables the one-time integration marker, runs real `port up` on remote-a,
 and requires automatic local HTTP and TLS/SNI routing through production Traefik.
 
-
 ## Layout
 
 - `docker/`: container build files, entrypoints, SSH configuration, and Traefik fixtures.
