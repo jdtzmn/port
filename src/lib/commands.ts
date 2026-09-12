@@ -11,31 +11,13 @@
  */
 
 import { distance as levenshteinDistance } from 'fastest-levenshtein'
-import { program } from '../index.ts'
+import { program } from '../program.ts'
 
-/**
- * Commands that should not opportunistically register the current worktree.
- */
-export const NON_WORKTREE_COMMANDS = new Set([
-  'help',
-  'completion',
-  'init',
-  'install',
-  'cleanup',
-  'prune',
-  'uninstall',
-  'onboard',
-  'shell-hook',
-  'doctor',
-])
-
-/**
- * Commands that should skip any work done before Commander parses the command.
- *
- * Use this for startup-time checks that should not run for commands like
- * `enter`, `completion`, or `shell-hook`.
- */
-const SKIP_EARLY_WORK_COMMANDS = new Set(['enter', 'completion', 'shell-hook', 'doctor', 'list'])
+export {
+  NON_WORKTREE_COMMANDS,
+  shouldAutoRegisterWorktree,
+  shouldSkipEarlyWork,
+} from './earlyWork.ts'
 
 // ---------------------------------------------------------------------------
 // Core introspection
@@ -178,36 +160,6 @@ export function getCommandDescriptions(): Record<string, string> {
   result['help'] = 'Display help for command'
 
   return result
-}
-
-/**
- * Decide whether this invocation should opportunistically register the
- * current worktree before running the command.
- */
-export function shouldAutoRegisterWorktree(commandName: string | undefined): boolean {
-  if (commandName?.startsWith('-')) {
-    return false
-  }
-
-  if (!commandName) {
-    return true
-  }
-
-  if (shouldSkipEarlyWork(commandName)) {
-    return false
-  }
-
-  return !NON_WORKTREE_COMMANDS.has(commandName)
-}
-
-/**
- * Check whether startup-time work should be skipped before parsing the command.
- *
- * Keep this as the single gate for any logic that runs before
- * `program.parseAsync()` so new callers do not reintroduce early startup work.
- */
-export function shouldSkipEarlyWork(commandName: string | undefined): boolean {
-  return commandName != null && SKIP_EARLY_WORK_COMMANDS.has(commandName)
 }
 
 // ---------------------------------------------------------------------------
