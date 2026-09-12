@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Actual SSH/discovery and explicit HTTP component wiring; no automatic routing."""
+"""Real SSH discovery, automatic remote routing, and conflict acceptance scenarios."""
 import errno
 import http.client
 import json
@@ -75,14 +75,34 @@ socket.onmessage = event => {
 
 def websocket_messages(host, port, machine):
     result = websocket_attempt(host, port)
-    require(result.returncode == 0, f'WebSocket route unavailable for {host}')
+    expected = [
+        f'{machine}-product-runtime-ws-ready',
+        f'{machine}-product-runtime-ws-echo:port-websocket-probe',
+    ]
     require(
-        json.loads(result.stdout) == [
-            f'{machine}-product-runtime-ws-ready',
-            f'{machine}-product-runtime-ws-echo:port-websocket-probe',
-        ],
-        f'WebSocket route reached the wrong endpoint for {host}',
+        result.returncode == 0,
+        f'WebSocket route unavailable for {host}: exit={result.returncode}; '
+        f'stdout={result.stdout[-1024:]!r}; stderr={result.stderr[-1024:]!r}',
     )
+    require(
+        json.loads(result.stdout) == expected,
+        f'WebSocket route reached the wrong endpoint for {host}: '
+        f'stdout={result.stdout[-1024:]!r}; stderr={result.stderr[-1024:]!r}',
+    )
+
+
+def wait_for_websocket_ready(host, port, machine, timeout=45):
+    end = time.monotonic() + timeout
+    last_error = None
+    while time.monotonic() < end:
+        try:
+            websocket_messages(host, port, machine)
+            return
+        except (RuntimeError, json.JSONDecodeError) as error:
+            last_error = error
+            time.sleep(0.1)
+    runtime_diagnostics()
+    raise RuntimeError(f'WebSocket route readiness timed out for {host}: {last_error}')
 
 
 def require(condition, message):
@@ -644,8 +664,9 @@ def automatic_runtime(shell, machine):
                     'automatic TLS/SNI route reached the wrong endpoint')
         finally:
             connection.close()
-    websocket_messages('feature.port', 3100, machine)
-    websocket_messages(f'feature.{machine}.ssh', 3100, machine)
+    for host in ('feature.port', f'feature.{machine}.ssh'):
+        wait_for_websocket_ready(host, 3100, machine)
+        websocket_messages(host, 3100, machine)
     database = f'{machine.replace("-", "_")}_automatic'
     wait_for_database('feature.port', database)
     wait_for_database(f'feature.{machine}.ssh', database)
@@ -767,6 +788,11 @@ def concurrent_owners():
             require(status == 200 and body == b'accepted', 'qualified sentinel mutation failed')
 
 
+        # A successful HTTP request only proves publication of the HTTP backend. Wait
+        # for each WebSocket relay independently before its final one-shot assertion.
+        for machine in ('remote-a', 'remote-b'):
+            wait_for_websocket_ready(f'feature.{machine}.ssh', 3100, machine)
+
         conflict_websocket = websocket_attempt('feature.port', 3100)
         require(
             conflict_websocket.returncode != 0,
@@ -830,6 +856,7 @@ def concurrent_owners():
             except (OSError, http.client.HTTPException):
                 pass
             time.sleep(0.1)
+        wait_for_websocket_ready('feature.port', 3100, 'remote-a')
         websocket_messages('feature.port', 3100, 'remote-a')
         disconnected_websocket = websocket_attempt('feature.remote-b.ssh', 3100)
         require(
