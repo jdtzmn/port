@@ -71,6 +71,7 @@ export async function startRemoteRuntime(options: {
   let local: RemoteSnapshot | null = null
   let localReady = false
   let frame: RemoteRuntimeCheckpoint | undefined
+  let publishingSources: RemoteReconcilerSource[] = []
   try {
     owners = await allocateRemoteOwners(root, [])
     registry = createRemoteOwnerRegistry(owners)
@@ -136,9 +137,10 @@ export async function startRemoteRuntime(options: {
         const guard = await startSecureRemoteRouteGuard(plan, status, proxy.bind)
         return { ...guard, address: proxy.targetAddress }
       },
-      async publish(content) {
+      async publish(content, readyBackends) {
         if (!frame) throw new Error('Missing ownership checkpoint')
         // The serial loop cannot mutate this frame until reconciliation finishes.
+        frame.routes = buildRemoteRouteSnapshot(publishingSources, readyBackends)
         await publisher.publish(owners, frame, content)
       },
     })
@@ -211,6 +213,7 @@ export async function startRemoteRuntime(options: {
           snapshot: routedLocal,
           available: localReady,
         })
+      publishingSources = sources
       frame = {
         version: 1,
         pins: [...handles.values()].map(handle => handle.checkpoint()),

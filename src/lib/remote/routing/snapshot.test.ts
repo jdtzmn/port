@@ -64,6 +64,28 @@ describe('remote route snapshot', () => {
     )
   })
 
+  it('marks a resolved route unavailable when its backend was guarded during reconciliation', () => {
+    const remote = source('ssh')
+    const endpoint = remote.snapshot.worktrees[0]!.endpoints[0]!
+    const unavailable = buildRemoteRouteSnapshot([remote], [])
+    expect(
+      unavailable.routes.find(route => route.hostname === 'ui.feature.port')?.availability
+    ).toBe('unavailable')
+    const ready = buildRemoteRouteSnapshot(
+      [remote],
+      [
+        {
+          ownerId: remote.owner.id,
+          worktreeId: remote.snapshot.worktrees[0]!.worktreeId,
+          endpointId: endpoint.id,
+        },
+      ]
+    )
+    expect(ready.routes.find(route => route.hostname === 'ui.feature.port')?.availability).toBe(
+      'ready'
+    )
+  })
+
   it.each([
     '{}',
     JSON.stringify({

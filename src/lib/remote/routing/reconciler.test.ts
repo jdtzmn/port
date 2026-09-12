@@ -122,6 +122,15 @@ describe('remote route reconciler', () => {
     await h.reconciler.close()
   })
 
+  it('reports only staged backends when publishing a guarded route', async () => {
+    const h = harness()
+    h.deps.createBackend.mockResolvedValueOnce(null)
+    const result = await h.reconciler.reconcile([source()])
+    expect(result.readyBackends).toEqual([])
+    expect(h.deps.publish).toHaveBeenLastCalledWith(expect.any(String), [])
+    await h.reconciler.close()
+  })
+
   it.each(['false', 'throw'])('guards a new backend whose liveness returns %s', async mode => {
     const h = harness()
     h.deps.createBackend.mockImplementationOnce(async () => {

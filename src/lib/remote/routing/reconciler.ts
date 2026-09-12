@@ -21,6 +21,15 @@ export interface RemoteRouteProxy {
   targetAddress: string
   bind: RemoteRelayOptions['bind']
 }
+export interface RemoteRouteBackendRef {
+  ownerId: string
+  worktreeId: string
+  endpointId: string
+}
+export interface RemoteRouteReconciliation {
+  /** Backends whose leases were staged and atomically published in this frame. */
+  readyBackends: readonly RemoteRouteBackendRef[]
+}
 export interface RemoteRouteReconcilerDependencies {
   /** Preserve other writers' port union and inspect current Traefik before returning. */
   prepareProxy(sortedPortsExcluding80: number[]): Promise<RemoteRouteProxy>
@@ -37,7 +46,7 @@ export interface RemoteRouteReconcilerDependencies {
     proxy: RemoteRouteProxy
   }): Promise<RemoteRouteLease>
   /** Must atomically replace YAML, leaving the previous content intact on failure. */
-  publish(content: string): Promise<void>
+  publish(content: string, readyBackends: readonly RemoteRouteBackendRef[]): Promise<void>
   now?(): number
 }
 
@@ -54,7 +63,7 @@ export function createRemoteRouteReconciler(deps: RemoteRouteReconcilerDependenc
   const now = deps.now ?? Date.now
   let active = new Map<string, RemoteRouteLease>()
   let pending: RemoteReconcilerSource[] | undefined
-  let running: Promise<void> | undefined
+  let running: Promise<RemoteRouteReconciliation> | undefined
   let closing: Promise<void> | undefined
   let closed = false
   const fresh = (lease: RemoteRouteLease): boolean => {
@@ -77,7 +86,7 @@ export function createRemoteRouteReconciler(deps: RemoteRouteReconcilerDependenc
     if (errors.length) throw new AggregateError(errors, 'Remote route cleanup failed')
   }
 
-  async function frame(sources: RemoteReconcilerSource[]): Promise<void> {
+  async function frame(sources: RemoteReconcilerSource[]): Promise<RemoteRouteReconciliation> {
     const staged = new Set<RemoteRouteLease>()
     try {
       // ALL ownership is compiled before any backend allocation, including retained claims.
@@ -174,7 +183,7 @@ export function createRemoteRouteReconciler(deps: RemoteRouteReconcilerDependenc
         const abandoned = [...staged]
         staged.clear()
         await dispose(abandoned)
-        return
+        return { readyBackends: [] }
       }
       if ([...next.values()].some(lease => !fresh(lease)))
         throw new Error('Route lease expired during staging or is not live')
@@ -182,12 +191,20 @@ export function createRemoteRouteReconciler(deps: RemoteRouteReconcilerDependenc
         backend: ref => backends.get(refKey(ref.ownerId, ref.worktreeId, ref.endpointId)),
         guard: plan => guards.get(key(plan))!,
       })
-      await deps.publish(content)
+      const readyBackends = plans.flatMap(plan => {
+        const endpoint = plan.endpoint
+        return endpoint &&
+          backends.has(refKey(endpoint.ownerId, endpoint.worktreeId, endpoint.endpointId))
+          ? [endpoint]
+          : []
+      })
+      await deps.publish(content, readyBackends)
       const retained = new Set(next.values())
       const obsolete = [...active.values(), ...staged].filter(lease => !retained.has(lease))
       active = next
       staged.clear()
       await dispose(obsolete)
+      return { readyBackends }
     } catch (error) {
       const doomed = [...active.values(), ...staged]
       active = new Map()
@@ -204,21 +221,23 @@ export function createRemoteRouteReconciler(deps: RemoteRouteReconcilerDependenc
     }
   }
 
-  async function drain() {
+  async function drain(): Promise<RemoteRouteReconciliation> {
+    let result: RemoteRouteReconciliation = { readyBackends: [] }
     try {
       while (pending && !closed) {
         const sources = pending
         pending = undefined
-        await frame(sources)
+        result = await frame(sources)
       }
       if (closed) throw new Error('Remote route reconciler is closed')
+      return result
     } finally {
       pending = undefined
       running = undefined
     }
   }
   return {
-    reconcile(sources: readonly RemoteReconcilerSource[]): Promise<void> {
+    reconcile(sources: readonly RemoteReconcilerSource[]): Promise<RemoteRouteReconciliation> {
       if (closed) return Promise.reject(new Error('Remote route reconciler is closed'))
       try {
         pending = copy([...sources])

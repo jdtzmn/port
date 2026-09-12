@@ -1,4 +1,4 @@
-import type { RemoteReconcilerSource } from './reconciler.ts'
+import type { RemoteReconcilerSource, RemoteRouteBackendRef } from './reconciler.ts'
 import { compileRemoteRoutePlan } from './plan.ts'
 
 const LIMIT = 4096
@@ -41,8 +41,16 @@ function alias(owner: { kind: 'local' | 'ssh'; label: string }, value?: string):
 }
 
 export function buildRemoteRouteSnapshot(
-  sources: readonly RemoteReconcilerSource[]
+  sources: readonly RemoteReconcilerSource[],
+  readyBackends?: readonly RemoteRouteBackendRef[]
 ): RemoteRouteSnapshot {
+  const ready = readyBackends
+    ? new Set(
+        readyBackends.map(endpoint =>
+          JSON.stringify([endpoint.ownerId, endpoint.worktreeId, endpoint.endpointId])
+        )
+      )
+    : undefined
   if (sources.length > LIMIT) return fail()
   const owners = new Map<
     string,
@@ -62,7 +70,16 @@ export function buildRemoteRouteSnapshot(
     else if (plan.resolution.status === 'unavailable') availability = 'unavailable'
     else if (plan.resolution.status === 'resolved') {
       const owner = owners.get(plan.resolution.owner.id)
-      availability = owner?.available ? 'ready' : 'unavailable'
+      const endpoint = plan.endpoint
+      availability =
+        owner?.available &&
+        (!ready ||
+          (endpoint !== undefined &&
+            ready.has(
+              JSON.stringify([endpoint.ownerId, endpoint.worktreeId, endpoint.endpointId])
+            )))
+          ? 'ready'
+          : 'unavailable'
     } else {
       return fail()
     }
