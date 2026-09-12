@@ -24,6 +24,24 @@ export const REMOTE_E2E_SHARD_BUDGET = {
   maxShards: 4,
 } as const satisfies RemoteE2EShardBudget
 
+const REMOTE_E2E_EXECUTION_ORDER = new Map<string, number>([
+  ['transport.remote-e2e.test.ts', 0],
+  ['foundation.remote-e2e.test.ts', 1],
+  ['automatic-a.remote-e2e.test.ts', 2],
+  ['automatic-b.remote-e2e.test.ts', 2],
+  ['owners.remote-e2e.test.ts', 3],
+  ['missing-port.remote-e2e.test.ts', 4],
+])
+
+export function sortRemoteE2ESuiteFiles(files: readonly string[]): string[] {
+  return [...files].sort(
+    (left, right) =>
+      (REMOTE_E2E_EXECUTION_ORDER.get(left) ?? Number.MAX_SAFE_INTEGER) -
+        (REMOTE_E2E_EXECUTION_ORDER.get(right) ?? Number.MAX_SAFE_INTEGER) ||
+      left.localeCompare(right)
+  )
+}
+
 export function recommendedRemoteE2EShardCount(
   suites: readonly RemoteE2ESuite[],
   budget: RemoteE2EShardBudget
