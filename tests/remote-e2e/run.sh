@@ -79,7 +79,11 @@ step 120 smoke-pull docker pull busybox:1.37.0 & pids+=("$!")
 step 120 proxy-pull docker pull traefik:v3.6 & pids+=("$!")
 step 180 postgres-pull docker pull postgres:17.4-bookworm & pids+=("$!")
 step 180 bun-pull docker pull oven/bun:1.3.3 & pids+=("$!")
-step 300 handler-build docker build --pull=false -t "$handler_image" "$root/packages/404-app" & pids+=("$!")
+if [[ ${REMOTE_E2E_USE_PUBLISHED_HANDLER:-0} == 1 ]]; then
+  step 180 handler-pull docker pull "$handler_image" & pids+=("$!")
+else
+  step 300 handler-build docker build --pull=false -t "$handler_image" "$root/packages/404-app" & pids+=("$!")
+fi
 wait_jobs "${pids[@]}"
 
 image_dir=$(mktemp -d "${TMPDIR:-/tmp}/remote-e2e-image.XXXXXXXX")

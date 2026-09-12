@@ -15,11 +15,27 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
+      use-published-handler: ${{ steps.handler.outputs.use-published }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.3
+      - id: handler
+        name: Select 404 handler image source
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          use_published=0
+          if [[ "$EVENT_NAME" == pull_request ]] &&
+            git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- packages/404-app; then
+            use_published=1
+          fi
+          echo "use-published=$use_published" >> "$GITHUB_OUTPUT"
       - id: plan
         name: Calculate shard matrix
         run: |
@@ -48,6 +64,7 @@ jobs:
       - name: Run isolated feasibility harness
         env:
           REMOTE_E2E_SHARD: ${{ matrix.index }}/${{ matrix.count }}
+          REMOTE_E2E_USE_PUBLISHED_HANDLER: ${{ needs.plan-shards.outputs.use-published-handler }}
         run: bash tests/remote-e2e/run.sh
       - name: Summarize shard timing
         if: always()
