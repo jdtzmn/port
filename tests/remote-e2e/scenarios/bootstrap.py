@@ -124,16 +124,34 @@ class LocalShell:
 
     def marker(self, command, check=None, timeout=20):
         marker = "BOOTSTRAP_" + uuid.uuid4().hex
+        marker_prefix = marker.encode() + b":"
+        output_start = len(self.output)
         # Split the token so even a wrapped/echoed command cannot match it.
-        self.send(command + " && printf '\\n%s%s\\n' '" + marker[:16] + "' '" + marker[16:] + "'\n")
+        self.send(
+            command
+            + "; __port_status=$?; printf '\\n%s%s:%s\\n' '"
+            + marker[:16]
+            + "' '"
+            + marker[16:]
+            + "' \"$__port_status\"\n"
+        )
 
         def completed():
             if check is not None:
                 check()
-            return marker.encode() in self.output.replace(b"\r", b"").split(b"\n")
+            for line in self.output.replace(b"\r", b"").split(b"\n"):
+                if not line.startswith(marker_prefix):
+                    continue
+                status = int(line.removeprefix(marker_prefix))
+                if status != 0:
+                    output = self.output[output_start:].decode(errors="replace")[-2048:]
+                    raise RuntimeError(
+                        f"plain-SSH command failed: exit={status}; output={output!r}"
+                    )
+                return True
+            return False
 
         self.wait_for(completed, timeout=timeout)
-
     def wait_for(self, predicate, timeout=20):
         end = time.monotonic() + timeout
         while time.monotonic() < end:
