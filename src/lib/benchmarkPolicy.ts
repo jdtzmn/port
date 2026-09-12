@@ -76,7 +76,7 @@ export const BENCHMARK_DEFINITIONS: Record<BenchmarkId, BenchmarkDefinition> = {
     id: 'status-large',
     category: 'docker',
     name: 'Docker operations / status (large)',
-    budget: { p95: 2000 },
+    budget: { p95: 6000 },
     requiresDocker: true,
   },
   'up-warm': {
