@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { evaluateBudget, summarizeSamples, toBenchmarkEntry } from './benchmark.ts'
+import { BENCHMARKS } from './benchmarkPolicy.ts'
 
 describe('summarizeSamples', () => {
   test('reports median, p95, and sample count from unsorted samples', () => {
@@ -46,5 +47,12 @@ describe('toBenchmarkEntry', () => {
       range: '9',
       extra: 'p95: 29 ms\nsamples: 3',
     })
+  })
+})
+
+describe('BENCHMARKS', () => {
+  test('keeps a p95 budget for every tracked workload', () => {
+    expect(BENCHMARKS).toHaveLength(10)
+    expect(BENCHMARKS.every(benchmark => benchmark.budget.p95 > 0)).toBe(true)
   })
 })
