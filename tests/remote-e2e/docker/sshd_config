@@ -1,0 +1,14 @@
+Port 22
+HostKey /run/ssh-host-key
+AuthorizedKeysFile .ssh/authorized_keys
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+UsePAM no
+AllowUsers fixture
+AllowTcpForwarding local
+# Fixture-only discovered Docker targets; the library still validates private IPs.
+PermitOpen 127.0.0.1:5432 127.0.0.1:3000 remote-a:22 *:8080 *:5432
+X11Forwarding no
+PrintMotd no
+LogLevel ERROR

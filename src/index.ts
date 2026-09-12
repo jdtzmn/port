@@ -23,6 +23,10 @@ import { prune } from './commands/prune.ts'
 import { urls } from './commands/urls.ts'
 import { onboard } from './commands/onboard.ts'
 import { shellHook } from './commands/shell-hook.ts'
+import {
+  dispatchRemoteInternalCommand,
+  isRemoteInternalCommand,
+} from './commands/remote-internal.ts'
 import { completion } from './commands/completion.ts'
 import { hook } from './commands/hook.ts'
 import { open } from './commands/open.ts'
@@ -124,6 +128,7 @@ program
   .option('--domain <domain>', 'Domain suffix to configure (default: config domain or port)')
   .option('--no-shell-hook', 'Skip adding the shell hook to your shell profile')
   .option('--shell-hook-only', 'Only add the shell hook, skipping DNS setup')
+  .option('--remote-services', 'Enable local routing for ordinary Bash SSH sessions')
   .action(install)
 
 // port list
@@ -166,13 +171,15 @@ program
 program
   .command('shell-hook <shell>')
   .description('Print shell integration code for automatic cd (bash, zsh, or fish)')
+  .option('--remote-services', 'Opt into the experimental SSH bootstrap bridge (bash only)')
   .action(shellHook)
 
 // port urls [service]
 program
   .command('urls [service]')
   .description('Show service URLs for the current worktree')
-  .action(urls)
+  .option('--remote', 'Show all discovered remote routes, including other worktrees')
+  .action((service, options) => urls(service, options))
 
 // port up
 program
@@ -347,11 +354,15 @@ if (import.meta.main) {
   const entryToken = process.argv[2]
 
   try {
-    if (shouldAutoRegisterWorktree(entryToken)) {
-      await ensureCurrentWorktreeRegistered()
-    }
+    if (isRemoteInternalCommand(entryToken)) {
+      await dispatchRemoteInternalCommand(entryToken!, process.argv.slice(3))
+    } else {
+      if (shouldAutoRegisterWorktree(entryToken)) {
+        await ensureCurrentWorktreeRegistered()
+      }
 
-    await program.parseAsync()
+      await program.parseAsync()
+    }
   } catch (error) {
     handleCliError(error)
   }

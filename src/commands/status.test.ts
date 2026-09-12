@@ -45,6 +45,7 @@ vi.mock('../lib/hostService.ts', () => ({
 
 vi.mock('../lib/registry.ts', () => ({
   getAllHostServices: mocks.getAllHostServices,
+  GLOBAL_PORT_DIR: '/tmp/port-status-test',
 }))
 
 vi.mock('../lib/compose.ts', () => ({

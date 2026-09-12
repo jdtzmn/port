@@ -1,0 +1,9 @@
+# Allowlist the build context: never send incidental secrets or artifacts.
+*
+!docker/
+!docker/**
+!fixtures/
+!fixtures/identity.ts
+!fixtures/port-cli.sh
+!scenarios/
+!scenarios/**

@@ -92,6 +92,24 @@ describe('shell-hook command', () => {
     expect(output).not.toContain('2>/dev/tty')
   })
 
+  test('SSH integration is opt-in and leaves the old hook prefix unchanged', () => {
+    shellHook('bash')
+    const original = stdoutSpy.mock.calls[0][0] as string
+    expect(original).not.toContain('__remote-prepare')
+    stdoutSpy.mockClear()
+    shellHook('bash', { remoteServices: true })
+    const enabled = stdoutSpy.mock.calls[0][0] as string
+    expect(enabled.startsWith(original)).toBe(true)
+    expect(enabled).toContain('__remote-prepare')
+    expect(enabled).toContain('function ssh () (')
+  })
+
+  test.each(['fish', 'zsh'])('explicitly rejects remote services for %s', shell => {
+    expect(() => shellHook(shell, { remoteServices: true })).toThrow('process.exit:1')
+    expect(stdoutSpy).not.toHaveBeenCalled()
+    expect(mocks.error).toHaveBeenCalledWith(expect.stringContaining('unsupported'))
+  })
+
   test('exits with error for unsupported shell', () => {
     expect(() => shellHook('powershell')).toThrow('process.exit:1')
 

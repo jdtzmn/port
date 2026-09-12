@@ -1,0 +1,49 @@
+# Test wiring of the existing HTTP Host / TLS HostSNI baseline, not discovery.
+http:
+  routers:
+    named-a:
+      entryPoints: [web]
+      rule: Host(`ui.feature-a.port`)
+      service: remote-a
+    named-b:
+      entryPoints: [web]
+      rule: Host(`ui.feature-b.port`)
+      service: remote-b
+    port-a:
+      entryPoints: [ui]
+      rule: Host(`feature-a.port`)
+      service: remote-a
+    port-b:
+      entryPoints: [ui]
+      rule: Host(`feature-b.port`)
+      service: remote-b
+  services:
+    remote-a:
+      loadBalancer:
+        servers:
+          - url: http://remote-a:3000
+    remote-b:
+      loadBalancer:
+        servers:
+          - url: http://remote-b:3000
+tcp:
+  routers:
+    postgres-a:
+      entryPoints: [postgres]
+      rule: HostSNI(`feature-a.port`)
+      service: postgres-a
+      tls: {}
+    postgres-b:
+      entryPoints: [postgres]
+      rule: HostSNI(`feature-b.port`)
+      service: postgres-b
+      tls: {}
+  services:
+    postgres-a:
+      loadBalancer:
+        servers:
+          - address: remote-a:5432
+    postgres-b:
+      loadBalancer:
+        servers:
+          - address: remote-b:5432

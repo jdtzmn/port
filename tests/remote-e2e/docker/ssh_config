@@ -1,0 +1,17 @@
+Host remote-a remote-b
+    User fixture
+    IdentityFile /root/.ssh/id_ed25519
+    IdentitiesOnly yes
+    UserKnownHostsFile /root/.ssh/known_hosts
+    GlobalKnownHostsFile /dev/null
+    StrictHostKeyChecking yes
+    UpdateHostKeys no
+    BatchMode yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    ConnectTimeout 5
+    ConnectionAttempts 1
+    ExitOnForwardFailure yes
+    ServerAliveInterval 5
+    ServerAliveCountMax 2
+    LogLevel ERROR

@@ -1,0 +1,120 @@
+services:
+  traefik:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.traefik
+    networks: [fixture]
+    healthcheck:
+      test: [CMD, traefik, healthcheck, --ping]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+  remote-a:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.remote
+    environment:
+      FIXTURE_NAME: remote-a
+      POSTGRES_DB: remote_a
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - public-keys:/public-keys
+      - remote-a-state:/home/fixture/.port
+    network_mode: 'service:docker-a'
+    depends_on:
+      docker-a:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD-SHELL, 'test -f /tmp/ssh-ready && pg_isready -h 127.0.0.1 -U postgres -d remote_a']
+      interval: 2s
+      timeout: 2s
+      retries: 60
+  remote-b:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.remote
+    environment:
+      FIXTURE_NAME: remote-b
+      POSTGRES_DB: remote_b
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - public-keys:/public-keys
+      - remote-b-state:/home/fixture/.port
+    network_mode: 'service:docker-b'
+    depends_on:
+      docker-b:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD-SHELL, 'test -f /tmp/ssh-ready && pg_isready -h 127.0.0.1 -U postgres -d remote_b']
+      interval: 2s
+      timeout: 2s
+      retries: 60
+  client:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    volumes:
+      - public-keys:/public-keys
+      - client-state:/root/.port
+    network_mode: 'service:docker'
+    depends_on:
+      docker:
+        condition: service_healthy
+    environment:
+      DOCKER_HOST: tcp://127.0.0.1:2375
+      SMOKE_IMAGE: busybox:1.37.0
+    healthcheck:
+      test: [CMD, test, -f, /tmp/client-ready]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+  docker: &dind
+    image: docker:27.5.1-dind
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ''
+    command:
+      [
+        'dockerd',
+        '--host=tcp://127.0.0.1:2375',
+        '--host=unix:///var/run/docker.sock',
+        '--tls=false',
+      ]
+    networks:
+      fixture:
+        aliases: [client]
+    volumes:
+      - docker-data:/var/lib/docker
+      - client-state:/root/.port
+    healthcheck:
+      test: [CMD, docker, info]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+  docker-a:
+    <<: *dind
+    networks:
+      fixture:
+        aliases: [remote-a]
+    volumes:
+      - docker-a-data:/var/lib/docker
+      - remote-a-state:/home/fixture/.port
+  docker-b:
+    <<: *dind
+    networks:
+      fixture:
+        aliases: [remote-b]
+    volumes:
+      - docker-b-data:/var/lib/docker
+      - remote-b-state:/home/fixture/.port
+networks:
+  fixture:
+    internal: true
+volumes:
+  public-keys:
+  docker-data:
+  docker-a-data:
+  docker-b-data:
+  client-state:
+  remote-a-state:
+  remote-b-state:

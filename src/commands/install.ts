@@ -520,7 +520,40 @@ export async function install(options?: {
   domain?: string
   shellHook?: boolean
   shellHookOnly?: boolean
+  remoteServices?: boolean
 }): Promise<void> {
+  if (options?.remoteServices) {
+    const dnsIp = options.dnsIp ?? DEFAULT_DNS_IP
+    if (
+      dnsIp !== DEFAULT_DNS_IP ||
+      (options.domain && normalizeDomain(options.domain) !== 'port')
+    ) {
+      output.error('Remote services currently require the default local .port DNS configuration.')
+      process.exitCode = 1
+      return
+    }
+    if (options.shellHook !== false && detectShell() !== 'bash') {
+      output.error(
+        'Remote services currently support Bash. Run from Bash, or use --no-shell-hook and configure Bash manually.'
+      )
+      process.exitCode = 1
+      return
+    }
+    for (const domain of ['port', 'ssh']) {
+      if (!options.shellHookOnly) {
+        await install({ ...options, remoteServices: false, domain, shellHook: false })
+      }
+      if (!(await checkDns(domain, dnsIp))) {
+        output.error(`Remote setup requires *.${domain} DNS. Run port install --remote-services.`)
+        process.exitCode = 1
+        return
+      }
+    }
+    await (await import('../lib/remote/coordinator/supervisor.ts')).enableRemoteRuntime()
+    if (options.shellHook !== false) await setupShellHook(options)
+    output.success('Remote services enabled. Reload Bash to activate ordinary SSH integration.')
+    return
+  }
   if (options?.shellHookOnly) {
     await setupShellHook(options)
     return

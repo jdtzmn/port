@@ -1,0 +1,11 @@
+entryPoints:
+  web:
+    address: ':80'
+  ui:
+    address: ':3000'
+  postgres:
+    address: ':5432'
+providers:
+  file:
+    filename: /etc/traefik/dynamic.yaml
+ping: {}

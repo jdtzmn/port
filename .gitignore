@@ -219,3 +219,6 @@ $RECYCLE.BIN/
 
 # Devin local session configuration
 .devin/
+
+# Remote E2E diagnostics (never commit runtime artifacts)
+.remote-e2e-artifacts/
