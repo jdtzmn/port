@@ -633,6 +633,51 @@ def runtime_diagnostics():
         'traefik': container,
     }, sort_keys=True), flush=True)
 
+
+def wait_for_fixture_stats(host, owner, branch, port=80, timeout=45):
+    end = time.monotonic() + timeout
+    last = None
+    while time.monotonic() < end:
+        remaining = end - time.monotonic()
+        connection = http.client.HTTPConnection(host, port, timeout=min(2, remaining))
+        try:
+            connection.request('GET', '/__fixture/stats')
+            response = connection.getresponse()
+            body = response.read(2048)
+            if response.status == 200:
+                payload = json.loads(body)
+                if payload.get('owner') == owner and payload.get('branch') == branch:
+                    return payload
+                last = payload
+        except (OSError, http.client.HTTPException, json.JSONDecodeError) as error:
+            last = str(error)
+        finally:
+            connection.close()
+        time.sleep(0.1)
+    runtime_diagnostics()
+    raise RuntimeError(f'fixture stats timed out for {host}: {last!r}')
+
+def product_runtime_port(shell, owner, branch):
+    matches = re.findall(
+        rb'^PRODUCT_RUNTIME=(\{[^\n]+\})$',
+        shell.output.replace(b'\r', b''),
+        re.MULTILINE,
+    )
+    for encoded in reversed(matches):
+        try:
+            runtime = json.loads(encoded)
+        except json.JSONDecodeError:
+            continue
+        ui = runtime.get('ui') if isinstance(runtime, dict) else None
+        if (
+            runtime.get('owner') == owner
+            and runtime.get('branch') == branch
+            and isinstance(ui, dict)
+            and type(ui.get('publishedPort')) is int
+        ):
+            return ui['publishedPort']
+    raise RuntimeError(f'missing published UI port for {owner}/{branch}')
+
 def automatic_runtime(shell, machine):
     before = session_directories()
     shell.marker(
@@ -646,6 +691,11 @@ def automatic_runtime(shell, machine):
     directory = private_session(before)
     shell.marker(
         f'/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-start {machine}',
+        timeout=90,
+    )
+    shell.marker(
+        f'/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js '
+        f'product-start {machine} sibling ui-only',
         timeout=90,
     )
 
@@ -678,6 +728,14 @@ def automatic_runtime(shell, machine):
             finally:
                 connection.close()
             time.sleep(0.1)
+    sibling_port = product_runtime_port(shell, machine, 'sibling')
+    for host in ('sibling.port', f'sibling.{machine}.ssh'):
+        require(socket.gethostbyname(host) == '127.0.0.1', 'sibling route DNS did not resolve locally')
+        stats = wait_for_fixture_stats(host, machine, 'sibling', port=sibling_port)
+        require(
+            stats.get('profile') == 'ui-only' and stats.get('service') == 'ui',
+            f'sibling worktree route did not preserve its service profile: {stats!r}',
+        )
     for host in ('feature.port', f'feature.{machine}.ssh'):
         connection = http.client.HTTPSConnection(host, 3100, timeout=3, context=context)
         try:

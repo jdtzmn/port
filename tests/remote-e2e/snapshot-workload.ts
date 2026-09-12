@@ -367,7 +367,7 @@ function allocateServices(
         : {
             container: `${project}-ui`,
             publishedPort: 3200 + slot,
-            targetPort: 8200 + slot,
+            targetPort: 8080,
           },
     db:
       profile === 'ui-only'
@@ -375,7 +375,7 @@ function allocateServices(
         : {
             container: `${project}-db`,
             publishedPort: 5500 + slot,
-            targetPort: 6500 + slot,
+            targetPort: 5432,
           },
     database: profile === 'ui-only' ? null : productDatabase(owner, branch, false),
   }

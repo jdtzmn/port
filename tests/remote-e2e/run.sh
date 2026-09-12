@@ -100,7 +100,7 @@ done
 step 150 proof "${compose[@]}" exec -T client python3 /fixture/harness.py
 step 90 multiplexing "${compose[@]}" exec -T client python3 /fixture/mux.py
 step 90 baseline "${compose[@]}" exec -T client python3 /fixture/baseline.py
-step 210 bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py
+step 600 bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py
 
 # Preserve ordinary login fallback after both Port-enabled remote product scenarios.
 step 10 missing-port "${compose[@]}" exec -T remote-b mv /usr/local/bin/port /usr/local/bin/port-unavailable
