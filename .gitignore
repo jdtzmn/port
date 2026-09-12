@@ -222,3 +222,7 @@ $RECYCLE.BIN/
 
 # Remote E2E diagnostics (never commit runtime artifacts)
 .remote-e2e-artifacts/
+
+## Generated benchmark output
+benchmark-results/
+benchmark-history/

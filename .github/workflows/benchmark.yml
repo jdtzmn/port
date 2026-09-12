@@ -1,0 +1,242 @@
+name: Benchmarks
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'bun.lock'
+      - '.github/actions/setup-port/**'
+      - '.github/actions/setup-port-runtime/**'
+      - '.github/workflows/benchmark.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'bun.lock'
+      - '.github/actions/setup-port/**'
+      - '.github/actions/setup-port-runtime/**'
+      - '.github/workflows/benchmark.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: benchmark-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  cli:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    name: Benchmark CLI responsiveness
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-port
+      - name: Run CLI benchmarks
+        env:
+          BENCHMARK_CATEGORIES: cli
+        run: bun scripts/benchmark.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-cli
+          path: benchmark-results/
+          retention-days: 30
+
+  worktree:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    name: Benchmark worktree operations
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-port
+      - name: Run worktree benchmarks
+        env:
+          BENCHMARK_CATEGORIES: worktree
+        run: bun scripts/benchmark.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-worktree
+          path: benchmark-results/
+          retention-days: 30
+
+  docker:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    name: Benchmark Docker operations
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-port
+      - uses: ./.github/actions/setup-port-runtime
+      - name: Pre-pull benchmark image
+        run: docker pull alpine:3.20
+      - name: Run Docker benchmarks
+        env:
+          BENCHMARK_CATEGORIES: docker
+          BENCHMARK_SAMPLES: 10
+          BENCHMARK_WARMUPS: 1
+        run: bun scripts/benchmark.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-docker
+          path: benchmark-results/
+          retention-days: 30
+
+  report-pull-request:
+    if: github.event_name == 'pull_request'
+    needs: [cli, worktree, docker]
+    name: Report benchmark pull request
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: benchmark-*
+          path: benchmark-inputs
+      - name: Merge benchmark results
+        run: bun scripts/merge-benchmark-results.ts
+      - name: Fetch benchmark history
+        id: history
+        run: |
+          mkdir -p benchmark-history
+          if git ls-remote --exit-code origin refs/heads/gh-pages > /dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            git fetch origin gh-pages:refs/remotes/origin/gh-pages
+            for category in cli worktree docker; do
+              git show "origin/gh-pages:dev/bench/${category}/data.js" > "benchmark-history/${category}-data.js" || true
+            done
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Generate PR preview chart
+        run: bun scripts/benchmark-preview.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-pr-${{ github.event.pull_request.number }}
+          path: benchmark-results/
+          retention-days: 30
+      - name: Publish CLI comparison
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        with:
+          name: Port CLI responsiveness
+          tool: customSmallerIsBetter
+          output-file-path: benchmark-results/cli.json
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: dev/bench/cli
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          comment-on-alert: ${{ github.event.pull_request.head.repo.fork == false }}
+          summary-always: true
+          alert-threshold: 125%
+          fail-on-alert: false
+          skip-fetch-gh-pages: ${{ steps.history.outputs.exists != 'true' }}
+      - name: Publish worktree comparison
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        with:
+          name: Port worktree operations
+          tool: customSmallerIsBetter
+          output-file-path: benchmark-results/worktree.json
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: dev/bench/worktree
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          comment-on-alert: ${{ github.event.pull_request.head.repo.fork == false }}
+          summary-always: true
+          alert-threshold: 125%
+          fail-on-alert: false
+          skip-fetch-gh-pages: true
+      - name: Publish Docker comparison
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        with:
+          name: Port Docker operations
+          tool: customSmallerIsBetter
+          output-file-path: benchmark-results/docker.json
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: dev/bench/docker
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          comment-on-alert: ${{ github.event.pull_request.head.repo.fork == false }}
+          summary-always: true
+          alert-threshold: 125%
+          fail-on-alert: false
+          skip-fetch-gh-pages: true
+      - name: Enforce p95 budgets
+        run: bun scripts/check-benchmark-budgets.ts
+
+  publish-history:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [cli, worktree, docker]
+    name: Publish benchmark history
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: benchmark-*
+          path: benchmark-inputs
+      - name: Merge benchmark results
+        run: bun scripts/merge-benchmark-results.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-main-${{ github.sha }}
+          path: benchmark-results/
+          retention-days: 30
+      - name: Publish CLI history
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        with:
+          name: Port CLI responsiveness
+          tool: customSmallerIsBetter
+          output-file-path: benchmark-results/cli.json
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: dev/bench/cli
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          summary-always: true
+          alert-threshold: 125%
+          fail-on-alert: false
+      - name: Publish worktree history
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        with:
+          name: Port worktree operations
+          tool: customSmallerIsBetter
+          output-file-path: benchmark-results/worktree.json
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: dev/bench/worktree
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          summary-always: true
+          alert-threshold: 125%
+          fail-on-alert: false
+          skip-fetch-gh-pages: true
+      - name: Publish Docker history
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        with:
+          name: Port Docker operations
+          tool: customSmallerIsBetter
+          output-file-path: benchmark-results/docker.json
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: dev/bench/docker
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          summary-always: true
+          alert-threshold: 125%
+          fail-on-alert: false
+          skip-fetch-gh-pages: true
+      - name: Enforce p95 budgets
+        run: bun scripts/check-benchmark-budgets.ts
