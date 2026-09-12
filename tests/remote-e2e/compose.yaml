@@ -1,5 +1,6 @@
 services:
   traefik:
+    image: port-remote-e2e-traefik:${REMOTE_E2E_FIXTURE_IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: docker/Dockerfile.traefik
@@ -10,6 +11,7 @@ services:
       timeout: 2s
       retries: 60
   remote-a:
+    image: port-remote-e2e-remote:${REMOTE_E2E_FIXTURE_IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: docker/Dockerfile.remote
@@ -30,6 +32,7 @@ services:
       timeout: 2s
       retries: 60
   remote-b:
+    image: port-remote-e2e-remote:${REMOTE_E2E_FIXTURE_IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: docker/Dockerfile.remote
@@ -50,6 +53,7 @@ services:
       timeout: 2s
       retries: 60
   client:
+    image: port-remote-e2e-client:${REMOTE_E2E_FIXTURE_IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: docker/Dockerfile.client

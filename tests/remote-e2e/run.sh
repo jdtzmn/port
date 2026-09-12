@@ -7,6 +7,7 @@ root=$(git -C "$here" rev-parse --show-toplevel)
 command -v python3 >/dev/null
 command -v docker >/dev/null
 project="remote-e2e-$(python3 -c 'import uuid; print(uuid.uuid4().hex[:16])')"
+export REMOTE_E2E_FIXTURE_IMAGE_TAG=${REMOTE_E2E_FIXTURE_IMAGE_TAG:-$project}
 artifacts="$root/.remote-e2e-artifacts/$project"
 mkdir -p "$artifacts"
 timings="$artifacts/timings.tsv"
@@ -72,7 +73,14 @@ step 15 config "${compose[@]}" config --quiet
 version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$root/package.json")
 handler_image="ghcr.io/jdtzmn/port-404-handler:$version"
 pids=()
-step 600 build "${compose[@]}" build & pids+=("$!")
+fixture_cache=${REMOTE_E2E_FIXTURE_CACHE:-}
+fixture_cache_hit=0
+if [[ -n "$fixture_cache" && -f "$fixture_cache" ]]; then
+  fixture_cache_hit=1
+  step 180 fixture-cache-load docker image load --input "$fixture_cache" & pids+=("$!")
+else
+  step 600 build "${compose[@]}" build & pids+=("$!")
+fi
 # The private DinD network has no registry egress. Seed all three local daemons
 # via the runner's Docker CLI; never mount a host Docker socket in any fixture.
 step 120 smoke-pull docker pull busybox:1.37.0 & pids+=("$!")
@@ -85,6 +93,12 @@ else
   step 300 handler-build docker build --pull=false -t "$handler_image" "$root/packages/404-app" & pids+=("$!")
 fi
 wait_jobs "${pids[@]}"
+if [[ $fixture_cache_hit == 0 && ${REMOTE_E2E_WRITE_FIXTURE_CACHE:-0} == 1 && -n "$fixture_cache" ]]; then
+  step 180 fixture-cache-save docker image save --output "$fixture_cache" \
+    "port-remote-e2e-client:$REMOTE_E2E_FIXTURE_IMAGE_TAG" \
+    "port-remote-e2e-remote:$REMOTE_E2E_FIXTURE_IMAGE_TAG" \
+    "port-remote-e2e-traefik:$REMOTE_E2E_FIXTURE_IMAGE_TAG"
+fi
 
 image_dir=$(mktemp -d "${TMPDIR:-/tmp}/remote-e2e-image.XXXXXXXX")
 # Build the actual checkout into a fresh, artifact-only directory; no source or secrets enter fixtures.
