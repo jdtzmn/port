@@ -168,7 +168,7 @@ describe('shouldAutoRegisterWorktree', () => {
   test('allows normal worktree-aware commands and no-arg invocation', () => {
     expect(shouldAutoRegisterWorktree(undefined)).toBe(true)
     expect(shouldAutoRegisterWorktree('status')).toBe(true)
-    expect(shouldAutoRegisterWorktree('list')).toBe(true)
+    expect(shouldAutoRegisterWorktree('list')).toBe(false)
   })
 
   test('skips global-only commands and flags', () => {
@@ -191,6 +191,7 @@ describe('shouldSkipEarlyWork', () => {
     expect(shouldSkipEarlyWork('completion')).toBe(true)
     expect(shouldSkipEarlyWork('shell-hook')).toBe(true)
     expect(shouldSkipEarlyWork('doctor')).toBe(true)
+    expect(shouldSkipEarlyWork('list')).toBe(true)
     expect(shouldSkipEarlyWork('status')).toBe(false)
     expect(shouldSkipEarlyWork(undefined)).toBe(false)
   })
