@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'vitest'
-import { planRemoteE2EShards, recommendedRemoteE2EShardCount } from './sharding'
+import {
+  planRemoteE2EShards,
+  recommendedRemoteE2EShardCount,
+  sortRemoteE2ESuiteFiles,
+} from './sharding'
 
 const suites = [
   { file: 'owners.test.ts', estimatedDurationMs: 60_000 },
@@ -36,6 +40,20 @@ describe('remote E2E shard planning', () => {
       ['owners.test.ts'],
       ['automatic-a.test.ts', 'foundation.test.ts'],
       ['automatic-b.test.ts', 'transport.test.ts', 'missing.test.ts'],
+    ])
+  })
+
+  test('runs foundational checks before stateful product scenarios', () => {
+    expect(
+      sortRemoteE2ESuiteFiles([
+        'missing-port.remote-e2e.test.ts',
+        'automatic-a.remote-e2e.test.ts',
+        'foundation.remote-e2e.test.ts',
+      ])
+    ).toEqual([
+      'foundation.remote-e2e.test.ts',
+      'automatic-a.remote-e2e.test.ts',
+      'missing-port.remote-e2e.test.ts',
     ])
   })
 })
