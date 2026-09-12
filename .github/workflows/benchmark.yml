@@ -55,12 +55,18 @@ jobs:
         run: bun scripts/benchmark.ts
 
       - name: Fetch benchmark history
+        id: history
         run: |
           mkdir -p benchmark-history
-          git fetch origin gh-pages:refs/remotes/origin/gh-pages || true
-          for category in cli worktree docker; do
-            git show "origin/gh-pages:dev/bench/${category}/data.js" > "benchmark-history/${category}-data.js" || true
-          done
+          if git ls-remote --exit-code origin refs/heads/gh-pages > /dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            git fetch origin gh-pages:refs/remotes/origin/gh-pages
+            for category in cli worktree docker; do
+              git show "origin/gh-pages:dev/bench/${category}/data.js" > "benchmark-history/${category}-data.js" || true
+            done
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Generate PR preview chart
         run: bun scripts/benchmark-preview.ts
@@ -85,6 +91,7 @@ jobs:
           summary-always: true
           alert-threshold: 125%
           fail-on-alert: false
+          skip-fetch-gh-pages: ${{ steps.history.outputs.exists != 'true' }}
 
       - name: Publish worktree comparison
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
@@ -99,6 +106,7 @@ jobs:
           summary-always: true
           alert-threshold: 125%
           fail-on-alert: false
+          skip-fetch-gh-pages: ${{ steps.history.outputs.exists != 'true' }}
 
       - name: Publish Docker comparison
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
@@ -113,6 +121,7 @@ jobs:
           summary-always: true
           alert-threshold: 125%
           fail-on-alert: false
+          skip-fetch-gh-pages: ${{ steps.history.outputs.exists != 'true' }}
 
       - name: Enforce p95 budgets
         run: bun scripts/check-benchmark-budgets.ts
@@ -148,6 +157,15 @@ jobs:
           BENCHMARK_INCLUDE_DOCKER: '1'
         run: bun scripts/benchmark.ts
 
+      - name: Check benchmark history
+        id: history
+        run: |
+          if git ls-remote --exit-code origin refs/heads/gh-pages > /dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload benchmark diagnostics
         uses: actions/upload-artifact@v4
         with:
@@ -168,6 +186,7 @@ jobs:
           summary-always: true
           alert-threshold: 125%
           fail-on-alert: false
+          skip-fetch-gh-pages: ${{ steps.history.outputs.exists != 'true' }}
 
       - name: Publish worktree history
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
@@ -182,6 +201,7 @@ jobs:
           summary-always: true
           alert-threshold: 125%
           fail-on-alert: false
+          skip-fetch-gh-pages: ${{ steps.history.outputs.exists != 'true' }}
 
       - name: Publish Docker history
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
@@ -196,6 +216,7 @@ jobs:
           summary-always: true
           alert-threshold: 125%
           fail-on-alert: false
+          skip-fetch-gh-pages: ${{ steps.history.outputs.exists != 'true' }}
 
       - name: Enforce p95 budgets
         run: bun scripts/check-benchmark-budgets.ts
