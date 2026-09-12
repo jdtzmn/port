@@ -39,8 +39,16 @@ describe('private remote dispatch', () => {
     process.exitCode = previous
   })
 
-  test('only recognizes the five exact endpoints', () => {
-    for (const suffix of ['prepare', 'observe', 'cleanup', 'handshake', 'snapshot']) {
+  test('only recognizes the seven exact endpoints', () => {
+    for (const suffix of [
+      'prepare',
+      'observe',
+      'cleanup',
+      'handshake',
+      'snapshot',
+      'runtime',
+      'supervise',
+    ]) {
       expect(isRemoteInternalCommand(`__remote-${suffix}`)).toBe(true)
     }
     for (const token of [
