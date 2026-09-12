@@ -10,24 +10,101 @@ permissions:
   contents: read
 
 jobs:
-  remote-e2e:
-    name: Linux SSH and same-port networking
+  plan-shards:
+    name: Plan auto-scaled remote E2E shards
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      use-published-handler: ${{ steps.handler.outputs.use-published }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.3
+      - id: handler
+        name: Select 404 handler image source
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          use_published=0
+          if [[ "$EVENT_NAME" == pull_request ]] &&
+            git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- packages/404-app; then
+            use_published=1
+          fi
+          echo "use-published=$use_published" >> "$GITHUB_OUTPUT"
+      - id: plan
+        name: Calculate shard matrix
+        run: |
+          matrix=$(bun tests/remote-e2e/plan-shards.ts)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "### Remote E2E shard plan" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          echo "$matrix" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  remote-e2e:
+    name: Linux SSH and same-port networking (${{ matrix.index }}/${{ matrix.count }})
+    needs: plan-shards
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan-shards.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: fixture-cache
+        name: Restore remote E2E fixture images
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/remote-e2e-fixtures.tar
+          key: remote-e2e-fixtures-${{ runner.os }}-${{ hashFiles('tests/remote-e2e/compose.yaml', 'tests/remote-e2e/.dockerignore', 'tests/remote-e2e/docker/**', 'tests/remote-e2e/scenarios/**', 'tests/remote-e2e/fixtures/identity.ts', 'tests/remote-e2e/fixtures/port-cli.sh') }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.3
       - name: Install build dependencies
         run: bun install --frozen-lockfile
       - name: Run isolated feasibility harness
+        env:
+          REMOTE_E2E_SHARD: ${{ matrix.index }}/${{ matrix.count }}
+          REMOTE_E2E_USE_PUBLISHED_HANDLER: ${{ needs.plan-shards.outputs.use-published-handler }}
+          REMOTE_E2E_FIXTURE_CACHE: /tmp/remote-e2e-fixtures.tar
+          REMOTE_E2E_FIXTURE_IMAGE_TAG: ${{ hashFiles('tests/remote-e2e/compose.yaml', 'tests/remote-e2e/.dockerignore', 'tests/remote-e2e/docker/**', 'tests/remote-e2e/scenarios/**', 'tests/remote-e2e/fixtures/identity.ts', 'tests/remote-e2e/fixtures/port-cli.sh') }}
+          REMOTE_E2E_WRITE_FIXTURE_CACHE: ${{ matrix.index == 1 && steps.fixture-cache.outputs.cache-hit != 'true' && '1' || '0' }}
         run: bash tests/remote-e2e/run.sh
+      - name: Save remote E2E fixture images
+        if: matrix.index == 1 && steps.fixture-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/remote-e2e-fixtures.tar
+          key: remote-e2e-fixtures-${{ runner.os }}-${{ hashFiles('tests/remote-e2e/compose.yaml', 'tests/remote-e2e/.dockerignore', 'tests/remote-e2e/docker/**', 'tests/remote-e2e/scenarios/**', 'tests/remote-e2e/fixtures/identity.ts', 'tests/remote-e2e/fixtures/port-cli.sh') }}
+      - name: Summarize shard timing
+        if: always()
+        run: |
+          timing=$(find .remote-e2e-artifacts -name timings.tsv -print -quit 2>/dev/null || true)
+          if [[ -n "$timing" ]]; then
+            echo "### Remote E2E shard ${{ matrix.index }}/${{ matrix.count }}" >> "$GITHUB_STEP_SUMMARY"
+            echo '| Phase | Duration (s) | Status |' >> "$GITHUB_STEP_SUMMARY"
+            echo '|---|---:|---:|' >> "$GITHUB_STEP_SUMMARY"
+            awk -F '\t' 'NR > 1 { printf "| %s | %.3f | %s |\n", $1, $2 / 1000, $3 }' "$timing" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload shard timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: remote-e2e-timing-${{ matrix.index }}-of-${{ matrix.count }}
+          path: .remote-e2e-artifacts/**/timings.tsv
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 30
       - name: Upload safe diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: remote-e2e-diagnostics
+          name: remote-e2e-diagnostics-${{ matrix.index }}-of-${{ matrix.count }}
           path: .remote-e2e-artifacts/
           include-hidden-files: true
           if-no-files-found: ignore

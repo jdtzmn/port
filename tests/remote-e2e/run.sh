@@ -7,31 +7,58 @@ root=$(git -C "$here" rev-parse --show-toplevel)
 command -v python3 >/dev/null
 command -v docker >/dev/null
 project="remote-e2e-$(python3 -c 'import uuid; print(uuid.uuid4().hex[:16])')"
+export REMOTE_E2E_FIXTURE_IMAGE_TAG=${REMOTE_E2E_FIXTURE_IMAGE_TAG:-$project}
 artifacts="$root/.remote-e2e-artifacts/$project"
 mkdir -p "$artifacts"
+timings="$artifacts/timings.tsv"
+printf 'phase\tduration_ms\tstatus\n' > "$timings"
+run_started_ns=$(python3 -c 'import time; print(time.monotonic_ns())')
 # Disable implicit .env loading, including while validating the Compose model.
 export COMPOSE_DISABLE_ENV_FILE=1
 compose=(docker compose --env-file /dev/null --project-directory "$here" -p "$project" -f "$here/compose.yaml")
 image_dir=''
 step() {
-  local seconds=$1 label=$2
+  local seconds=$1 label=$2 started_ns finished_ns duration_ms step_status
   shift 2
   printf 'remote-e2e: %s\n' "$label"
-  python3 "$here/scenarios/bounded.py" "$seconds" "$artifacts/$label.log" "$@"
+  started_ns=$(python3 -c 'import time; print(time.monotonic_ns())')
+  if python3 "$here/scenarios/bounded.py" "$seconds" "$artifacts/$label.log" "$@"; then
+    step_status=0
+  else
+    step_status=$?
+  fi
+  finished_ns=$(python3 -c 'import time; print(time.monotonic_ns())')
+  duration_ms=$(( (finished_ns - started_ns) / 1000000 ))
+  printf '%s\t%s\t%s\n' "$label" "$duration_ms" "$step_status" >> "$timings"
+  printf 'remote-e2e: timing %s=%sms status=%s\n' "$label" "$duration_ms" "$step_status"
+  return "$step_status"
+}
+wait_jobs() {
+  local status=0 pid
+  for pid in "$@"; do
+    if ! wait "$pid"; then
+      status=1
+    fi
+  done
+  return "$status"
 }
 cleanup() {
-  local status=$?
+  local status=$? cleanup_status finished_ns total_ms
   trap - EXIT INT TERM
   set +e
   # Only bounded known-service logs and status, never inspect/env/key dumps.
   step 15 status "${compose[@]}" ps -a
   step 15 fixture-logs "${compose[@]}" logs --no-color --tail 80 remote-a remote-b client docker docker-a docker-b traefik
   step 60 cleanup "${compose[@]}" down --volumes --remove-orphans --timeout 5
-  local cleanup_status=$?
+  cleanup_status=$?
   [[ -z "$image_dir" ]] || rm -rf -- "$image_dir"
   if [[ $status -eq 0 && $cleanup_status -ne 0 ]]; then
     status=$cleanup_status
   fi
+  finished_ns=$(python3 -c 'import time; print(time.monotonic_ns())')
+  total_ms=$(( (finished_ns - run_started_ns) / 1000000 ))
+  printf 'total\t%s\t%s\n' "$total_ms" "$status" >> "$timings"
+  printf 'remote-e2e: timing total=%sms status=%s\n' "$total_ms" "$status"
   printf 'remote-e2e: exit=%s; artifacts=%s\n' "$status" "$artifacts"
   if [[ $cleanup_status -ne 0 ]]; then
     printf 'Cleanup failed; retry Compose down for project %s with %s\n' "$project" "$here/compose.yaml" >&2
@@ -42,16 +69,37 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 step 15 config "${compose[@]}" config --quiet
-step 600 build "${compose[@]}" build
-# The private DinD network has no registry egress. Seed all three local daemons
-# via the runner's Docker CLI; never mount a host Docker socket in any fixture.
-step 120 smoke-pull docker pull busybox:1.37.0
-step 120 proxy-pull docker pull traefik:v3.6
-step 180 postgres-pull docker pull postgres:17.4-bookworm
-step 180 bun-pull docker pull oven/bun:1.3.3
+# Build independent host-side prerequisites concurrently. The fixture topology remains isolated.
 version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$root/package.json")
 handler_image="ghcr.io/jdtzmn/port-404-handler:$version"
-step 300 handler-build docker build --pull=false -t "$handler_image" "$root/packages/404-app"
+pids=()
+fixture_cache=${REMOTE_E2E_FIXTURE_CACHE:-}
+fixture_cache_hit=0
+if [[ -n "$fixture_cache" && -f "$fixture_cache" ]]; then
+  fixture_cache_hit=1
+  step 180 fixture-cache-load docker image load --input "$fixture_cache" & pids+=("$!")
+else
+  step 600 build "${compose[@]}" build & pids+=("$!")
+fi
+# The private DinD network has no registry egress. Seed all three local daemons
+# via the runner's Docker CLI; never mount a host Docker socket in any fixture.
+step 120 smoke-pull docker pull busybox:1.37.0 & pids+=("$!")
+step 120 proxy-pull docker pull traefik:v3.6 & pids+=("$!")
+step 180 postgres-pull docker pull postgres:17.4-bookworm & pids+=("$!")
+step 180 bun-pull docker pull oven/bun:1.3.3 & pids+=("$!")
+if [[ ${REMOTE_E2E_USE_PUBLISHED_HANDLER:-0} == 1 ]]; then
+  step 180 handler-pull docker pull "$handler_image" & pids+=("$!")
+else
+  step 300 handler-build docker build --pull=false -t "$handler_image" "$root/packages/404-app" & pids+=("$!")
+fi
+wait_jobs "${pids[@]}"
+if [[ $fixture_cache_hit == 0 && ${REMOTE_E2E_WRITE_FIXTURE_CACHE:-0} == 1 && -n "$fixture_cache" ]]; then
+  step 180 fixture-cache-save docker image save --output "$fixture_cache" \
+    "port-remote-e2e-client:$REMOTE_E2E_FIXTURE_IMAGE_TAG" \
+    "port-remote-e2e-remote:$REMOTE_E2E_FIXTURE_IMAGE_TAG" \
+    "port-remote-e2e-traefik:$REMOTE_E2E_FIXTURE_IMAGE_TAG"
+fi
+
 image_dir=$(mktemp -d "${TMPDIR:-/tmp}/remote-e2e-image.XXXXXXXX")
 # Build the actual checkout into a fresh, artifact-only directory; no source or secrets enter fixtures.
 mkdir -p "$image_dir/app"
@@ -61,48 +109,30 @@ step 120 forward-probe-build bun build "$here/fixtures/forward-probe.ts" --outdi
 step 120 proxy-probe-build bun build "$here/fixtures/proxy-probe.ts" --outdir "$image_dir/app/fixtures" --target bun
 cp "$root/package.json" "$image_dir/app/package.json"
 chmod -R a+rX "$image_dir/app"
-step 60 smoke-save docker image save --output "$image_dir/smoke.tar" busybox:1.37.0
-step 60 postgres-save docker image save --output "$image_dir/postgres.tar" postgres:17.4-bookworm
-step 60 bun-save docker image save --output "$image_dir/bun.tar" oven/bun:1.3.3
-step 60 proxy-save docker image save --output "$image_dir/proxy.tar" traefik:v3.6
-step 60 handler-save docker image save --output "$image_dir/handler.tar" "$handler_image"
+
 step 210 readiness "${compose[@]}" up -d --wait --wait-timeout 150
+
+# Copy artifacts and stream exact image manifests into independent DinD daemons concurrently.
+pids=()
 for machine in client remote-a remote-b; do
-  step 30 "port-copy-$machine" "${compose[@]}" cp "$image_dir/app/." "$machine:/opt/port/"
+  step 30 "port-copy-$machine" "${compose[@]}" cp "$image_dir/app/." "$machine:/opt/port/" & pids+=("$!")
 done
-# DinD creates a private /tmp mount; use the root filesystem for docker cp.
-for daemon in docker docker-a docker-b; do
-  step 30 "smoke-copy-$daemon" "${compose[@]}" cp "$image_dir/smoke.tar" "$daemon:/smoke.tar"
-  step 60 "smoke-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /smoke.tar
-  step 10 "smoke-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /smoke.tar
-done
+step 180 fixture-images-docker "$here/seed-images.sh" "$project" "$here" docker \
+  busybox:1.37.0 oven/bun:1.3.3 traefik:v3.6 "$handler_image" & pids+=("$!")
 for daemon in docker-a docker-b; do
-  step 30 "postgres-copy-$daemon" "${compose[@]}" cp "$image_dir/postgres.tar" "$daemon:/postgres.tar"
-  step 60 "postgres-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /postgres.tar
-  step 10 "postgres-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /postgres.tar
+  step 180 "fixture-images-$daemon" "$here/seed-images.sh" "$project" "$here" "$daemon" \
+    busybox:1.37.0 postgres:17.4-bookworm oven/bun:1.3.3 traefik:v3.6 "$handler_image" & pids+=("$!")
 done
-
-for daemon in docker docker-a docker-b; do
-  step 30 "bun-copy-$daemon" "${compose[@]}" cp "$image_dir/bun.tar" "$daemon:/bun.tar"
-  step 60 "bun-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /bun.tar
-  step 10 "bun-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /bun.tar
-done
-
-# Production Port starts Traefik and the 404 handler in every participating daemon.
-for daemon in docker docker-a docker-b; do
-  step 30 "proxy-copy-$daemon" "${compose[@]}" cp "$image_dir/proxy.tar" "$daemon:/proxy.tar"
-  step 60 "proxy-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /proxy.tar
-  step 10 "proxy-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /proxy.tar
-  step 30 "handler-copy-$daemon" "${compose[@]}" cp "$image_dir/handler.tar" "$daemon:/handler.tar"
-  step 60 "handler-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /handler.tar
-  step 10 "handler-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /handler.tar
-done
-step 150 proof "${compose[@]}" exec -T client python3 /fixture/harness.py
-step 90 multiplexing "${compose[@]}" exec -T client python3 /fixture/mux.py
-step 90 baseline "${compose[@]}" exec -T client python3 /fixture/baseline.py
-step 600 bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py
-
-# Preserve ordinary login fallback after both Port-enabled remote product scenarios.
-step 10 missing-port "${compose[@]}" exec -T remote-b mv /usr/local/bin/port /usr/local/bin/port-unavailable
-step 90 missing-port-bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py --missing-port-only
+wait_jobs "${pids[@]}"
+export REMOTE_E2E_PROJECT="$project"
+export REMOTE_E2E_FIXTURE_ROOT="$here"
+export REMOTE_E2E_ARTIFACTS="$artifacts"
+export REMOTE_E2E_TIMINGS="$timings"
+shard=${REMOTE_E2E_SHARD:-1/1}
+if step 700 acceptance bunx vitest run --config "$here/vitest.config.ts" --shard="$shard"; then
+  cat "$artifacts/acceptance.log"
+else
+  cat "$artifacts/acceptance.log" >&2
+  exit 1
+fi
 printf 'remote-e2e: transport, SSH compatibility, failure-path components, and automatic port up HTTP/TLS-SNI routing passed\n'
