@@ -603,8 +603,15 @@ function productStart(args: string[]): void {
       console.log('PRODUCT_RUNTIME=' + JSON.stringify(state))
       console.log('PRODUCT_RUNTIME_STARTED')
     })
-  } catch {
-    throw new Error(`Product start failed at ${stage}`)
+  } catch (error) {
+    const code =
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      typeof error.code === 'string'
+        ? error.code
+        : 'UNKNOWN'
+    throw new Error(`Product start failed at ${stage} (${code})`)
   }
 }
 
@@ -839,7 +846,7 @@ try {
   if (
     message.startsWith('Invalid product UI container identity count:') ||
     message === 'Product identity marker already exists' ||
-    /^Product start failed at (initializing|creating worktree|writing fixture state|running port up)$/.test(
+    /^Product start failed at (initializing|creating worktree|writing fixture state|running port up) \([A-Z0-9_]+\)$/.test(
       message
     ) ||
     /^Product stop failed at (initializing|stopping (local|remote-a|remote-b)\/[a-z][a-z0-9-]{0,31}) \([A-Z0-9_]+\)$/.test(

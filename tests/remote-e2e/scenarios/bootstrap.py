@@ -1184,6 +1184,13 @@ def product_only():
 
 
 
+def local_product_only():
+    try:
+        fixture_command('product-start', 'local', 'feature', 'ui-only')
+    finally:
+        fixture_command('product-stop', 'local')
+
+
 def main():
     # Install the fixture's normal SSH config, not command-specific test options.
     shutil.copyfile('/fixture/ssh_config', '/root/.ssh/config')
@@ -1287,6 +1294,8 @@ if __name__ == '__main__':
         missing_port_only()
     elif sys.argv[1:] == ['--product-only']:
         product_only()
+    elif sys.argv[1:] == ['--local-product-only']:
+        local_product_only()
     elif len(sys.argv) == 1:
         main()
     else:
