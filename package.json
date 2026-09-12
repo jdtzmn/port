@@ -41,6 +41,7 @@
     "format:check": "bunx prettier --check .",
     "generate:skill": "bun scripts/generate-port-skill.ts && bun x prettier --write skills/port-cli/SKILL.md",
     "test": "bunx vitest",
+    "test:remote-e2e": "bash tests/remote-e2e/run.sh",
     "benchmark": "bun run build && bun scripts/benchmark.ts && bun scripts/check-benchmark-budgets.ts",
     "test:tui": "bun test src/tui/__tests__/"
   },
