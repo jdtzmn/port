@@ -88,6 +88,7 @@ describe('runtime recovery and publication', () => {
         version: 1,
         routes: [
           {
+            namespace: 'feature.port',
             hostname: 'ui.feature.port',
             port: 80,
             transport: 'http',

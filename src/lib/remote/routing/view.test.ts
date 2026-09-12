@@ -5,19 +5,24 @@ const view = {
   version: 1 as const,
   routes: [
     {
+      namespace: 'feature.port',
       hostname: 'ui.feature.port',
       port: 80,
       transport: 'http' as const,
       availability: 'ready' as const,
+      serviceName: 'ui',
     },
     {
+      namespace: 'feature.port',
       hostname: 'feature.port',
       port: 3000,
       transport: 'http' as const,
       availability: 'conflict' as const,
+      serviceName: 'ui',
       alternatives: [{ alias: 'remote', hostname: 'feature.remote.ssh', port: 3000 }],
     },
     {
+      namespace: 'feature.port',
       hostname: 'feature.port',
       port: 5432,
       transport: 'tls-sni' as const,
@@ -39,6 +44,11 @@ describe('remote route view helpers', () => {
       'ui.feature.port',
       'feature.port',
     ])
-    expect(remoteHttpRoutes(view, 'ui').map(route => route.hostname)).toEqual(['ui.feature.port'])
+    expect(remoteHttpRoutes(view, { serviceName: 'ui' }).map(route => route.hostname)).toEqual([
+      'ui.feature.port',
+      'feature.port',
+    ])
+    expect(remoteHttpRoutes(view, 'ui')).toHaveLength(2)
+    expect(remoteHttpRoutes(view, { namespace: 'feature.port' })).toHaveLength(2)
   })
 })

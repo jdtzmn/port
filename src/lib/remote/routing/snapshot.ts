@@ -18,10 +18,13 @@ const port = (value: unknown): value is number =>
 type Availability = 'ready' | 'unavailable' | 'conflict'
 
 export interface RemoteRouteAddress {
+  /** Canonical worktree namespace, used only for local CLI scoping. */
+  namespace: string
   hostname: string
   port: number
   transport: 'http' | 'tls-sni'
   availability: Availability
+  serviceName?: string
   alternatives?: { alias: string; hostname: string; port: number }[]
 }
 
@@ -64,11 +67,13 @@ export function buildRemoteRouteSnapshot(
       return fail()
     }
     const route: RemoteRouteAddress = {
+      namespace: plan.namespace,
       hostname: plan.hostname,
       port: plan.port,
       transport: plan.transport,
       availability,
     }
+    if (plan.serviceName) route.serviceName = plan.serviceName
     if (plan.alternatives) {
       route.alternatives = plan.alternatives.map(alternative => {
         const owner = owners.get(alternative.owner.id)
@@ -102,21 +107,25 @@ export function parseRemoteRouteSnapshot(encoded: string): RemoteRouteSnapshot {
   const routes = data.routes.map(route => {
     if (
       !route ||
+      !hostname(route.namespace) ||
       !hostname(route.hostname) ||
       !port(route.port) ||
       (route.transport !== 'http' && route.transport !== 'tls-sni') ||
-      !['ready', 'unavailable', 'conflict'].includes(route.availability)
+      !['ready', 'unavailable', 'conflict'].includes(route.availability) ||
+      (route.serviceName !== undefined && !label(route.serviceName))
     )
       return fail()
     const key = JSON.stringify([route.hostname, route.port, route.transport])
     if (keys.has(key)) return fail()
     keys.add(key)
     const result: RemoteRouteAddress = {
+      namespace: route.namespace,
       hostname: route.hostname,
       port: route.port,
       transport: route.transport,
       availability: route.availability,
     }
+    if (route.serviceName !== undefined) result.serviceName = route.serviceName
     if (route.alternatives !== undefined) {
       if (
         route.availability !== 'conflict' ||

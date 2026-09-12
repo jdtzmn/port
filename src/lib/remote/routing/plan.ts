@@ -26,6 +26,8 @@ export interface RemoteRouteAlternative {
 }
 
 export interface RemoteRoutePlan {
+  /** Canonical worktree namespace shared by every route variant. */
+  namespace: string
   hostname: string
   port: number
   transport: RemoteTransport
@@ -33,6 +35,8 @@ export interface RemoteRoutePlan {
   /** Exact owner-qualified addresses for a conflicting request. */
   alternatives?: RemoteRouteAlternative[]
   endpoint?: { ownerId: string; worktreeId: string; endpointId: string }
+  /** Endpoint name when it is unambiguous for this route. */
+  serviceName?: string
 }
 
 const LIMIT = 4096
@@ -48,6 +52,23 @@ const dns = (value: string): boolean =>
   !/^\d+\.\d+\.\d+\.\d+$/.test(value)
 const identity = (ownerId: string, worktreeId: string, serviceId: string): string =>
   JSON.stringify([ownerId, worktreeId, serviceId])
+
+function routeServiceName(request: RouteRequest, resolution: RouteResolution): string | undefined {
+  if ('name' in request.service) return request.service.name
+  const logicalPort = request.service.port
+  if (resolution.status === 'resolved') return resolution.service.name
+  if (resolution.status !== 'conflict') return undefined
+
+  const names = new Set<string>()
+  for (const candidate of resolution.candidates) {
+    const service = candidate.services.find(
+      value => value.protocol === request.protocol && value.logicalPort === logicalPort
+    )
+    if (!service?.name) return undefined
+    names.add(service.name)
+  }
+  return names.size === 1 ? [...names][0] : undefined
+}
 
 /**
  * Compile validated snapshot DTOs, without network, lease, or renderer side effects.
@@ -155,7 +176,15 @@ export function compileRemoteRoutePlan(
     if (plans.size >= LIMIT) return fail()
     const resolution = (qualified ? resolveQualified : resolveUnqualified)(request)
     if (resolution.status === 'invalid') return fail()
-    const plan: RemoteRoutePlan = { hostname, port, transport, resolution }
+    const plan: RemoteRoutePlan = {
+      namespace: request.namespace,
+      hostname,
+      port,
+      transport,
+      resolution,
+    }
+    const serviceName = routeServiceName(request, resolution)
+    if (serviceName) plan.serviceName = serviceName
     if (resolution.status === 'conflict') {
       const suffix = `.${domain}`
       const branch = request.namespace.slice(0, -suffix.length)

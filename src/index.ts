@@ -170,7 +170,8 @@ program
 program
   .command('urls [service]')
   .description('Show service URLs for the current worktree')
-  .action(urls)
+  .option('--remote', 'Show all discovered remote routes, including other worktrees')
+  .action((service, options) => urls(service, options))
 
 // port up
 program

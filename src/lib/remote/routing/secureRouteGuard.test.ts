@@ -6,6 +6,7 @@ import * as identities from './relayIdentity.ts'
 import type { RemoteRoutePlan } from './plan.ts'
 
 const plan = (): RemoteRoutePlan => ({
+  namespace: 'feature.port',
   hostname: 'app.feature.port',
   port: 8080,
   transport: 'http',

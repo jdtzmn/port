@@ -12,34 +12,41 @@ import {
 } from '../lib/remote/routing/view.ts'
 import * as output from '../lib/output.ts'
 
-/**
- * Show service URLs for the current worktree
- */
-export async function urls(serviceName?: string): Promise<void> {
-  try {
-    const paths = await findRemoteRuntimePaths()
-    const routes = paths ? await readRemoteRouteView(paths.root) : undefined
-    if (routes) {
-      const visible = remoteHttpRoutes(routes, serviceName)
-      if (serviceName && visible.length === 0) {
-        output.error(`Service "${serviceName}" not found in current remote route view`)
-        process.exit(1)
-      }
+export interface UrlOptions {
+  /** List every discovered remote namespace; works outside a worktree. */
+  remote?: boolean
+}
+
+async function remoteRouteView() {
+  const paths = await findRemoteRuntimePaths()
+  return paths ? readRemoteRouteView(paths.root) : undefined
+}
+
+function printRemoteRoutes(routes: ReturnType<typeof remoteHttpRoutes>, title: string): void {
+  output.header(title)
+  for (const route of routes) {
+    console.error(
+      `  ${output.url(remoteRouteUrl(route))} ${output.dim(describeRemoteRoute(route))}`
+    )
+  }
+}
+
+/** Show service URLs for the current worktree, or all remote routes with --remote. */
+export async function urls(serviceName?: string, options: UrlOptions = {}): Promise<void> {
+  if (options.remote) {
+    try {
+      const view = await remoteRouteView()
+      const visible = view ? remoteHttpRoutes(view, { serviceName }) : []
       if (visible.length === 0) {
         output.warn('No remote HTTP routes are currently published')
         return
       }
-      output.header('Remote service URLs:')
-      for (const route of visible) {
-        console.error(
-          `  ${output.url(remoteRouteUrl(route))} ${output.dim(describeRemoteRoute(route))}`
-        )
-      }
+      printRemoteRoutes(visible, 'Remote service URLs:')
+      return
+    } catch {
+      output.warn('Remote route view is unavailable')
       return
     }
-  } catch {
-    output.warn('Remote route view is unavailable; refusing to guess a local route')
-    return
   }
 
   let worktreeInfo
@@ -55,6 +62,24 @@ export async function urls(serviceName?: string): Promise<void> {
   await ensurePortRuntimeDir(repoRoot)
 
   const config = await loadConfigOrDefault(repoRoot)
+  if (config.domain === 'port') {
+    try {
+      const view = await remoteRouteView()
+      const visible = view
+        ? remoteHttpRoutes(view, {
+            namespace: formatHostname(name, config.domain),
+            serviceName,
+          })
+        : []
+      if (visible.length > 0) {
+        printRemoteRoutes(visible, `Remote service URLs for ${output.branch(name)}:`)
+        return
+      }
+    } catch {
+      // Remote discovery is optional for the ordinary current-worktree command.
+    }
+  }
+
   const composeFile = getComposeFile(config)
   const projectName = getProjectName(repoRoot, name)
 

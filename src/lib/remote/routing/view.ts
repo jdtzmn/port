@@ -15,14 +15,21 @@ export function describeRemoteRoute(route: RemoteRouteAddress): string {
   return `${address} (conflict${alternatives ? `; use ${alternatives}` : ''})`
 }
 
+export interface RemoteRouteQuery {
+  serviceName?: string
+  namespace?: string
+}
+
 /** HTTP routes are browser URLs; TLS-SNI entries remain visible through status only. */
 export function remoteHttpRoutes(
   view: RemoteRouteSnapshot,
-  serviceName?: string
+  query: RemoteRouteQuery | string = {}
 ): RemoteRouteAddress[] {
+  const filter = typeof query === 'string' ? { serviceName: query } : query
   return view.routes.filter(
     route =>
       route.transport === 'http' &&
-      (serviceName === undefined || route.hostname.startsWith(`${serviceName}.`))
+      (filter.namespace === undefined || route.namespace === filter.namespace) &&
+      (filter.serviceName === undefined || route.serviceName === filter.serviceName)
   )
 }

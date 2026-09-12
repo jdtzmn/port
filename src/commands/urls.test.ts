@@ -14,6 +14,10 @@ const mocks = vi.hoisted(() => ({
   branch: vi.fn(),
   error: vi.fn(),
   warn: vi.fn(),
+  url: vi.fn(),
+  dim: vi.fn(),
+  findRemoteRuntimePaths: vi.fn(),
+  readRemoteRouteView: vi.fn(),
 }))
 
 vi.mock('../lib/worktree.ts', () => ({
@@ -42,8 +46,17 @@ vi.mock('../lib/output.ts', () => ({
   branch: mocks.branch,
   error: mocks.error,
   warn: mocks.warn,
+  url: mocks.url,
+  dim: mocks.dim,
 }))
 
+vi.mock('../lib/remote/coordinator/paths.ts', () => ({
+  findRemoteRuntimePaths: mocks.findRemoteRuntimePaths,
+}))
+
+vi.mock('../lib/remote/coordinator/store.ts', () => ({
+  readRemoteRouteView: mocks.readRemoteRouteView,
+}))
 import { urls } from './urls.ts'
 
 describe('urls command', () => {
@@ -63,6 +76,9 @@ describe('urls command', () => {
     mocks.getComposeFile.mockReturnValue('docker-compose.yml')
     mocks.branch.mockImplementation((value: string) => value)
     mocks.buildProjectName.mockReturnValue('repo-feature-1')
+    mocks.url.mockImplementation((value: string) => value)
+    mocks.dim.mockImplementation((value: string) => value)
+    mocks.findRemoteRuntimePaths.mockResolvedValue(undefined)
     mocks.composePs.mockResolvedValue([])
 
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => {
@@ -239,5 +255,73 @@ describe('urls command', () => {
         running: false,
       },
     ])
+  })
+
+  test('scopes remote route output to the current worktree namespace', async () => {
+    const stderr = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mocks.findRemoteRuntimePaths.mockResolvedValue({ root: '/remote' })
+    mocks.readRemoteRouteView.mockResolvedValue({
+      version: 1,
+      routes: [
+        {
+          namespace: 'feature-1.port',
+          hostname: 'ui.feature-1.port',
+          port: 80,
+          transport: 'http',
+          availability: 'ready',
+          serviceName: 'ui',
+        },
+        {
+          namespace: 'other.port',
+          hostname: 'ui.other.port',
+          port: 80,
+          transport: 'http',
+          availability: 'ready',
+          serviceName: 'ui',
+        },
+      ],
+    })
+
+    await urls('ui')
+
+    expect(mocks.header).toHaveBeenCalledWith('Remote service URLs for feature-1:')
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('ui.feature-1.port'))
+    expect(stderr).not.toHaveBeenCalledWith(expect.stringContaining('ui.other.port'))
+    expect(mocks.parseComposeFile).not.toHaveBeenCalled()
+    stderr.mockRestore()
+  })
+
+  test('lists all remote routes only when explicitly requested', async () => {
+    const stderr = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mocks.detectWorktree.mockImplementation(() => {
+      throw new Error('outside repository')
+    })
+    mocks.findRemoteRuntimePaths.mockResolvedValue({ root: '/remote' })
+    mocks.readRemoteRouteView.mockResolvedValue({
+      version: 1,
+      routes: [
+        {
+          namespace: 'feature-1.port',
+          hostname: 'ui.feature-1.port',
+          port: 80,
+          transport: 'http',
+          availability: 'ready',
+        },
+        {
+          namespace: 'other.port',
+          hostname: 'ui.other.port',
+          port: 80,
+          transport: 'http',
+          availability: 'ready',
+        },
+      ],
+    })
+
+    await urls(undefined, { remote: true })
+
+    expect(mocks.header).toHaveBeenCalledWith('Remote service URLs:')
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('ui.feature-1.port'))
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('ui.other.port'))
+    stderr.mockRestore()
   })
 })

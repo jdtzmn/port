@@ -41,9 +41,11 @@ describe('remote route snapshot', () => {
     const route = result.routes.find(route => route.hostname === 'ui.feature.port')
 
     expect(route).toEqual({
+      namespace: 'feature.port',
       hostname: 'ui.feature.port',
       port: 80,
       transport: 'http',
+      serviceName: 'ui',
       availability: 'conflict',
       alternatives: [
         { alias: 'local', hostname: 'ui.feature.local.port', port: 80 },
