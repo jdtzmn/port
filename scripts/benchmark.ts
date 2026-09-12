@@ -203,21 +203,21 @@ async function measureNewWorktree(fixture: Fixture, prefix: string): Promise<Ben
   )
 }
 
-async function resetDockerProject(fixture: Fixture): Promise<void> {
+async function stopDockerProject(fixture: Fixture): Promise<void> {
   await run(
     'docker',
-    ['compose', '--project-name', basename(fixture.root), 'down', '--remove-orphans'],
+    ['compose', '--project-name', basename(fixture.root), 'stop', '--timeout', '1'],
     fixture.root
   )
 }
 
 async function measureWarmUp(fixture: Fixture): Promise<BenchmarkSummary> {
   await runPort(fixture, ['up'])
-  await resetDockerProject(fixture)
+  await stopDockerProject(fixture)
 
   return measure(
     () => runPort(fixture, ['up']),
-    () => resetDockerProject(fixture)
+    () => stopDockerProject(fixture)
   )
 }
 

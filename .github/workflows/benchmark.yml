@@ -80,6 +80,8 @@ jobs:
       - name: Run Docker benchmarks
         env:
           BENCHMARK_CATEGORIES: docker
+          BENCHMARK_SAMPLES: 10
+          BENCHMARK_WARMUPS: 1
         run: bun scripts/benchmark.ts
       - uses: actions/upload-artifact@v4
         with:
