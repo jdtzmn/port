@@ -61,8 +61,4 @@ const previewLink = artifactUrl ? `\n\n[Download the interactive PR preview](${a
 console.log(`<!-- port-benchmark-report -->
 ## Benchmark report
 
-This sticky comment is updated by each benchmark run. The PR preview is not persisted until merge.
-
-${sections.join('\n\n')}${previewLink}
-
-_(Drafted by Jacob's coding agent on his behalf)_`)
+${sections.join('\n\n')}${previewLink}`)
