@@ -92,7 +92,12 @@ step 120 smoke-pull docker pull busybox:1.37.0 & pids+=("$!")
 step 120 proxy-pull docker pull traefik:v3.6 & pids+=("$!")
 step 180 postgres-pull docker pull postgres:17.4-bookworm & pids+=("$!")
 step 180 bun-pull docker pull oven/bun:1.3.3 & pids+=("$!")
-if [[ ${REMOTE_E2E_USE_PUBLISHED_HANDLER:-0} == 1 ]] &&
+handler_cache=${REMOTE_E2E_HANDLER_CACHE:-}
+handler_cache_hit=0
+if [[ -n "$handler_cache" && -f "$handler_cache" ]]; then
+  handler_cache_hit=1
+  step 180 handler-cache-load docker image load --input "$handler_cache" & pids+=("$!")
+elif [[ ${REMOTE_E2E_USE_PUBLISHED_HANDLER:-0} == 1 ]] &&
   python3 "$here/scenarios/bounded.py" 30 "$artifacts/handler-manifest.log" \
     docker manifest inspect "$handler_image" 2>/dev/null; then
   step 180 handler-pull docker pull "$handler_image" & pids+=("$!")
@@ -100,6 +105,9 @@ else
   step 300 handler-build docker build --pull=false -t "$handler_image" "$root/packages/404-app" & pids+=("$!")
 fi
 wait_jobs "${pids[@]}"
+if [[ $handler_cache_hit == 0 && ${REMOTE_E2E_WRITE_HANDLER_CACHE:-0} == 1 && -n "$handler_cache" ]]; then
+  step 180 handler-cache-save docker image save --output "$handler_cache" "$handler_image"
+fi
 if [[ $fixture_cache_hit == 0 && ${REMOTE_E2E_WRITE_FIXTURE_CACHE:-0} == 1 && -n "$fixture_cache" ]]; then
   step 180 fixture-cache-save docker image save --output "$fixture_cache" \
     "port-remote-e2e-client:$REMOTE_E2E_FIXTURE_IMAGE_TAG" \

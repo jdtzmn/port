@@ -62,6 +62,12 @@ jobs:
         with:
           path: /tmp/remote-e2e-fixtures.tar
           key: remote-e2e-fixtures-${{ runner.os }}-${{ hashFiles('tests/remote-e2e/compose.yaml', 'tests/remote-e2e/.dockerignore', 'tests/remote-e2e/docker/**', 'tests/remote-e2e/scenarios/**', 'tests/remote-e2e/fixtures/identity.ts', 'tests/remote-e2e/fixtures/port-cli.sh') }}
+      - id: handler-cache
+        name: Restore remote E2E handler image
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/remote-e2e-handler.tar
+          key: remote-e2e-handler-${{ runner.os }}-${{ hashFiles('package.json', 'packages/404-app/**') }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.3
@@ -74,6 +80,8 @@ jobs:
           REMOTE_E2E_FIXTURE_CACHE: /tmp/remote-e2e-fixtures.tar
           REMOTE_E2E_FIXTURE_IMAGE_TAG: ${{ hashFiles('tests/remote-e2e/compose.yaml', 'tests/remote-e2e/.dockerignore', 'tests/remote-e2e/docker/**', 'tests/remote-e2e/scenarios/**', 'tests/remote-e2e/fixtures/identity.ts', 'tests/remote-e2e/fixtures/port-cli.sh') }}
           REMOTE_E2E_WRITE_FIXTURE_CACHE: ${{ matrix.index == 1 && steps.fixture-cache.outputs.cache-hit != 'true' && '1' || '0' }}
+          REMOTE_E2E_HANDLER_CACHE: /tmp/remote-e2e-handler.tar
+          REMOTE_E2E_WRITE_HANDLER_CACHE: ${{ matrix.index == 1 && steps.handler-cache.outputs.cache-hit != 'true' && '1' || '0' }}
         run: bash tests/remote-e2e/run.sh
       - name: Save remote E2E fixture images
         if: matrix.index == 1 && steps.fixture-cache.outputs.cache-hit != 'true'
@@ -81,6 +89,12 @@ jobs:
         with:
           path: /tmp/remote-e2e-fixtures.tar
           key: remote-e2e-fixtures-${{ runner.os }}-${{ hashFiles('tests/remote-e2e/compose.yaml', 'tests/remote-e2e/.dockerignore', 'tests/remote-e2e/docker/**', 'tests/remote-e2e/scenarios/**', 'tests/remote-e2e/fixtures/identity.ts', 'tests/remote-e2e/fixtures/port-cli.sh') }}
+      - name: Save remote E2E handler image
+        if: matrix.index == 1 && steps.handler-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/remote-e2e-handler.tar
+          key: remote-e2e-handler-${{ runner.os }}-${{ hashFiles('package.json', 'packages/404-app/**') }}
       - name: Summarize shard timing
         if: always()
         run: |
