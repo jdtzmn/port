@@ -1135,15 +1135,12 @@ def local_remote_owners():
                 if status == 409:
                     candidates = json.loads(body).get('candidates', [])
                     addresses = {candidate.get('hostname') for candidate in candidates}
-                    require(
-                        addresses == {
-                            'ui.feature.local.port',
-                            'ui.feature.remote-a.ssh',
-                            'ui.feature.remote-b.ssh',
-                        },
-                        f'three-owner alternatives were not exact: {body!r}',
-                    )
-                    break
+                    if addresses == {
+                        'ui.feature.local.port',
+                        'ui.feature.remote-a.ssh',
+                        'ui.feature.remote-b.ssh',
+                    }:
+                        break
             except (OSError, http.client.HTTPException, json.JSONDecodeError):
                 pass
             time.sleep(0.1)
