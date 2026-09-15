@@ -1115,10 +1115,8 @@ def local_remote_owners():
         shell_b.send('ssh remote-b\n')
         shell_b.marker('test -t 0 && test "$(id -un)" = fixture')
         shell_b.wait_for(lambda: len(session_directories() - before_b) == 1)
-        shell_b.marker(
-            '/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-start remote-b',
-            timeout=90,
-        )
+        # The abrupt-disconnect scenario intentionally left remote-B's workload running;
+        # reconnecting must rediscover it without restarting or retargeting the service.
 
         def request(host):
             connection = http.client.HTTPConnection(host, 80, timeout=3)
