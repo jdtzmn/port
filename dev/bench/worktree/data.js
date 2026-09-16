@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789246133010,
+  "lastUpdate": 1789585552095,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port worktree operations": [
@@ -52,6 +52,58 @@ window.BENCHMARK_DATA = {
             "range": "10.525000000000034",
             "unit": "ms",
             "extra": "p95: 342.523 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "110ab49716d31c5f6829dd82190866d9e6d93686",
+          "message": "Reduce remote SSH E2E runtime (#158)\n\n* Record remote E2E timing baseline\n\n* Parallelize remote E2E provisioning\n\n* Stream fixture images into remote daemons\n\n* Shard remote E2E scenarios with Vitest\n\n* Preserve remote E2E fixture ordering\n\n* Reuse published 404 handler in remote E2E\n\n* Cache remote E2E fixture images\n\n* Fall back when handler image is unavailable\n\n* Cache remote E2E handler image\n\n* Shard local and remote owner coverage\n\n* Keep dependent owner scenarios together\n\n* Isolate three-owner scenario setup\n\n* Decouple scenarios from fixture image cache\n\n* Use HTTP-only three-owner fixtures\n\n* Load fixture images from shared bundles\n\n* Revert \"Load fixture images from shared bundles\"\n\nThis reverts commit 9d1846849d7508891d1fb55ccff8f9b304ac4250.",
+          "timestamp": "2026-09-16T15:02:20-04:00",
+          "tree_id": "4323d14680553e6c701ef176f7f501b6c211d6cf",
+          "url": "https://github.com/jdtzmn/port/commit/110ab49716d31c5f6829dd82190866d9e6d93686"
+        },
+        "date": 1789585552067,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Worktree operations / enter existing (small)",
+            "value": 266.001,
+            "range": "20.822000000000003",
+            "unit": "ms",
+            "extra": "p95: 286.823 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter existing (large)",
+            "value": 265.158,
+            "range": "9.58499999999998",
+            "unit": "ms",
+            "extra": "p95: 274.743 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (small)",
+            "value": 378.466,
+            "range": "17.331999999999994",
+            "unit": "ms",
+            "extra": "p95: 395.798 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (large)",
+            "value": 395.47,
+            "range": "21.970999999999947",
+            "unit": "ms",
+            "extra": "p95: 417.441 ms\nsamples: 20"
           }
         ]
       }
