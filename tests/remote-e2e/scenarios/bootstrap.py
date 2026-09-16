@@ -1230,6 +1230,12 @@ def local_remote_owners_only():
     local_remote_owners()
 
 
+def owner_matrix_only():
+    configure_ssh()
+    concurrent_owners()
+    local_remote_owners()
+
+
 def main(include_product_scenarios=True):
     # Install the fixture's normal SSH config, not command-specific test options.
     configure_ssh()
@@ -1345,6 +1351,8 @@ if __name__ == '__main__':
         concurrent_owners_only()
     elif sys.argv[1:] == ['--local-remote-owners']:
         local_remote_owners_only()
+    elif sys.argv[1:] == ['--owner-matrix']:
+        owner_matrix_only()
     elif len(sys.argv) == 1:
         main()
     else:

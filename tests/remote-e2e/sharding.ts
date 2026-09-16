@@ -10,8 +10,7 @@ export interface RemoteE2EShardBudget {
 }
 
 export const REMOTE_E2E_SUITES = [
-  { file: 'owners.remote-e2e.test.ts', estimatedDurationMs: 60_000 },
-  { file: 'local-remote-owners.remote-e2e.test.ts', estimatedDurationMs: 45_000 },
+  { file: 'owners.remote-e2e.test.ts', estimatedDurationMs: 95_000 },
   { file: 'automatic-a.remote-e2e.test.ts', estimatedDurationMs: 35_000 },
   { file: 'automatic-b.remote-e2e.test.ts', estimatedDurationMs: 35_000 },
   { file: 'foundation.remote-e2e.test.ts', estimatedDurationMs: 15_000 },
@@ -31,7 +30,6 @@ const REMOTE_E2E_EXECUTION_ORDER = new Map<string, number>([
   ['automatic-a.remote-e2e.test.ts', 2],
   ['automatic-b.remote-e2e.test.ts', 2],
   ['owners.remote-e2e.test.ts', 3],
-  ['local-remote-owners.remote-e2e.test.ts', 3],
   ['missing-port.remote-e2e.test.ts', 4],
 ])
 
