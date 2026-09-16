@@ -1225,14 +1225,34 @@ def concurrent_owners_only():
     concurrent_owners()
 
 
+def prepare_disconnected_remote_owner(machine):
+    before = session_directories()
+    shell = LocalShell()
+    try:
+        shell.marker(
+            'SHELL=/bin/bash command port install --remote-services --shell-hook-only --yes '
+            '>/tmp/remote-install.log && eval "$(command port shell-hook bash)"',
+            timeout=60,
+        )
+        shell.send(f'ssh {machine}\n')
+        shell.marker('test -t 0 && test "$(id -un)" = fixture')
+        shell.wait_for(lambda: len(session_directories() - before) == 1)
+        directory = private_session(before)
+        shell.marker(
+            f'/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-start {machine}',
+            timeout=90,
+        )
+        shell.send('exit 19\n')
+        shell.wait_for(lambda: not directory.exists())
+        shell.marker('test "$?" -eq 19')
+        require(session_directories() == before, 'disconnected owner setup leaked session state')
+    finally:
+        shell.close()
+
+
 def local_remote_owners_only():
     configure_ssh()
-    local_remote_owners()
-
-
-def owner_matrix_only():
-    configure_ssh()
-    concurrent_owners()
+    prepare_disconnected_remote_owner('remote-b')
     local_remote_owners()
 
 
@@ -1351,8 +1371,6 @@ if __name__ == '__main__':
         concurrent_owners_only()
     elif sys.argv[1:] == ['--local-remote-owners']:
         local_remote_owners_only()
-    elif sys.argv[1:] == ['--owner-matrix']:
-        owner_matrix_only()
     elif len(sys.argv) == 1:
         main()
     else:
