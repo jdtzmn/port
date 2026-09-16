@@ -125,19 +125,29 @@ step 120 proxy-probe-build bun build "$here/fixtures/proxy-probe.ts" --outdir "$
 cp "$root/package.json" "$image_dir/app/package.json"
 chmod -R a+rX "$image_dir/app"
 
-step 210 readiness "${compose[@]}" up -d --wait --wait-timeout 150
+# Save each exact image bundle once while the outer fixture becomes healthy.
+pids=()
+step 120 fixture-images-save-client docker image save --output "$image_dir/client-images.tar" \
+  busybox:1.37.0 oven/bun:1.3.3 traefik:v3.6 "$handler_image" & pids+=("$!")
+step 120 fixture-images-save-remote docker image save --output "$image_dir/remote-images.tar" \
+  busybox:1.37.0 postgres:17.4-bookworm oven/bun:1.3.3 traefik:v3.6 "$handler_image" & pids+=("$!")
+step 210 readiness "${compose[@]}" up -d --wait --wait-timeout 150 & pids+=("$!")
+wait_jobs "${pids[@]}"
 
-# Copy artifacts and stream exact image manifests into independent DinD daemons concurrently.
+# Copy artifacts and load each bundle into the independent DinD daemons concurrently.
 pids=()
 for machine in client remote-a remote-b; do
   step 30 "port-copy-$machine" "${compose[@]}" cp "$image_dir/app/." "$machine:/opt/port/" & pids+=("$!")
 done
 step 30 scenario-copy-client "${compose[@]}" cp "$here/scenarios/." client:/fixture/ & pids+=("$!")
-step 180 fixture-images-docker "$here/seed-images.sh" "$project" "$here" docker \
-  busybox:1.37.0 oven/bun:1.3.3 traefik:v3.6 "$handler_image" & pids+=("$!")
-for daemon in docker-a docker-b; do
-  step 180 "fixture-images-$daemon" "$here/seed-images.sh" "$project" "$here" "$daemon" \
-    busybox:1.37.0 postgres:17.4-bookworm oven/bun:1.3.3 traefik:v3.6 "$handler_image" & pids+=("$!")
+for specification in docker:client docker-a:remote docker-b:remote; do
+  daemon=${specification%%:*}
+  bundle=${specification#*:}
+  (
+    step 60 "fixture-images-copy-$daemon" "${compose[@]}" cp "$image_dir/$bundle-images.tar" "$daemon:/fixture-images.tar"
+    step 180 "fixture-images-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /fixture-images.tar
+    step 10 "fixture-images-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /fixture-images.tar
+  ) & pids+=("$!")
 done
 wait_jobs "${pids[@]}"
 if [[ "$mode" == all ]]; then
