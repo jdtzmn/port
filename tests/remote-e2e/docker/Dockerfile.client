@@ -12,5 +12,5 @@ COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-compose /usr
 COPY --from=bun-runtime /usr/local/bin/bun /usr/local/bin/bun
 COPY fixtures/port-cli.sh /usr/local/bin/port
 RUN chmod 755 /usr/local/bin/port && mkdir -p /opt/port
-COPY docker/client.sh docker/ssh_config fixtures/identity.ts scenarios/ /fixture/
+COPY docker/client.sh docker/ssh_config fixtures/identity.ts /fixture/
 ENTRYPOINT ["bash", "/fixture/client.sh"]

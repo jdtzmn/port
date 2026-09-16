@@ -1108,7 +1108,8 @@ def local_remote_owners():
         shell_a.marker('test -t 0 && test "$(id -un)" = fixture')
         shell_a.wait_for(lambda: len(session_directories() - before) == 1)
         shell_a.marker(
-            '/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-start remote-a',
+            '/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js '
+            'product-start remote-a feature ui-only',
             timeout=90,
         )
         before_b = session_directories()
@@ -1150,7 +1151,7 @@ def local_remote_owners():
             ('ui.feature.remote-b.ssh', 'remote-b'),
         ):
             stats = wait_for_fixture_stats(host, owner, 'feature')
-            require(stats.get('profile') == ('ui-only' if owner == 'local' else 'full'),
+            require(stats.get('profile') == 'ui-only',
                     f'qualified three-owner route reached the wrong profile: {host}')
         print('PASS local plus two remote owners: exact three-way conflict alternatives and qualified routes',
               flush=True)
@@ -1204,10 +1205,62 @@ def local_product_only():
         fixture_command('product-stop', 'local')
 
 
-def main():
-    # Install the fixture's normal SSH config, not command-specific test options.
+def configure_ssh():
     shutil.copyfile('/fixture/ssh_config', '/root/.ssh/config')
     os.chmod('/root/.ssh/config', 0o600)
+
+
+def automatic_runtime_only(machine):
+    configure_ssh()
+    shell = LocalShell()
+    try:
+        automatic_runtime(shell, machine)
+    finally:
+        shell.close()
+        print(f'--- {machine} automatic runtime PTY (last 16 KiB) ---', flush=True)
+        print(shell.output.decode(errors='replace'), flush=True)
+
+
+def concurrent_owners_only():
+    configure_ssh()
+    concurrent_owners()
+
+
+def prepare_disconnected_remote_owner(machine):
+    before = session_directories()
+    shell = LocalShell()
+    try:
+        shell.marker(
+            'SHELL=/bin/bash command port install --remote-services --shell-hook-only --yes '
+            '>/tmp/remote-install.log && eval "$(command port shell-hook bash)"',
+            timeout=60,
+        )
+        shell.send(f'ssh {machine}\n')
+        shell.marker('test -t 0 && test "$(id -un)" = fixture')
+        shell.wait_for(lambda: len(session_directories() - before) == 1)
+        directory = private_session(before)
+        shell.marker(
+            f'/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js '
+            f'product-start {machine} feature ui-only',
+            timeout=90,
+        )
+        shell.send('exit 19\n')
+        shell.wait_for(lambda: not directory.exists())
+        shell.marker('test "$?" -eq 19')
+        require(session_directories() == before, 'disconnected owner setup leaked session state')
+    finally:
+        shell.close()
+
+
+def local_remote_owners_only():
+    configure_ssh()
+    prepare_disconnected_remote_owner('remote-b')
+    local_remote_owners()
+
+
+def main(include_product_scenarios=True):
+    # Install the fixture's normal SSH config, not command-specific test options.
+    configure_ssh()
     before = set(Path('/tmp').glob('port-ssh-*'))
     shell = LocalShell()
     try:
@@ -1243,10 +1296,11 @@ def main():
         shell.wait_for(lambda: observer_finished(directory))
         require(session_directories() == before, 'live-discovery login leaked local session state')
         print('PASS product shell preserves status 7 and removes session state', flush=True)
-        automatic_runtime(shell, 'remote-a')
-        automatic_runtime(shell, 'remote-b')
-        concurrent_owners()
-        local_remote_owners()
+        if include_product_scenarios:
+            automatic_runtime(shell, 'remote-a')
+            automatic_runtime(shell, 'remote-b')
+            concurrent_owners()
+            local_remote_owners()
 
         shell.send('ssh -J remote-b remote-a\n')
         shell.marker('test -t 0 && test "$(id -un)" = fixture')
@@ -1309,6 +1363,16 @@ if __name__ == '__main__':
         product_only()
     elif sys.argv[1:] == ['--local-product-only']:
         local_product_only()
+    elif sys.argv[1:] == ['--foundation-only']:
+        main(include_product_scenarios=False)
+    elif sys.argv[1:] == ['--automatic-runtime', 'remote-a']:
+        automatic_runtime_only('remote-a')
+    elif sys.argv[1:] == ['--automatic-runtime', 'remote-b']:
+        automatic_runtime_only('remote-b')
+    elif sys.argv[1:] == ['--concurrent-owners']:
+        concurrent_owners_only()
+    elif sys.argv[1:] == ['--local-remote-owners']:
+        local_remote_owners_only()
     elif len(sys.argv) == 1:
         main()
     else:
