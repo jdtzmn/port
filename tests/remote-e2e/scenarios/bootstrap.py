@@ -1108,7 +1108,8 @@ def local_remote_owners():
         shell_a.marker('test -t 0 && test "$(id -un)" = fixture')
         shell_a.wait_for(lambda: len(session_directories() - before) == 1)
         shell_a.marker(
-            '/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-start remote-a',
+            '/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js '
+            'product-start remote-a feature ui-only',
             timeout=90,
         )
         before_b = session_directories()
@@ -1150,7 +1151,7 @@ def local_remote_owners():
             ('ui.feature.remote-b.ssh', 'remote-b'),
         ):
             stats = wait_for_fixture_stats(host, owner, 'feature')
-            require(stats.get('profile') == ('ui-only' if owner == 'local' else 'full'),
+            require(stats.get('profile') == 'ui-only',
                     f'qualified three-owner route reached the wrong profile: {host}')
         print('PASS local plus two remote owners: exact three-way conflict alternatives and qualified routes',
               flush=True)
@@ -1239,7 +1240,8 @@ def prepare_disconnected_remote_owner(machine):
         shell.wait_for(lambda: len(session_directories() - before) == 1)
         directory = private_session(before)
         shell.marker(
-            f'/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-start {machine}',
+            f'/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js '
+            f'product-start {machine} feature ui-only',
             timeout=90,
         )
         shell.send('exit 19\n')
