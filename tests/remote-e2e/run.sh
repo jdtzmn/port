@@ -2,6 +2,11 @@
 # Deliberately standalone: no Port bootstrap, npm dependencies or runner DNS edits.
 set -euo pipefail
 umask 077
+mode=${1:-all}
+if [[ "$mode" != all && "$mode" != product && "$mode" != local-product ]]; then
+  printf 'usage: %s [all|product|local-product]\n' "$0" >&2
+  exit 2
+fi
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 root=$(git -C "$here" rev-parse --show-toplevel)
 command -v python3 >/dev/null
@@ -97,12 +102,18 @@ for daemon in docker docker-a docker-b; do
   step 60 "handler-load-$daemon" "${compose[@]}" exec -T "$daemon" docker image load --input /handler.tar
   step 10 "handler-remove-$daemon" "${compose[@]}" exec -T "$daemon" rm -f /handler.tar
 done
-step 150 proof "${compose[@]}" exec -T client python3 /fixture/harness.py
-step 90 multiplexing "${compose[@]}" exec -T client python3 /fixture/mux.py
-step 90 baseline "${compose[@]}" exec -T client python3 /fixture/baseline.py
-step 600 bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py
+if [[ "$mode" == all ]]; then
+  step 150 proof "${compose[@]}" exec -T client python3 /fixture/harness.py
+  step 90 multiplexing "${compose[@]}" exec -T client python3 /fixture/mux.py
+  step 90 baseline "${compose[@]}" exec -T client python3 /fixture/baseline.py
+  step 600 bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py
 
-# Preserve ordinary login fallback after both Port-enabled remote product scenarios.
-step 10 missing-port "${compose[@]}" exec -T remote-b mv /usr/local/bin/port /usr/local/bin/port-unavailable
-step 90 missing-port-bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py --missing-port-only
+  # Preserve ordinary login fallback after both Port-enabled remote product scenarios.
+  step 10 missing-port "${compose[@]}" exec -T remote-b mv /usr/local/bin/port /usr/local/bin/port-unavailable
+  step 90 missing-port-bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py --missing-port-only
+elif [[ "$mode" == product ]]; then
+  step 240 product-bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py --product-only
+else
+  step 120 local-product-bootstrap "${compose[@]}" exec -T client python3 /fixture/bootstrap.py --local-product-only
+fi
 printf 'remote-e2e: transport, SSH compatibility, failure-path components, and automatic port up HTTP/TLS-SNI routing passed\n'
