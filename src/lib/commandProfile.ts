@@ -45,17 +45,20 @@ export class CommandProfileRecorder {
 }
 
 let activeRecorder: CommandProfileRecorder | undefined
+let activeWrite: ((line: string) => void) | undefined
 
 export function isCommandProfilingEnabled(): boolean {
   return process.env.PORT_PROFILE === '1'
 }
 
-export function startCommandProfile(args: readonly string[]): void {
+export function startCommandProfile(args: readonly string[], write?: (line: string) => void): void {
   if (!isCommandProfilingEnabled() || activeRecorder) {
     return
   }
 
-  activeRecorder = new CommandProfileRecorder(args.join(' ') || '(interactive)')
+  activeRecorder = new CommandProfileRecorder(args[0] ?? '(interactive)')
+  activeWrite = write
+  process.once('exit', () => finishCommandProfile())
 }
 
 export async function measureCommandPhase<T>(
@@ -69,16 +72,16 @@ export async function measureCommandPhase<T>(
   return activeRecorder.measure(name, operation)
 }
 
-export function finishCommandProfile(
-  write: (line: string) => void = line => process.stderr.write(line)
-): void {
+export function finishCommandProfile(write?: (line: string) => void): void {
   if (!activeRecorder) {
     return
   }
 
+  const output = write ?? activeWrite ?? (line => process.stderr.write(line))
   const profile = activeRecorder.finish()
   activeRecorder = undefined
-  write(`[port-profile] ${JSON.stringify(profile)}\n`)
+  activeWrite = undefined
+  output(`[port-profile] ${JSON.stringify(profile)}\n`)
 }
 
 export async function profileCommand<T>(
@@ -86,7 +89,7 @@ export async function profileCommand<T>(
   operation: () => Promise<T>,
   write?: (line: string) => void
 ): Promise<T> {
-  startCommandProfile(args)
+  startCommandProfile(args, write)
   try {
     return await operation()
   } finally {

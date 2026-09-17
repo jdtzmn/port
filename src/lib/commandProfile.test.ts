@@ -61,6 +61,24 @@ describe('command profile lifecycle', () => {
       spans: [{ name: 'status.worktrees', durationMs: expect.any(Number) }],
     })
   })
+  test('records only the command name, not its arguments', async () => {
+    vi.stubEnv('PORT_PROFILE', '1')
+    const lines: string[] = []
+
+    await profileCommand(
+      ['run', '3000', '--token', 'topsecret'],
+      async () => undefined,
+      line => lines.push(line)
+    )
+
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).not.toContain('topsecret')
+    expect(lines[0]).not.toContain('--token')
+    expect(JSON.parse(lines[0]!.replace(/^\[port-profile\] /, ''))).toMatchObject({
+      command: 'run',
+    })
+  })
+
   test('finishes the profile when the command fails', async () => {
     vi.stubEnv('PORT_PROFILE', '1')
     const lines: string[] = []
