@@ -38,6 +38,12 @@ describe('getRunningComposeServiceInventory', () => {
         'ps',
         '--filter',
         'label=com.docker.compose.project',
+        '--filter',
+        'label=com.docker.compose.service',
+        '--filter',
+        'label=com.docker.compose.oneoff=False',
+        '--filter',
+        'status=running',
         '--format',
         expect.stringContaining('com.docker.compose.service'),
       ],
@@ -45,16 +51,14 @@ describe('getRunningComposeServiceInventory', () => {
     )
   })
 
-  test('ignores malformed and incomplete container rows', async () => {
-    mocks.execFileAsync.mockResolvedValue({
-      stdout:
-        'not json\n' + '{"project":"app-main"}\n' + '{"project":"app-main","service":"api"}\n',
-    })
+  test.each(['not json\n', '{"project":"app-main"}\n'])(
+    'returns null for malformed inventory output: %s',
+    async stdout => {
+      mocks.execFileAsync.mockResolvedValue({ stdout })
 
-    await expect(getRunningComposeServiceInventory()).resolves.toEqual(
-      new Map([['app-main', new Set(['api'])]])
-    )
-  })
+      await expect(getRunningComposeServiceInventory()).resolves.toBeNull()
+    }
+  )
 
   test('returns null when Docker is unavailable', async () => {
     mocks.execFileAsync.mockRejectedValue(new Error('docker unavailable'))
