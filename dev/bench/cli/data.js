@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789607603087,
+  "lastUpdate": 1789611383796,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -270,6 +270,51 @@ window.BENCHMARK_DATA = {
             "range": "6.43",
             "unit": "ms",
             "extra": "p95: 34.598 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "811623eead5ba51a18c8fa535bf8649e02c72e5e",
+          "message": "Profile command execution phases (#166)\n\n* Add opt-in command profiling\n\n* Profile command execution phases\n\n* Harden command profile output\n\n* Test profiling on direct command exits",
+          "timestamp": "2026-09-16T22:13:33-04:00",
+          "tree_id": "abf477a9cece2ea16921902cfb36fef66b2c5419",
+          "url": "https://github.com/jdtzmn/port/commit/811623eead5ba51a18c8fa535bf8649e02c72e5e"
+        },
+        "date": 1789611383012,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 49.525,
+            "range": "8.493000000000002",
+            "unit": "ms",
+            "extra": "p95: 58.018 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 34.024,
+            "range": "7.792999999999999",
+            "unit": "ms",
+            "extra": "p95: 41.817 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 36.778,
+            "range": "7.303000000000004",
+            "unit": "ms",
+            "extra": "p95: 44.081 ms\nsamples: 20"
           }
         ]
       }
