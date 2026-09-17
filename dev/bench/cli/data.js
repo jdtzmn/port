@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789614530089,
+  "lastUpdate": 1789615193956,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -360,6 +360,51 @@ window.BENCHMARK_DATA = {
             "range": "4.055",
             "unit": "ms",
             "extra": "p95: 46.265 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e74ba26ad39d9f9fe16c48c21f5b3aa72ca01a9d",
+          "message": "Move remote SSH observation into the coordinator (#165)\n\n* Add coordinator observation task manager\n\n* Run remote observation in coordinator\n\n* Hand off SSH observation lifecycle\n\n* Harden coordinator observation handoff\n\n* Keep explicit SSH observation ephemeral",
+          "timestamp": "2026-09-16T23:16:36-04:00",
+          "tree_id": "fc59be7a1ef57ceafc0424e9c3fcc451a3eb4a00",
+          "url": "https://github.com/jdtzmn/port/commit/e74ba26ad39d9f9fe16c48c21f5b3aa72ca01a9d"
+        },
+        "date": 1789615192976,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 51.265,
+            "range": "6.012999999999998",
+            "unit": "ms",
+            "extra": "p95: 57.278 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 36.116,
+            "range": "6.301000000000002",
+            "unit": "ms",
+            "extra": "p95: 42.417 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 37.627,
+            "range": "7.525999999999996",
+            "unit": "ms",
+            "extra": "p95: 45.153 ms\nsamples: 20"
           }
         ]
       }
