@@ -1,7 +1,18 @@
 {
   "name": "@jdtzmn/port",
   "version": "0.5.1",
-  "description": "CLI tool for managing git worktrees with automatic Traefik configuration",
+  "description": "Port CLI runs Docker Compose services in parallel Git worktrees—no port conflicts, with Traefik-routed local branch domains.",
+  "keywords": [
+    "git-worktree",
+    "docker-compose",
+    "traefik",
+    "port-conflict",
+    "parallel-agents",
+    "reverse-proxy",
+    "localhost",
+    "local-development",
+    "developer-tools"
+  ],
   "author": "Jacob Daitzman <jdtzmn@gmail.com>",
   "repository": {
     "type": "git",
