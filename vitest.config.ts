@@ -7,7 +7,12 @@ export default defineConfig({
     environment: 'node',
     globalSetup: ['./tests/globalSetup.ts'],
     setupFiles: ['./tests/setup.ts'],
-    exclude: ['**/node_modules/**', '**/.port/**', '**/src/tui/__tests__/**'],
+    exclude: [
+      '**/node_modules/**',
+      '**/.port/**',
+      '**/src/tui/__tests__/**',
+      '**/*.remote-e2e.test.ts',
+    ],
     maxWorkers: 1,
   },
   resolve: {

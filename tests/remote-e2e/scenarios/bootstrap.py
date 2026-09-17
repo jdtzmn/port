@@ -124,16 +124,34 @@ class LocalShell:
 
     def marker(self, command, check=None, timeout=20):
         marker = "BOOTSTRAP_" + uuid.uuid4().hex
+        marker_prefix = marker.encode() + b":"
+        output_start = len(self.output)
         # Split the token so even a wrapped/echoed command cannot match it.
-        self.send(command + " && printf '\\n%s%s\\n' '" + marker[:16] + "' '" + marker[16:] + "'\n")
+        self.send(
+            command
+            + "; __port_status=$?; printf '\\n%s%s:%s\\n' '"
+            + marker[:16]
+            + "' '"
+            + marker[16:]
+            + "' \"$__port_status\"\n"
+        )
 
         def completed():
             if check is not None:
                 check()
-            return marker.encode() in self.output.replace(b"\r", b"").split(b"\n")
+            for line in self.output.replace(b"\r", b"").split(b"\n"):
+                if not line.startswith(marker_prefix):
+                    continue
+                status = int(line.removeprefix(marker_prefix))
+                if status != 0:
+                    output = self.output[output_start:].decode(errors="replace")[-2048:]
+                    raise RuntimeError(
+                        f"plain-SSH command failed: exit={status}; output={output!r}"
+                    )
+                return True
+            return False
 
         self.wait_for(completed, timeout=timeout)
-
     def wait_for(self, predicate, timeout=20):
         end = time.monotonic() + timeout
         while time.monotonic() < end:
@@ -720,6 +738,20 @@ def port_command(*args, cwd=None, timeout=15):
     )
     return output
 
+def fixture_command(*args, timeout=90):
+    result = subprocess.run(
+        ['/usr/local/bin/bun', '/opt/port/fixtures/snapshot-workload.js', *args],
+        env={'PATH': os.environ['PATH'], 'HOME': '/root', 'LC_ALL': 'C'},
+        text=True,
+        capture_output=True,
+        timeout=timeout,
+    )
+    require(
+        result.returncode == 0,
+        f'fixture command failed: exit={result.returncode}; output={(result.stdout + result.stderr)[-2048:]!r}',
+    )
+    return result.stdout
+
 def automatic_runtime(shell, machine):
     before = session_directories()
     shell.marker(
@@ -1059,6 +1091,81 @@ def concurrent_owners():
         shell_b.close()
 
 
+
+def local_remote_owners():
+    fixture_command('product-start', 'local', 'feature', 'ui-only')
+    before = session_directories()
+    shell_a = LocalShell()
+    shell_b = LocalShell()
+    try:
+        shell_a.marker(
+            'SHELL=/bin/bash command port install --remote-services --shell-hook-only --yes '
+            '>/tmp/remote-install.log && eval "$(command port shell-hook bash)"',
+            timeout=60,
+        )
+        shell_b.marker('eval "$(port shell-hook bash --remote-services)"')
+        shell_a.send('ssh remote-a\n')
+        shell_a.marker('test -t 0 && test "$(id -un)" = fixture')
+        shell_a.wait_for(lambda: len(session_directories() - before) == 1)
+        shell_a.marker(
+            '/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js '
+            'product-start remote-a feature ui-only',
+            timeout=90,
+        )
+        before_b = session_directories()
+        shell_b.send('ssh remote-b\n')
+        shell_b.marker('test -t 0 && test "$(id -un)" = fixture')
+        shell_b.wait_for(lambda: len(session_directories() - before_b) == 1)
+        # The abrupt-disconnect scenario intentionally left remote-B's workload running;
+        # reconnecting must rediscover it without restarting or retargeting the service.
+
+        def request(host):
+            connection = http.client.HTTPConnection(host, 80, timeout=3)
+            try:
+                connection.request('GET', '/')
+                response = connection.getresponse()
+                return response.status, response.read(2048)
+            finally:
+                connection.close()
+
+        end = time.monotonic() + 45
+        while True:
+            require(time.monotonic() < end, 'three-owner conflict publication timed out')
+            try:
+                status, body = request('ui.feature.port')
+                if status == 409:
+                    candidates = json.loads(body).get('candidates', [])
+                    addresses = {candidate.get('hostname') for candidate in candidates}
+                    if addresses == {
+                        'ui.feature.local.port',
+                        'ui.feature.remote-a.ssh',
+                        'ui.feature.remote-b.ssh',
+                    }:
+                        break
+            except (OSError, http.client.HTTPException, json.JSONDecodeError):
+                pass
+            time.sleep(0.1)
+        for host, owner in (
+            ('ui.feature.local.port', 'local'),
+            ('ui.feature.remote-a.ssh', 'remote-a'),
+            ('ui.feature.remote-b.ssh', 'remote-b'),
+        ):
+            stats = wait_for_fixture_stats(host, owner, 'feature')
+            require(stats.get('profile') == 'ui-only',
+                    f'qualified three-owner route reached the wrong profile: {host}')
+        print('PASS local plus two remote owners: exact three-way conflict alternatives and qualified routes',
+              flush=True)
+    finally:
+        for shell in (shell_a, shell_b):
+            try:
+                shell.marker('/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js product-stop',
+                             timeout=90)
+            except (OSError, RuntimeError, TimeoutError):
+                pass
+            shell.close()
+        fixture_command('product-stop', 'local', 'feature')
+        require(session_directories() == before, 'local/remote conflict test leaked session state')
+
 def missing_port_only():
     before = session_directories()
     shell = LocalShell()
@@ -1078,11 +1185,82 @@ def missing_port_only():
     finally:
         shell.close()
 
-
-def main():
-    # Install the fixture's normal SSH config, not command-specific test options.
+def product_only():
     shutil.copyfile('/fixture/ssh_config', '/root/.ssh/config')
     os.chmod('/root/.ssh/config', 0o600)
+    shell = LocalShell()
+    try:
+        automatic_runtime(shell, 'remote-a')
+    finally:
+        shell.close()
+        print('--- product-only PTY (last 16 KiB) ---', flush=True)
+        print(shell.output.decode(errors='replace'), flush=True)
+
+
+
+def local_product_only():
+    try:
+        fixture_command('product-start', 'local', 'feature', 'ui-only')
+    finally:
+        fixture_command('product-stop', 'local')
+
+
+def configure_ssh():
+    shutil.copyfile('/fixture/ssh_config', '/root/.ssh/config')
+    os.chmod('/root/.ssh/config', 0o600)
+
+
+def automatic_runtime_only(machine):
+    configure_ssh()
+    shell = LocalShell()
+    try:
+        automatic_runtime(shell, machine)
+    finally:
+        shell.close()
+        print(f'--- {machine} automatic runtime PTY (last 16 KiB) ---', flush=True)
+        print(shell.output.decode(errors='replace'), flush=True)
+
+
+def concurrent_owners_only():
+    configure_ssh()
+    concurrent_owners()
+
+
+def prepare_disconnected_remote_owner(machine):
+    before = session_directories()
+    shell = LocalShell()
+    try:
+        shell.marker(
+            'SHELL=/bin/bash command port install --remote-services --shell-hook-only --yes '
+            '>/tmp/remote-install.log && eval "$(command port shell-hook bash)"',
+            timeout=60,
+        )
+        shell.send(f'ssh {machine}\n')
+        shell.marker('test -t 0 && test "$(id -un)" = fixture')
+        shell.wait_for(lambda: len(session_directories() - before) == 1)
+        directory = private_session(before)
+        shell.marker(
+            f'/usr/local/bin/bun /opt/port/fixtures/snapshot-workload.js '
+            f'product-start {machine} feature ui-only',
+            timeout=90,
+        )
+        shell.send('exit 19\n')
+        shell.wait_for(lambda: not directory.exists())
+        shell.marker('test "$?" -eq 19')
+        require(session_directories() == before, 'disconnected owner setup leaked session state')
+    finally:
+        shell.close()
+
+
+def local_remote_owners_only():
+    configure_ssh()
+    prepare_disconnected_remote_owner('remote-b')
+    local_remote_owners()
+
+
+def main(include_product_scenarios=True):
+    # Install the fixture's normal SSH config, not command-specific test options.
+    configure_ssh()
     before = set(Path('/tmp').glob('port-ssh-*'))
     shell = LocalShell()
     try:
@@ -1118,9 +1296,11 @@ def main():
         shell.wait_for(lambda: observer_finished(directory))
         require(session_directories() == before, 'live-discovery login leaked local session state')
         print('PASS product shell preserves status 7 and removes session state', flush=True)
-        automatic_runtime(shell, 'remote-a')
-        automatic_runtime(shell, 'remote-b')
-        concurrent_owners()
+        if include_product_scenarios:
+            automatic_runtime(shell, 'remote-a')
+            automatic_runtime(shell, 'remote-b')
+            concurrent_owners()
+            local_remote_owners()
 
         shell.send('ssh -J remote-b remote-a\n')
         shell.marker('test -t 0 && test "$(id -un)" = fixture')
@@ -1179,6 +1359,20 @@ def main():
 if __name__ == '__main__':
     if sys.argv[1:] == ['--missing-port-only']:
         missing_port_only()
+    elif sys.argv[1:] == ['--product-only']:
+        product_only()
+    elif sys.argv[1:] == ['--local-product-only']:
+        local_product_only()
+    elif sys.argv[1:] == ['--foundation-only']:
+        main(include_product_scenarios=False)
+    elif sys.argv[1:] == ['--automatic-runtime', 'remote-a']:
+        automatic_runtime_only('remote-a')
+    elif sys.argv[1:] == ['--automatic-runtime', 'remote-b']:
+        automatic_runtime_only('remote-b')
+    elif sys.argv[1:] == ['--concurrent-owners']:
+        concurrent_owners_only()
+    elif sys.argv[1:] == ['--local-remote-owners']:
+        local_remote_owners_only()
     elif len(sys.argv) == 1:
         main()
     else:

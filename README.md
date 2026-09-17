@@ -1,6 +1,6 @@
 # Port
 
-**Run 2+ Docker compose worktrees on the same service ports at the same time without conflicts.**
+**Port CLI runs Docker Compose services in parallel Git worktrees—no port conflicts, with Traefik-routed local branch domains.**
 
 <table>
   <tr>
@@ -21,6 +21,18 @@ port up
   </tr>
 </table>
 
+## The problem
+
+A Docker Compose stack that publishes a host port can work in one worktree but fail when a second worktree starts the same service:
+
+```text
+Error starting userland proxy: listen tcp4 0.0.0.0:3000: bind: address already in use
+```
+
+## How Port resolves it
+
+Port keeps each worktree's services on its own Compose project and removes conflicting host-port bindings. Traefik routes requests to the right worktree through a local branch domain, so both stacks can use the same service ports at once.
+
 ## Features
 
 - **Git Worktree Management**: Create and manage git worktrees with a single command
@@ -31,6 +43,17 @@ port up
 - **Service Discovery**: Easy access to services via hostnames instead of port numbers
 - **Service Name Aliases**: First published ports are also available at `service.<branch>.port`
 - **Lifecycle Hooks**: Run custom scripts after worktree creation and after `port up`
+
+## Alternatives
+
+Port is designed for Git worktrees that need both Docker Compose isolation and stable local branch domains. Other tools may be a better fit depending on the workflow:
+
+| Tool                                                                | Consider it when                                                                                                 | How it differs from Port                                                                                                                                                                                                    |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [tug](https://github.com/mickamy/tug)                               | You want Docker Compose auto-routing with `*.localhost` HTTP URLs and deterministic host ports for TCP services. | Both tools auto-route worktree services. tug uses `*.localhost` for HTTP and deterministic host ports for TCP; Port uses a configurable local TLD (default `.port`) alongside worktree management and host-process routing. |
+| [worktree-compose](https://github.com/mostafasudo/worktree-compose) | You want zero-config, per-worktree stacks with automatically assigned host ports and an MCP server.              | worktree-compose assigns distinct host ports; Port removes conflicting bindings and routes services through stable branch domains.                                                                                          |
+| [Sprout](https://github.com/AgenticSec/sprout)                      | You want worktree creation with `.env` template generation and automatic port values.                            | Sprout generates environment files before you start Compose; Port manages Compose routing and lifecycle commands after entering a worktree.                                                                                 |
+| [Portman](https://github.com/iannuttall/portman)                    | You need a macOS menu-bar app to inspect, diagnose, and stop existing local dev servers.                         | Portman observes and controls running ports; Port prevents Compose port conflicts by isolating worktree services.                                                                                                           |
 
 ## Installation
 
