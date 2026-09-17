@@ -6,31 +6,15 @@ const mocks = vi.hoisted(() => ({
   getTreesDir: vi.fn(),
   listWorktrees: vi.fn(),
   getStaleWorktreeCandidates: vi.fn(),
-  STALE_WORKTREE_WARNING_THRESHOLD: 10,
-  formatStaleWorktreeWarning: vi.fn(),
-  warn: vi.fn(),
 }))
 
-vi.mock('../lib/worktree.ts', () => ({
+vi.mock('../lib/listWorktrees.ts', () => ({
   detectWorktree: mocks.detectWorktree,
-}))
-
-vi.mock('../lib/config.ts', () => ({
   getTreesDir: mocks.getTreesDir,
-}))
-
-vi.mock('../lib/git.ts', () => ({
   listWorktrees: mocks.listWorktrees,
 }))
-
 vi.mock('../lib/staleWorktrees.ts', () => ({
   getStaleWorktreeCandidates: mocks.getStaleWorktreeCandidates,
-  STALE_WORKTREE_WARNING_THRESHOLD: mocks.STALE_WORKTREE_WARNING_THRESHOLD,
-  formatStaleWorktreeWarning: mocks.formatStaleWorktreeWarning,
-}))
-
-vi.mock('../lib/output.ts', () => ({
-  warn: mocks.warn,
 }))
 
 vi.mock('fs', async importOriginal => {
@@ -51,9 +35,6 @@ describe('list command', () => {
     mocks.getTreesDir.mockReturnValue('/repo/.port/trees')
     mocks.listWorktrees.mockResolvedValue([])
     mocks.getStaleWorktreeCandidates.mockResolvedValue([])
-    mocks.formatStaleWorktreeWarning.mockImplementation(
-      (count: number) => `You have ${count} stale port worktrees. Consider running port prune.`
-    )
   })
 
   test('prints worktree names one per line', async () => {
@@ -72,6 +53,16 @@ describe('list command', () => {
     expect(outputLines).toContain('feature-a')
     expect(outputLines).toContain('feature-b')
     expect(outputLines).not.toContain('.gitkeep')
+    logSpy.mockRestore()
+  })
+
+  test('does not scan stale worktrees', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    vi.mocked(existsSync).mockReturnValue(false)
+
+    await list()
+
+    expect(mocks.getStaleWorktreeCandidates).not.toHaveBeenCalled()
     logSpy.mockRestore()
   })
 
@@ -170,63 +161,6 @@ describe('list command', () => {
     expect(outputLines).toContain('jacob-test-sanitation')
     // Original name not available since git failed
     expect(outputLines).not.toContain('jacob/test/sanitation')
-    logSpy.mockRestore()
-  })
-
-  test('shows a stale worktree warning after listing names when the threshold is reached', async () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
-    vi.mocked(existsSync).mockReturnValue(false)
-    mocks.getStaleWorktreeCandidates.mockResolvedValue([
-      { branch: 'feature-a', sanitized: 'feature-a', reason: 'merged' },
-      { branch: 'feature-b', sanitized: 'feature-b', reason: 'gone' },
-      { branch: 'feature-c', sanitized: 'feature-c', reason: 'pr-merged' },
-      { branch: 'feature-d', sanitized: 'feature-d', reason: 'merged' },
-      { branch: 'feature-e', sanitized: 'feature-e', reason: 'gone' },
-      { branch: 'feature-f', sanitized: 'feature-f', reason: 'merged' },
-      { branch: 'feature-g', sanitized: 'feature-g', reason: 'merged' },
-      { branch: 'feature-h', sanitized: 'feature-h', reason: 'merged' },
-      { branch: 'feature-i', sanitized: 'feature-i', reason: 'merged' },
-      { branch: 'feature-j', sanitized: 'feature-j', reason: 'merged' },
-    ])
-
-    await list()
-
-    expect(mocks.warn).toHaveBeenCalledWith(
-      'You have 10 stale port worktrees. Consider running port prune.'
-    )
-    logSpy.mockRestore()
-  })
-
-  test('does not show a stale worktree warning below the threshold', async () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
-    vi.mocked(existsSync).mockReturnValue(false)
-    mocks.getStaleWorktreeCandidates.mockResolvedValue([
-      { branch: 'feature-a', sanitized: 'feature-a', reason: 'merged' },
-      { branch: 'feature-b', sanitized: 'feature-b', reason: 'gone' },
-      { branch: 'feature-c', sanitized: 'feature-c', reason: 'pr-merged' },
-      { branch: 'feature-d', sanitized: 'feature-d', reason: 'merged' },
-      { branch: 'feature-e', sanitized: 'feature-e', reason: 'gone' },
-      { branch: 'feature-f', sanitized: 'feature-f', reason: 'merged' },
-      { branch: 'feature-g', sanitized: 'feature-g', reason: 'merged' },
-      { branch: 'feature-h', sanitized: 'feature-h', reason: 'merged' },
-      { branch: 'feature-i', sanitized: 'feature-i', reason: 'merged' },
-    ])
-
-    await list()
-
-    expect(mocks.warn).not.toHaveBeenCalled()
-    logSpy.mockRestore()
-  })
-
-  test('continues listing names if stale worktree lookup fails', async () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
-    vi.mocked(existsSync).mockReturnValue(false)
-    mocks.getStaleWorktreeCandidates.mockRejectedValue(new Error('lookup failed'))
-
-    await list()
-
-    expect(logSpy.mock.calls.map(call => call[0])).toEqual(['repo'])
-    expect(mocks.warn).not.toHaveBeenCalled()
     logSpy.mockRestore()
   })
 })

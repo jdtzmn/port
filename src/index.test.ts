@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest'
-import { joinBranchArgs } from './index.ts'
+import { joinBranchArgs } from './program.ts'
+import { isListInvocation } from './lib/cliEntry.ts'
 
 describe('joinBranchArgs', () => {
   test('joins bare multi-word tokens with a single space', () => {
@@ -24,5 +25,18 @@ describe('joinBranchArgs', () => {
 
   test('returns undefined for undefined input', () => {
     expect(joinBranchArgs(undefined)).toBeUndefined()
+  })
+})
+
+describe('isListInvocation', () => {
+  test('recognizes list and its alias without flags', () => {
+    expect(isListInvocation(['list'])).toBe(true)
+    expect(isListInvocation(['ls'])).toBe(true)
+  })
+
+  test('defers all other invocations to Commander', () => {
+    expect(isListInvocation([])).toBe(false)
+    expect(isListInvocation(['list', '--help'])).toBe(false)
+    expect(isListInvocation(['status'])).toBe(false)
   })
 })

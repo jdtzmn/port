@@ -1,5 +1,5 @@
 FROM docker:27.5.1-cli AS certificates
-FROM oven/bun:1.3.3 AS bun-runtime
+FROM oven/bun:1.3.14 AS bun-runtime
 FROM postgres:17.4-bookworm
 COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=certificates /usr/local/bin/docker /usr/local/bin/docker

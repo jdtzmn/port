@@ -6,36 +6,31 @@
  * program object. Used by completion script generation, typo detection,
  * and command-branch collision warnings.
  *
- * All functions introspect `program.commands` at call time so the data
- * is always consistent with what is registered in `src/index.ts`.
+ * All functions introspect the registered Commander program at call time so the data
+ * is always consistent with what is registered in `src/program.ts`.
  */
 
+import type { Command } from 'commander'
 import { distance as levenshteinDistance } from 'fastest-levenshtein'
-import { program } from '../index.ts'
 
-/**
- * Commands that should not opportunistically register the current worktree.
- */
-export const NON_WORKTREE_COMMANDS = new Set([
-  'help',
-  'completion',
-  'init',
-  'install',
-  'cleanup',
-  'prune',
-  'uninstall',
-  'onboard',
-  'shell-hook',
-  'doctor',
-])
+let commandProgram: Command | undefined
 
-/**
- * Commands that should skip any work done before Commander parses the command.
- *
- * Use this for startup-time checks that should not run for commands like
- * `enter`, `completion`, or `shell-hook`.
- */
-const SKIP_EARLY_WORK_COMMANDS = new Set(['enter', 'completion', 'shell-hook', 'doctor'])
+export function setCommandProgram(program: Command): void {
+  commandProgram = program
+}
+
+function getCommandProgram(): Command {
+  if (!commandProgram) {
+    throw new Error('Command program has not been registered')
+  }
+  return commandProgram
+}
+
+export {
+  NON_WORKTREE_COMMANDS,
+  shouldAutoRegisterWorktree,
+  shouldSkipEarlyWork,
+} from './earlyWork.ts'
 
 // ---------------------------------------------------------------------------
 // Core introspection
@@ -47,7 +42,7 @@ const SKIP_EARLY_WORK_COMMANDS = new Set(['enter', 'completion', 'shell-hook', '
 export function getSubcommands(): string[] {
   const names = new Set<string>(['help'])
 
-  for (const command of program.commands) {
+  for (const command of getCommandProgram().commands) {
     names.add(command.name())
 
     for (const alias of command.aliases()) {
@@ -65,7 +60,7 @@ export function getSubcommands(): string[] {
 export function getBranchCommands(): string[] {
   const result: string[] = []
 
-  for (const command of program.commands) {
+  for (const command of getCommandProgram().commands) {
     const hasBranchArg = command.registeredArguments.some(arg => arg.name() === 'branch')
     if (hasBranchArg) {
       result.push(command.name())
@@ -82,7 +77,7 @@ export function getBranchCommands(): string[] {
 export function getShellCommands(): string[] {
   const result: string[] = []
 
-  for (const command of program.commands) {
+  for (const command of getCommandProgram().commands) {
     const hasShellArg = command.registeredArguments.some(arg => arg.name() === 'shell')
     if (hasShellArg) {
       result.push(command.name())
@@ -99,7 +94,7 @@ export function getShellCommands(): string[] {
 export function getHookNameCommands(): string[] {
   const result: string[] = []
 
-  for (const command of program.commands) {
+  for (const command of getCommandProgram().commands) {
     const hasHookArg = command.registeredArguments.some(arg => arg.name() === 'hook-name')
     if (hasHookArg) {
       result.push(command.name())
@@ -118,7 +113,7 @@ export function getHookNameCommands(): string[] {
 export function getCommandFlags(): Record<string, string[]> {
   const result: Record<string, string[]> = {}
 
-  for (const command of program.commands) {
+  for (const command of getCommandProgram().commands) {
     const flags: string[] = []
 
     for (const opt of command.options) {
@@ -145,7 +140,7 @@ export function getCommandFlags(): Record<string, string[]> {
 export function getGlobalFlags(): string[] {
   const flags: string[] = []
 
-  for (const opt of program.options) {
+  for (const opt of getCommandProgram().options) {
     if (opt.hidden) continue
     if (opt.short) flags.push(opt.short)
     if (opt.long) flags.push(opt.long)
@@ -166,7 +161,7 @@ export function getGlobalFlags(): string[] {
 export function getCommandDescriptions(): Record<string, string> {
   const result: Record<string, string> = {}
 
-  for (const command of program.commands) {
+  for (const command of getCommandProgram().commands) {
     const desc = command.description()
     result[command.name()] = desc
 
@@ -178,36 +173,6 @@ export function getCommandDescriptions(): Record<string, string> {
   result['help'] = 'Display help for command'
 
   return result
-}
-
-/**
- * Decide whether this invocation should opportunistically register the
- * current worktree before running the command.
- */
-export function shouldAutoRegisterWorktree(commandName: string | undefined): boolean {
-  if (commandName?.startsWith('-')) {
-    return false
-  }
-
-  if (!commandName) {
-    return true
-  }
-
-  if (shouldSkipEarlyWork(commandName)) {
-    return false
-  }
-
-  return !NON_WORKTREE_COMMANDS.has(commandName)
-}
-
-/**
- * Check whether startup-time work should be skipped before parsing the command.
- *
- * Keep this as the single gate for any logic that runs before
- * `program.parseAsync()` so new callers do not reintroduce early startup work.
- */
-export function shouldSkipEarlyWork(commandName: string | undefined): boolean {
-  return commandName != null && SKIP_EARLY_WORK_COMMANDS.has(commandName)
 }
 
 // ---------------------------------------------------------------------------

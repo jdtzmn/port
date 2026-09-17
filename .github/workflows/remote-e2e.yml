@@ -70,7 +70,7 @@ jobs:
           key: remote-e2e-handler-${{ runner.os }}-${{ hashFiles('package.json', 'packages/404-app/**') }}
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.3
+          bun-version: 1.3.14
       - name: Install build dependencies
         run: bun install --frozen-lockfile
       - name: Run isolated feasibility harness

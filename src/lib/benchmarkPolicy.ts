@@ -33,13 +33,13 @@ export const BENCHMARK_DEFINITIONS: Record<BenchmarkId, BenchmarkDefinition> = {
     id: 'list-small',
     category: 'cli',
     name: 'CLI responsiveness / list (small)',
-    budget: { p95: 1500 },
+    budget: { p95: 100 },
   },
   'list-large': {
     id: 'list-large',
     category: 'cli',
     name: 'CLI responsiveness / list (large)',
-    budget: { p95: 1500 },
+    budget: { p95: 100 },
   },
   'enter-existing-small': {
     id: 'enter-existing-small',

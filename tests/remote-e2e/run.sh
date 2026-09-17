@@ -91,7 +91,7 @@ fi
 step 120 smoke-pull docker pull busybox:1.37.0 & pids+=("$!")
 step 120 proxy-pull docker pull traefik:v3.6 & pids+=("$!")
 step 180 postgres-pull docker pull postgres:17.4-bookworm & pids+=("$!")
-step 180 bun-pull docker pull oven/bun:1.3.3 & pids+=("$!")
+step 180 bun-pull docker pull oven/bun:1.3.14 & pids+=("$!")
 handler_cache=${REMOTE_E2E_HANDLER_CACHE:-}
 handler_cache_hit=0
 if [[ -n "$handler_cache" && -f "$handler_cache" ]]; then
@@ -134,10 +134,10 @@ for machine in client remote-a remote-b; do
 done
 step 30 scenario-copy-client "${compose[@]}" cp "$here/scenarios/." client:/fixture/ & pids+=("$!")
 step 180 fixture-images-docker "$here/seed-images.sh" "$project" "$here" docker \
-  busybox:1.37.0 oven/bun:1.3.3 traefik:v3.6 "$handler_image" & pids+=("$!")
+  busybox:1.37.0 oven/bun:1.3.14 traefik:v3.6 "$handler_image" & pids+=("$!")
 for daemon in docker-a docker-b; do
   step 180 "fixture-images-$daemon" "$here/seed-images.sh" "$project" "$here" "$daemon" \
-    busybox:1.37.0 postgres:17.4-bookworm oven/bun:1.3.3 traefik:v3.6 "$handler_image" & pids+=("$!")
+    busybox:1.37.0 postgres:17.4-bookworm oven/bun:1.3.14 traefik:v3.6 "$handler_image" & pids+=("$!")
 done
 wait_jobs "${pids[@]}"
 if [[ "$mode" == all ]]; then

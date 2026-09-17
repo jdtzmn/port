@@ -573,7 +573,7 @@ function productStart(args: string[]): void {
       const composeServices: Record<string, unknown> = {}
       if (state.ui) {
         composeServices.ui = {
-          image: 'oven/bun:1.3.3',
+          image: 'oven/bun:1.3.14',
           container_name: state.ui.container,
           ports: [`${state.ui.publishedPort}:${state.ui.targetPort}`],
           command: ['sh', '-c', productServerScript(state)],
