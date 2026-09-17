@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789607605684,
+  "lastUpdate": 1789611386368,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port Docker operations": [
@@ -270,6 +270,51 @@ window.BENCHMARK_DATA = {
             "range": "12.589999999999918",
             "unit": "ms",
             "extra": "p95: 746.415 ms\nsamples: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "811623eead5ba51a18c8fa535bf8649e02c72e5e",
+          "message": "Profile command execution phases (#166)\n\n* Add opt-in command profiling\n\n* Profile command execution phases\n\n* Harden command profile output\n\n* Test profiling on direct command exits",
+          "timestamp": "2026-09-16T22:13:33-04:00",
+          "tree_id": "abf477a9cece2ea16921902cfb36fef66b2c5419",
+          "url": "https://github.com/jdtzmn/port/commit/811623eead5ba51a18c8fa535bf8649e02c72e5e"
+        },
+        "date": 1789611386333,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Docker operations / status (small)",
+            "value": 428.852,
+            "range": "8.513000000000034",
+            "unit": "ms",
+            "extra": "p95: 437.365 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / status (large)",
+            "value": 3545.516,
+            "range": "21.643999999999778",
+            "unit": "ms",
+            "extra": "p95: 3567.16 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / up (warm)",
+            "value": 578.442,
+            "range": "8.134000000000015",
+            "unit": "ms",
+            "extra": "p95: 586.576 ms\nsamples: 10"
           }
         ]
       }
