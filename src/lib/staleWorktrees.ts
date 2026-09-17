@@ -45,7 +45,9 @@ function isStaleWorktreeCandidate(value: unknown): value is StaleWorktreeCandida
   return (
     typeof candidate.branch === 'string' &&
     typeof candidate.sanitized === 'string' &&
-    (candidate.reason === 'merged' || candidate.reason === 'gone' || candidate.reason === 'pr-merged')
+    (candidate.reason === 'merged' ||
+      candidate.reason === 'gone' ||
+      candidate.reason === 'pr-merged')
   )
 }
 
@@ -73,7 +75,10 @@ async function readSnapshot(repoRoot: string): Promise<StaleWorktreeCandidate[] 
   }
 }
 
-async function writeSnapshot(repoRoot: string, candidates: StaleWorktreeCandidate[]): Promise<void> {
+async function writeSnapshot(
+  repoRoot: string,
+  candidates: StaleWorktreeCandidate[]
+): Promise<void> {
   try {
     await mkdir(STALE_WORKTREE_CACHE_DIR, { recursive: true })
     await writeFileAtomic(

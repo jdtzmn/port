@@ -21,10 +21,7 @@ vi.mock('./github.ts', () => ({
   getMergedPrBranches: mocks.getMergedPrBranches,
 }))
 
-import {
-  getStaleWorktreeCandidates,
-  invalidateStaleWorktreeCache,
-} from './staleWorktrees.ts'
+import { getStaleWorktreeCandidates, invalidateStaleWorktreeCache } from './staleWorktrees.ts'
 
 describe('getStaleWorktreeCandidates', () => {
   beforeEach(async () => {
