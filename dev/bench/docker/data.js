@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789650866778,
+  "lastUpdate": 1789659100585,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port Docker operations": [
@@ -630,6 +630,72 @@ window.BENCHMARK_DATA = {
             "range": "11.987999999999943",
             "unit": "ms",
             "extra": "p95: 756.539 ms\nsamples: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e83d8e06b98a59b695bff0a8739c1a3ab3587d9e",
+          "message": "Honor prune --no-fetch (#175)\n\n* Honor prune no-fetch option\n\n* Wire prune no-fetch CLI option",
+          "timestamp": "2026-09-17T11:24:25-04:00",
+          "tree_id": "e1a704f8264fb51a99b514823f2322c1f434b0e4",
+          "url": "https://github.com/jdtzmn/port/commit/e83d8e06b98a59b695bff0a8739c1a3ab3587d9e"
+        },
+        "date": 1789659100555,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Docker operations / status (small)",
+            "value": 305.264,
+            "range": "9.829000000000008",
+            "unit": "ms",
+            "extra": "p95: 315.093 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / status (large)",
+            "value": 2354.713,
+            "range": "35.996999999999844",
+            "unit": "ms",
+            "extra": "p95: 2390.71 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / up (warm)",
+            "value": 725.563,
+            "range": "15.697999999999979",
+            "unit": "ms",
+            "extra": "p95: 741.261 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / down",
+            "value": 10595.334,
+            "range": "13.768000000000029",
+            "unit": "ms",
+            "extra": "p95: 10609.102 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / remove (inactive services)",
+            "value": 527.997,
+            "range": "8.554000000000087",
+            "unit": "ms",
+            "extra": "p95: 536.551 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / remove (running services)",
+            "value": 10761.434,
+            "range": "34.074000000000524",
+            "unit": "ms",
+            "extra": "p95: 10795.508 ms\nsamples: 10"
           }
         ]
       }
