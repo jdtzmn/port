@@ -1,6 +1,6 @@
 # Port
 
-**Run 2+ Docker compose worktrees on the same service ports at the same time without conflicts.**
+**Port CLI runs Docker Compose services in parallel Git worktrees—no port conflicts, with Traefik-routed local branch domains.**
 
 <table>
   <tr>
@@ -20,6 +20,18 @@ port up
     </td>
   </tr>
 </table>
+
+## The problem
+
+A Docker Compose stack that publishes a host port can work in one worktree but fail when a second worktree starts the same service:
+
+```text
+Error starting userland proxy: listen tcp4 0.0.0.0:3000: bind: address already in use
+```
+
+## How Port resolves it
+
+Port keeps each worktree's services on its own Compose project and removes conflicting host-port bindings. Traefik routes requests to the right worktree through a local branch domain, so both stacks can use the same service ports at once.
 
 ## Features
 
