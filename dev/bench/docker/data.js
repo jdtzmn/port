@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789585553525,
+  "lastUpdate": 1789606035890,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port Docker operations": [
@@ -90,6 +90,51 @@ window.BENCHMARK_DATA = {
             "range": "23.486000000000104",
             "unit": "ms",
             "extra": "p95: 845.315 ms\nsamples: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a4460c0de9311ea36e36a0ac00a03204097fa547",
+          "message": "Improve Port discoverability (#161)\n\n* Improve npm search metadata\n\n* Explain Docker port conflict problem\n\n* Document Port alternatives\n\n* Clarify Tug comparison",
+          "timestamp": "2026-09-16T20:44:02-04:00",
+          "tree_id": "47debc2dd8492b6374844e0312a475ec3ab73c2e",
+          "url": "https://github.com/jdtzmn/port/commit/a4460c0de9311ea36e36a0ac00a03204097fa547"
+        },
+        "date": 1789606035860,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Docker operations / status (small)",
+            "value": 436.536,
+            "range": "2.98599999999999",
+            "unit": "ms",
+            "extra": "p95: 439.522 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / status (large)",
+            "value": 3803.559,
+            "range": "32.934999999999945",
+            "unit": "ms",
+            "extra": "p95: 3836.494 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / up (warm)",
+            "value": 634.911,
+            "range": "520.465",
+            "unit": "ms",
+            "extra": "p95: 1155.376 ms\nsamples: 10"
           }
         ]
       }
