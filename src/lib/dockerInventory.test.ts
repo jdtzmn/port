@@ -8,7 +8,10 @@ vi.mock('./exec.ts', () => ({
   execFileAsync: mocks.execFileAsync,
 }))
 
-import { getRunningComposeServiceInventory } from './dockerInventory.ts'
+import {
+  getActiveComposeServiceInventory,
+  getRunningComposeServiceInventory,
+} from './dockerInventory.ts'
 
 describe('getRunningComposeServiceInventory', () => {
   beforeEach(() => {
@@ -64,5 +67,43 @@ describe('getRunningComposeServiceInventory', () => {
     mocks.execFileAsync.mockRejectedValue(new Error('docker unavailable'))
 
     await expect(getRunningComposeServiceInventory()).resolves.toBeNull()
+  })
+})
+
+describe('getActiveComposeServiceInventory', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('includes paused and restarting Compose services', async () => {
+    mocks.execFileAsync.mockResolvedValue({
+      stdout:
+        '{"project":"app-paused","service":"api","state":"paused"}\n' +
+        '{"project":"app-restarting","service":"worker","state":"restarting"}\n' +
+        '{"project":"app-exited","service":"worker","state":"exited"}\n',
+    })
+
+    await expect(getActiveComposeServiceInventory()).resolves.toEqual(
+      new Map([
+        ['app-paused', new Set(['api'])],
+        ['app-restarting', new Set(['worker'])],
+      ])
+    )
+    expect(mocks.execFileAsync).toHaveBeenCalledWith(
+      'docker',
+      [
+        'ps',
+        '--filter',
+        'label=com.docker.compose.project',
+        '--filter',
+        'label=com.docker.compose.service',
+        '--filter',
+        'label=com.docker.compose.oneoff=False',
+        '--all',
+        '--format',
+        expect.stringContaining('com.docker.compose.service'),
+      ],
+      { encoding: 'utf8', timeout: 10_000 }
+    )
   })
 })

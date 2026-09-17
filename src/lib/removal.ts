@@ -9,7 +9,7 @@ import {
 } from './git.ts'
 import { unregisterProject } from './registry.ts'
 import { runCompose } from './compose.ts'
-import { getRunningComposeServiceInventory } from './dockerInventory.ts'
+import { getActiveComposeServiceInventory } from './dockerInventory.ts'
 import { buildProjectName as getProjectName } from './projectName.ts'
 import { sanitizeBranchName } from './sanitize.ts'
 import { getWorktreePath } from './worktree.ts'
@@ -82,8 +82,8 @@ export async function stopWorktreeServices(
   const projectName = getProjectName(ctx.repoRoot, sanitized)
 
   if (options.skipComposeWhenInactive) {
-    const runningProjects = await getRunningComposeServiceInventory()
-    if (runningProjects && !runningProjects.has(projectName)) {
+    const activeProjects = await getActiveComposeServiceInventory()
+    if (activeProjects && !activeProjects.has(projectName)) {
       return
     }
   }

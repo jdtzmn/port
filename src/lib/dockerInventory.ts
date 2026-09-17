@@ -4,10 +4,13 @@ const PROJECT_LABEL = 'com.docker.compose.project'
 const SERVICE_LABEL = 'com.docker.compose.service'
 const ONE_OFF_LABEL = 'com.docker.compose.oneoff'
 const FORMAT = `{"project":{{json (.Label "${PROJECT_LABEL}")}},"service":{{json (.Label "${SERVICE_LABEL}")}}}`
+const ACTIVE_FORMAT = `{"project":{{json (.Label "${PROJECT_LABEL}")}},"service":{{json (.Label "${SERVICE_LABEL}")}},"state":{{json .State}}}`
+const ACTIVE_STATES = new Set(['running', 'paused', 'restarting'])
 
 interface DockerInventoryEntry {
   project: string
   service: string
+  state?: string
 }
 
 function isDockerInventoryEntry(value: unknown): value is DockerInventoryEntry {
@@ -18,20 +21,20 @@ function isDockerInventoryEntry(value: unknown): value is DockerInventoryEntry {
     typeof entry.project === 'string' &&
     entry.project !== '' &&
     typeof entry.service === 'string' &&
-    entry.service !== ''
+    entry.service !== '' &&
+    (entry.state === undefined || typeof entry.state === 'string')
   )
 }
 
 /**
- * List running Compose services once and group them by Compose project.
+ * List Compose services once and group them by Compose project.
  *
- * Returns null when Docker cannot be queried so callers can use a narrower
- * fallback rather than reporting every service as stopped.
+ * Active mode includes paused and restarting containers while excluding stopped containers.
+ * Returns null when Docker cannot be queried so callers can use a narrower fallback.
  */
-export async function getRunningComposeServiceInventory(): Promise<Map<
-  string,
-  Set<string>
-> | null> {
+async function getComposeServiceInventory(
+  mode: 'running' | 'active'
+): Promise<Map<string, Set<string>> | null> {
   try {
     const { stdout } = await execFileAsync(
       'docker',
@@ -43,10 +46,10 @@ export async function getRunningComposeServiceInventory(): Promise<Map<
         `label=${SERVICE_LABEL}`,
         '--filter',
         `label=${ONE_OFF_LABEL}=False`,
-        '--filter',
-        'status=running',
+        ...(mode === 'active' ? ['--all'] : []),
+        ...(mode === 'running' ? ['--filter', 'status=running'] : []),
         '--format',
-        FORMAT,
+        mode === 'active' ? ACTIVE_FORMAT : FORMAT,
       ],
       { encoding: 'utf8', timeout: 10_000 }
     )
@@ -57,6 +60,7 @@ export async function getRunningComposeServiceInventory(): Promise<Map<
 
       const entry: unknown = JSON.parse(line)
       if (!isDockerInventoryEntry(entry)) return null
+      if (mode === 'active' && !ACTIVE_STATES.has(entry.state ?? '')) continue
 
       const services = inventory.get(entry.project) ?? new Set<string>()
       services.add(entry.service)
@@ -67,4 +71,14 @@ export async function getRunningComposeServiceInventory(): Promise<Map<
   } catch {
     return null
   }
+}
+
+/** List running Compose services once and group them by project. */
+export function getRunningComposeServiceInventory(): Promise<Map<string, Set<string>> | null> {
+  return getComposeServiceInventory('running')
+}
+
+/** List Compose services in all active Docker states once and group them by project. */
+export function getActiveComposeServiceInventory(): Promise<Map<string, Set<string>> | null> {
+  return getComposeServiceInventory('active')
 }

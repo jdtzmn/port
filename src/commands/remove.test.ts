@@ -32,7 +32,7 @@ const mocks = vi.hoisted(() => ({
   cleanupDockerResources: vi.fn(),
   scanDockerResourcesForProject: vi.fn(),
   getImagesSizeInBytes: vi.fn(),
-  getRunningComposeServiceInventory: vi.fn(),
+  getActiveComposeServiceInventory: vi.fn(),
 }))
 
 vi.mock('inquirer', () => ({
@@ -105,7 +105,7 @@ vi.mock('../lib/docker-cleanup.ts', () => ({
 }))
 
 vi.mock('../lib/dockerInventory.ts', () => ({
-  getRunningComposeServiceInventory: mocks.getRunningComposeServiceInventory,
+  getActiveComposeServiceInventory: mocks.getActiveComposeServiceInventory,
 }))
 import { remove } from './remove.ts'
 
@@ -140,7 +140,7 @@ describe('remove command', () => {
     mocks.hasRegisteredProjects.mockResolvedValue(false)
 
     mocks.runCompose.mockResolvedValue({ exitCode: 0 })
-    mocks.getRunningComposeServiceInventory.mockResolvedValue(new Map())
+    mocks.getActiveComposeServiceInventory.mockResolvedValue(new Map())
     mocks.stopTraefik.mockResolvedValue(undefined)
     mocks.isTraefikRunning.mockResolvedValue(false)
     mocks.buildProjectName.mockReturnValue('repo-demo-2')
@@ -184,12 +184,12 @@ describe('remove command', () => {
   test('skips Compose teardown when the project has no running services', async () => {
     await remove('demo-2')
 
-    expect(mocks.getRunningComposeServiceInventory).toHaveBeenCalledOnce()
+    expect(mocks.getActiveComposeServiceInventory).toHaveBeenCalledOnce()
     expect(mocks.runCompose).not.toHaveBeenCalled()
   })
 
   test('falls back to Compose teardown when Docker inventory is unavailable', async () => {
-    mocks.getRunningComposeServiceInventory.mockResolvedValue(null)
+    mocks.getActiveComposeServiceInventory.mockResolvedValue(null)
 
     await remove('demo-2')
 
@@ -215,7 +215,7 @@ describe('remove command', () => {
       isMain: false,
     })
     mocks.prompt.mockResolvedValue({ removeConfirm: true })
-    mocks.getRunningComposeServiceInventory.mockResolvedValue(
+    mocks.getActiveComposeServiceInventory.mockResolvedValue(
       new Map([['repo-demo-2', new Set(['web'])]])
     )
 
