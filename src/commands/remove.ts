@@ -123,6 +123,7 @@ export async function remove(
     removeWorktreeAndCleanup({ repoRoot, composeFile, domain: config.domain }, sourceBranch, {
       branchAction: options.keepBranch ? 'keep' : 'archive',
       nonStandardPath,
+      skipComposeWhenInactive: true,
     })
   )
 
