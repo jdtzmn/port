@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789611385103,
+  "lastUpdate": 1789614531306,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port worktree operations": [
@@ -364,6 +364,58 @@ window.BENCHMARK_DATA = {
             "range": "15.964999999999975",
             "unit": "ms",
             "extra": "p95: 482.214 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7645b3e7bc4838b2721045c15d79ca588c52dd6e",
+          "message": "Make query commands side-effect free (#167)\n\n* Classify query commands before dispatch\n\n* Keep status and urls side-effect free\n\n* Fix query command integration expectations",
+          "timestamp": "2026-09-16T23:04:45-04:00",
+          "tree_id": "64b449cf0ec940e1600599dece70d5093166d026",
+          "url": "https://github.com/jdtzmn/port/commit/7645b3e7bc4838b2721045c15d79ca588c52dd6e"
+        },
+        "date": 1789614531289,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Worktree operations / enter existing (small)",
+            "value": 321.081,
+            "range": "10.664999999999964",
+            "unit": "ms",
+            "extra": "p95: 331.746 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter existing (large)",
+            "value": 323.946,
+            "range": "3.3969999999999914",
+            "unit": "ms",
+            "extra": "p95: 327.343 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (small)",
+            "value": 427.732,
+            "range": "4.847999999999956",
+            "unit": "ms",
+            "extra": "p95: 432.58 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (large)",
+            "value": 441.38,
+            "range": "7.257000000000005",
+            "unit": "ms",
+            "extra": "p95: 448.637 ms\nsamples: 20"
           }
         ]
       }
