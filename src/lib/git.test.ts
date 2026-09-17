@@ -152,7 +152,9 @@ describe('createWorktree', () => {
         localExists: false,
         remoteExists: true,
       })
-    ).rejects.toThrow("Failed to create worktree for 'feature': GitError: Failed to fetch 'feature'")
+    ).rejects.toThrow(
+      "Failed to create worktree for 'feature': GitError: Failed to fetch 'feature'"
+    )
 
     expect(rawMock).toHaveBeenCalledTimes(2)
     expect(rawMock).toHaveBeenNthCalledWith(1, [
