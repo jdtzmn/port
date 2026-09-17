@@ -52,7 +52,7 @@ describe('toBenchmarkEntry', () => {
 
 describe('BENCHMARKS', () => {
   test('keeps a p95 budget for every tracked workload', () => {
-    expect(BENCHMARKS).toHaveLength(10)
+    expect(BENCHMARKS).toHaveLength(14)
     expect(BENCHMARKS.every(benchmark => benchmark.budget.p95 > 0)).toBe(true)
   })
 })

@@ -13,6 +13,10 @@ export type BenchmarkId =
   | 'status-small'
   | 'status-large'
   | 'up-warm'
+  | 'down'
+  | 'remove-inactive'
+  | 'remove-running'
+  | 'prune-dry-run'
 
 export interface BenchmarkDefinition {
   id: BenchmarkId
@@ -85,6 +89,33 @@ export const BENCHMARK_DEFINITIONS: Record<BenchmarkId, BenchmarkDefinition> = {
     name: 'Docker operations / up (warm)',
     budget: { p95: 5000 },
     requiresDocker: true,
+  },
+  down: {
+    id: 'down',
+    category: 'docker',
+    name: 'Docker operations / down',
+    budget: { p95: 6000 },
+    requiresDocker: true,
+  },
+  'remove-inactive': {
+    id: 'remove-inactive',
+    category: 'docker',
+    name: 'Docker operations / remove (inactive services)',
+    budget: { p95: 6000 },
+    requiresDocker: true,
+  },
+  'remove-running': {
+    id: 'remove-running',
+    category: 'docker',
+    name: 'Docker operations / remove (running services)',
+    budget: { p95: 7500 },
+    requiresDocker: true,
+  },
+  'prune-dry-run': {
+    id: 'prune-dry-run',
+    category: 'worktree',
+    name: 'Worktree operations / prune dry run',
+    budget: { p95: 8000 },
   },
 }
 
