@@ -43,7 +43,8 @@
     "port": "./dist/index.js"
   },
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target bun --splitting",
+    "build": "bun build src/index.ts --outdir dist --target node --splitting --packages external",
+    "test:node-runtime": "node scripts/test-node-runtime.mjs",
     "typecheck": "bunx tsc --noEmit",
     "dev": "bun run src/index.ts",
     "lint": "bunx eslint .",
@@ -57,7 +58,7 @@
     "test:tui": "bun test src/tui/__tests__/"
   },
   "engines": {
-    "bun": ">=1.0.0"
+    "node": ">=22.5.0"
   },
   "packageManager": "bun@1",
   "dependencies": {

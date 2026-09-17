@@ -1,8 +1,19 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
+import { realpathSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { isListInvocation } from './lib/cliEntry.ts'
 
-if (import.meta.main) {
+export function isMainModule(moduleUrl = import.meta.url, entryPath = process.argv[1]): boolean {
+  if (!entryPath) return false
+  try {
+    return fileURLToPath(moduleUrl) === realpathSync(entryPath)
+  } catch {
+    return false
+  }
+}
+
+if (isMainModule()) {
   const args = process.argv.slice(2)
 
   if (isListInvocation(args)) {
