@@ -15,7 +15,7 @@ export const REMOTE_E2E_SUITES = [
   { file: 'automatic-a.remote-e2e.test.ts', estimatedDurationMs: 35_000 },
   { file: 'automatic-b.remote-e2e.test.ts', estimatedDurationMs: 35_000 },
   { file: 'foundation.remote-e2e.test.ts', estimatedDurationMs: 15_000 },
-  { file: 'local-command.remote-e2e.test.ts', estimatedDurationMs: 12_000 },
+  { file: 'local-command.remote-e2e.test.ts', estimatedDurationMs: 25_000 },
   { file: 'transport.remote-e2e.test.ts', estimatedDurationMs: 10_000 },
   { file: 'missing-port.remote-e2e.test.ts', estimatedDurationMs: 2_000 },
 ] as const satisfies readonly RemoteE2ESuite[]

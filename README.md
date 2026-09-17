@@ -143,9 +143,15 @@ Enable remote service routing during the same one-time setup:
 ```bash
 port install --remote-services
 
-# If DNS is already configured and only the shell hook needs updating
-port install --remote-services --shell-hook-only
+# Opt selected SSH aliases into managed OpenSSH lifecycle activation.
+# Repeat --remote-host for additional names or explicit wildcards.
+port install --remote-services --remote-host devbox --remote-host '*.od'
+
+# If DNS is already configured and only SSH/shell integration needs updating
+port install --remote-services --shell-hook-only --remote-host '*.od'
 ```
+
+`--remote-host` is intentionally explicit and accepts safe host names or scoped wildcards, never global `*`. Port installs an owner-only `~/.ssh/port.conf` include with a finite OpenSSH `ControlPersist` and `LocalCommand`; existing SSH settings remain in `~/.ssh/config`. Re-running the command replaces only Port's host list. Remove the managed include and runtime opt-in with `port uninstall --remote-services`.
 
 Afterward, use ordinary SSH normally:
 
@@ -157,13 +163,13 @@ port up
 
 While that SSH session is active, remote services use the same local URLs as local worktrees, such as `ui.feature.port` and `feature.port:3000`. If the same worktree exists in more than one place, use the stable machine-qualified `.ssh` alias shown by Port, such as `ui.feature.devbox.ssh`. Ambiguous default URLs fail closed instead of selecting a machine silently.
 
-The initial integration supports Bash, HTTP routing, and TLS/SNI routing. `command ssh ...` bypasses Port's SSH integration. Plaintext protocols that do not carry a hostname remain limited by Port's existing routing model; broader support is tracked in [#149](https://github.com/jdtzmn/port/issues/149). The remote machine must have a compatible `port` executable, but missing or incompatible remote support never blocks the SSH login.
+The initial integration supports Bash, HTTP routing, and TLS/SNI routing. Configured `--remote-host` patterns use OpenSSH's host-scoped lifecycle; other Bash SSH invocations retain the compatibility wrapper. `command ssh ...`, `scp`, and `sftp` do not prepare new Port state. Plaintext protocols that do not carry a hostname remain limited by Port's existing routing model; broader support is tracked in [#149](https://github.com/jdtzmn/port/issues/149). The remote machine must have a compatible `port` executable, but missing or incompatible remote support never blocks the SSH login.
 
 #### macOS remote-services smoke test
 
 Before treating remote routing as released on macOS, verify it manually from a Bash shell:
 
-1. Run `port install --remote-services`, start a fresh Bash shell, and confirm `type ssh` reports the Port wrapper.
+1. Run `port install --remote-services --remote-host devbox`, start a fresh Bash shell, and confirm `ssh -G devbox` reports `localcommand port __remote-register %C` and a finite `controlpersist`.
 2. Open an ordinary `ssh devbox` login, run `port up` in a remote worktree, and verify its HTTP, WebSocket, and PostgreSQL/TLS-SNI `.port` addresses.
 3. Start the same worktree locally or on another VM. Confirm the default address fails closed and `port urls --remote` shows the exact `.local.port` and `.ssh` alternatives.
 4. Close the remote login abruptly, confirm its qualified address becomes unavailable rather than retargeting, then reconnect and verify recovery.
