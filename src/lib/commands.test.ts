@@ -10,7 +10,11 @@ import {
   getCommandDescriptions,
   shouldAutoRegisterWorktree,
   shouldSkipEarlyWork,
+  setCommandProgram,
 } from './commands.ts'
+import { program } from '../program.ts'
+
+setCommandProgram(program)
 
 describe('command name helpers', () => {
   test('recognizes reserved commands and aliases', () => {

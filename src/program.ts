@@ -366,6 +366,9 @@ export async function runCli(): Promise<void> {
   const entryToken = process.argv[2]
 
   try {
+    const commands = await import('./lib/commands.ts')
+    commands.setCommandProgram(program)
+
     let handledRemoteCommand = false
     if (entryToken?.startsWith('__remote-')) {
       const remote = await import('./commands/remote-internal.ts')

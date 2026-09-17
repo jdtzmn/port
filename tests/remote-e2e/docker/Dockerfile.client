@@ -1,5 +1,5 @@
 FROM docker:27.5.1-cli AS docker-cli
-FROM oven/bun:1.3.3 AS bun-runtime
+FROM oven/bun:1.3.14 AS bun-runtime
 FROM debian:12.10-slim
 # Bootstrap verified HTTPS before the Debian ca-certificates package is installed.
 COPY --from=docker-cli /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt

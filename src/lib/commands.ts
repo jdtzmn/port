@@ -6,12 +6,25 @@
  * program object. Used by completion script generation, typo detection,
  * and command-branch collision warnings.
  *
- * All functions introspect `program.commands` at call time so the data
- * is always consistent with what is registered in `src/index.ts`.
+ * All functions introspect the registered Commander program at call time so the data
+ * is always consistent with what is registered in `src/program.ts`.
  */
 
+import type { Command } from 'commander'
 import { distance as levenshteinDistance } from 'fastest-levenshtein'
-import { program } from '../program.ts'
+
+let commandProgram: Command | undefined
+
+export function setCommandProgram(program: Command): void {
+  commandProgram = program
+}
+
+function getCommandProgram(): Command {
+  if (!commandProgram) {
+    throw new Error('Command program has not been registered')
+  }
+  return commandProgram
+}
 
 export {
   NON_WORKTREE_COMMANDS,
@@ -29,7 +42,7 @@ export {
 export function getSubcommands(): string[] {
   const names = new Set<string>(['help'])
 
-  for (const command of program.commands) {
+  for (const command of getCommandProgram().commands) {
     names.add(command.name())
 
     for (const alias of command.aliases()) {
@@ -47,7 +60,7 @@ export function getSubcommands(): string[] {
 export function getBranchCommands(): string[] {
   const result: string[] = []
 
-  for (const command of program.commands) {
+  for (const command of getCommandProgram().commands) {
     const hasBranchArg = command.registeredArguments.some(arg => arg.name() === 'branch')
     if (hasBranchArg) {
       result.push(command.name())
@@ -64,7 +77,7 @@ export function getBranchCommands(): string[] {
 export function getShellCommands(): string[] {
   const result: string[] = []
 
-  for (const command of program.commands) {
+  for (const command of getCommandProgram().commands) {
     const hasShellArg = command.registeredArguments.some(arg => arg.name() === 'shell')
     if (hasShellArg) {
       result.push(command.name())
@@ -81,7 +94,7 @@ export function getShellCommands(): string[] {
 export function getHookNameCommands(): string[] {
   const result: string[] = []
 
-  for (const command of program.commands) {
+  for (const command of getCommandProgram().commands) {
     const hasHookArg = command.registeredArguments.some(arg => arg.name() === 'hook-name')
     if (hasHookArg) {
       result.push(command.name())
@@ -100,7 +113,7 @@ export function getHookNameCommands(): string[] {
 export function getCommandFlags(): Record<string, string[]> {
   const result: Record<string, string[]> = {}
 
-  for (const command of program.commands) {
+  for (const command of getCommandProgram().commands) {
     const flags: string[] = []
 
     for (const opt of command.options) {
@@ -127,7 +140,7 @@ export function getCommandFlags(): Record<string, string[]> {
 export function getGlobalFlags(): string[] {
   const flags: string[] = []
 
-  for (const opt of program.options) {
+  for (const opt of getCommandProgram().options) {
     if (opt.hidden) continue
     if (opt.short) flags.push(opt.short)
     if (opt.long) flags.push(opt.long)
@@ -148,7 +161,7 @@ export function getGlobalFlags(): string[] {
 export function getCommandDescriptions(): Record<string, string> {
   const result: Record<string, string> = {}
 
-  for (const command of program.commands) {
+  for (const command of getCommandProgram().commands) {
     const desc = command.description()
     result[command.name()] = desc
 
