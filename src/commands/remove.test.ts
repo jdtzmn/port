@@ -79,6 +79,10 @@ vi.mock('fs', () => ({
   existsSync: mocks.existsSync,
 }))
 
+vi.mock('../lib/staleWorktrees.ts', () => ({
+  invalidateStaleWorktreeCache: vi.fn(),
+}))
+
 vi.mock('./exit.ts', () => ({
   exit: mocks.exit,
 }))

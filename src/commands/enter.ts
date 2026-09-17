@@ -29,6 +29,7 @@ import { findSimilarCommand } from '../lib/commands.ts'
 import { buildEnterCommands, getEvalContext, writeEvalFile } from '../lib/shell.ts'
 import {
   getStaleWorktreeCandidates,
+  invalidateStaleWorktreeCache,
   STALE_WORKTREE_EXTREME_THRESHOLD,
   formatStaleWorktreeWarning,
 } from '../lib/staleWorktrees.ts'
@@ -144,6 +145,7 @@ export async function enter(branch: string): Promise<void> {
     try {
       worktreePath = await createWorktree(repoRoot, branch)
       isNewWorktree = true
+      await invalidateStaleWorktreeCache(repoRoot)
       output.success(`Created worktree: ${sanitized}`)
     } catch (error) {
       const duplicateWorktree = parseDuplicateWorktreeError(error)

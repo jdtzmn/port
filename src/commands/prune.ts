@@ -6,7 +6,11 @@ import { removeWorktreeAndCleanup, stopWorktreeServices } from '../lib/removal.t
 import { failWithError } from '../lib/cli.ts'
 import { buildProjectName as getProjectName } from '../lib/projectName.ts'
 import { cleanupDockerResources, scanDockerResourcesForProject } from '../lib/docker-cleanup.ts'
-import { getStaleWorktreeCandidates, type StaleWorktreeCandidate } from '../lib/staleWorktrees.ts'
+import {
+  getStaleWorktreeCandidates,
+  invalidateStaleWorktreeCache,
+  type StaleWorktreeCandidate,
+} from '../lib/staleWorktrees.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
 import { exit } from './exit.ts'
@@ -225,6 +229,7 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
     }
   }
 
+  if (removedCount > 0) await invalidateStaleWorktreeCache(repoRoot)
   // 11. Docker cleanup integration
   output.newline()
 
