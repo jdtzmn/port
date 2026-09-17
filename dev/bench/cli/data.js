@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789615193956,
+  "lastUpdate": 1789616618933,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -405,6 +405,51 @@ window.BENCHMARK_DATA = {
             "range": "7.525999999999996",
             "unit": "ms",
             "extra": "p95: 45.153 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2829b5fc53565f8dbbafe2c07ce05f4ef11158a7",
+          "message": "Cache stale worktree snapshots (#168)\n\n* Cache stale worktree snapshots\n\n* Invalidate stale worktree cache on mutations\n\n* Format stale worktree cache files",
+          "timestamp": "2026-09-16T23:40:44-04:00",
+          "tree_id": "ac60389a081473b22e99ff4c2de23a798048596b",
+          "url": "https://github.com/jdtzmn/port/commit/2829b5fc53565f8dbbafe2c07ce05f4ef11158a7"
+        },
+        "date": 1789616618426,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 44.06,
+            "range": "12.879999999999995",
+            "unit": "ms",
+            "extra": "p95: 56.94 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 29.861,
+            "range": "7.4730000000000025",
+            "unit": "ms",
+            "extra": "p95: 37.334 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 31.451,
+            "range": "9.203000000000003",
+            "unit": "ms",
+            "extra": "p95: 40.654 ms\nsamples: 20"
           }
         ]
       }
