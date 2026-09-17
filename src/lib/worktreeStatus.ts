@@ -155,7 +155,7 @@ export async function collectWorktreeStatuses(
       wt.path,
       composeFile,
       projectName,
-      inventory?.get(projectName)
+      inventory ? (inventory.get(projectName) ?? new Set()) : undefined
     )
 
     return {

@@ -88,6 +88,20 @@ describe('collectWorktreeStatuses Docker inventory', () => {
     ])
   })
 
+  test('treats worktrees absent from an available inventory as stopped', async () => {
+    mocks.getRunningComposeServiceInventory.mockResolvedValue(
+      new Map([['/repo:repo', new Set(['api'])]])
+    )
+
+    const statuses = await collectWorktreeStatuses('/repo', 'docker-compose.yml', 'port')
+
+    expect(mocks.composePs).not.toHaveBeenCalled()
+    expect(statuses[1]?.services).toEqual([
+      { name: 'api', ports: [], running: false },
+      { name: 'worker', ports: [], running: false },
+    ])
+  })
+
   test('falls back to compose ps when the Docker inventory is unavailable', async () => {
     mocks.getRunningComposeServiceInventory.mockResolvedValue(null)
     mocks.composePs.mockResolvedValue([{ name: 'repo-api-1', running: true }])
