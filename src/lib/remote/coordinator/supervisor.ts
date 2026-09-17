@@ -82,6 +82,32 @@ function launchRemoteSupervisor(): void {
   child.unref()
 }
 
+/** Explicit shell-hook mode owns a runtime only while this admission watchdog is alive. */
+let ephemeralRuntime: ChildProcess | undefined
+
+function launchEphemeralRemoteRuntime(): void {
+  if (ephemeralRuntime) return
+  const child = spawn(process.execPath, [process.argv[1]!, '__remote-runtime', '--observe-only'], {
+    stdio: ['pipe', 'ignore', 'ignore'],
+  })
+  ephemeralRuntime = child
+  child.stdin?.on('error', () => {})
+  const settled = () => {
+    if (ephemeralRuntime === child) ephemeralRuntime = undefined
+  }
+  child.once('error', settled)
+  child.once('close', settled)
+}
+
+async function launchRemoteCoordinator(): Promise<void> {
+  if (await remoteRuntimeEnabled()) launchRemoteSupervisor()
+  else launchEphemeralRemoteRuntime()
+}
+
+function stopEphemeralRemoteRuntime(): void {
+  ephemeralRuntime?.stdin?.end()
+}
+
 async function pause(milliseconds: number, signal?: AbortSignal): Promise<void> {
   try {
     await delay(milliseconds, undefined, signal ? { signal } : undefined)
@@ -100,20 +126,18 @@ async function coordinatorEndpointExists(controlRoot: string): Promise<boolean> 
 }
 
 interface RemoteObservationOperations {
-  enabled(): Promise<boolean>
   paths(): ReturnType<typeof getRemoteRuntimePaths>
   request: typeof requestRemoteCoordinator
-  launch(): void
+  launch(): void | Promise<void>
   endpointExists(controlRoot: string): Promise<boolean>
   pause(milliseconds: number, signal?: AbortSignal): Promise<void>
   now(): number
 }
 
 const observationOperations: RemoteObservationOperations = {
-  enabled: remoteRuntimeEnabled,
   paths: getRemoteRuntimePaths,
   request: requestRemoteCoordinator,
-  launch: launchRemoteSupervisor,
+  launch: launchRemoteCoordinator,
   endpointExists: coordinatorEndpointExists,
   pause,
   now: () => performance.now(),
@@ -127,12 +151,11 @@ export async function maintainRemoteRuntimeObservation(
 ): Promise<void> {
   const operations = { ...observationOperations, ...overrides }
   try {
-    if (!(await operations.enabled())) return
     const { controlRoot } = await operations.paths()
     while (!signal?.aborted) {
       const ping = await operations.request(controlRoot, { version: 1, action: 'ping' })
       if (!ping || ping.status !== 'ok') {
-        operations.launch()
+        await operations.launch()
         await operations.pause(RETRY_INTERVAL, signal)
         continue
       }
@@ -146,6 +169,8 @@ export async function maintainRemoteRuntimeObservation(
     }
   } catch {
     /* Integration failure never changes login, authentication or remote output. */
+  } finally {
+    stopEphemeralRemoteRuntime()
   }
 }
 

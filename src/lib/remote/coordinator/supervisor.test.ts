@@ -24,7 +24,6 @@ function operations(
   overrides: Record<string, unknown> = {}
 ) {
   return {
-    enabled: vi.fn().mockResolvedValue(true),
     paths: vi.fn().mockResolvedValue(paths),
     request: vi.fn(request),
     launch: vi.fn(),
@@ -36,14 +35,15 @@ function operations(
 }
 
 describe('remote observation watchdog', () => {
-  it('does nothing when remote runtime is disabled', async () => {
+  it('honors cancellation before issuing a control request', async () => {
     const request = vi.fn()
     const control = new AbortController()
-    const actions = operations(request, { enabled: vi.fn().mockResolvedValue(false) })
+    control.abort()
+    const actions = operations(request)
 
     await maintainRemoteRuntimeObservation(directory, control.signal, actions)
 
-    expect(actions.paths).not.toHaveBeenCalled()
+    expect(actions.paths).toHaveBeenCalledOnce()
     expect(request).not.toHaveBeenCalled()
     expect(actions.launch).not.toHaveBeenCalled()
   })

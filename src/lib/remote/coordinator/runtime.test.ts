@@ -4,7 +4,7 @@ import { get } from 'node:https'
 import { mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parse } from 'yaml'
-import { startRemoteRuntime } from './runtime.ts'
+import { startRemoteObservationRuntime, startRemoteRuntime } from './runtime.ts'
 import { requestRemoteCoordinator } from './control.ts'
 import type { RemoteSnapshot } from '../session/snapshot.ts'
 
@@ -164,6 +164,42 @@ describe('connected coordinator runtime', () => {
     })
     expect(result?.status).toBe('error')
     expect(observeSession).not.toHaveBeenCalled()
+  })
+
+  it('hosts observation tasks without starting route reconciliation', async () => {
+    let release!: () => void
+    const held = new Promise<void>(resolve => {
+      release = resolve
+    })
+    let taskSignal: AbortSignal | undefined
+    const observationRuntime = await startRemoteObservationRuntime({
+      controlRoot: join(root, 'observation-control'),
+      validateSession: () => true,
+      observeSession: vi.fn(async (_directory, signal) => {
+        taskSignal = signal
+        await held
+      }),
+    })
+    if (!observationRuntime) throw new Error('observation runtime missing')
+    const result = await requestRemoteCoordinator(join(root, 'observation-control'), {
+      version: 1,
+      action: 'observe',
+      incarnation: observationRuntime.incarnation,
+      directory: '/tmp/port-ssh-Ab1234',
+    })
+    expect(result?.status).toBe('ok')
+    await vi.waitFor(() => expect(taskSignal).toBeDefined())
+    await expect(readFile(join(root, 'checkpoint.json'), 'utf8')).rejects.toThrow()
+
+    let closed = false
+    const closing = observationRuntime.close().then(() => {
+      closed = true
+    })
+    await vi.waitFor(() => expect(taskSignal?.aborted).toBe(true))
+    expect(closed).toBe(false)
+    release()
+    await closing
+    expect(closed).toBe(true)
   })
   it('owns deduplicated observations beyond the admitting control request', async () => {
     let release!: () => void

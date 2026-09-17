@@ -8,12 +8,16 @@ const mocks = vi.hoisted(() => ({
   cleanupRemoteSession: vi.fn(),
   maintainRemoteRuntimeObservation: vi.fn(),
   stopRemoteRuntimeObservation: vi.fn(),
+  runRemoteRuntime: vi.fn(),
+  runRemoteObservationRuntime: vi.fn(),
+  runRemoteSupervisor: vi.fn(),
   remoteHandshake: vi.fn(() => ({ kind: 'port-handshake', version: 1 })),
 }))
 vi.mock('../lib/remote/session/session.ts', () => mocks)
 vi.mock('../lib/remote/session/identity.ts', () => mocks)
 vi.mock('../lib/remote/session/snapshotCollector.ts', () => mocks)
 vi.mock('../lib/remote/coordinator/supervisor.ts', () => mocks)
+vi.mock('../lib/remote/coordinator/runtime.ts', () => mocks)
 import { dispatchRemoteInternalCommand, isRemoteInternalCommand } from './remote-internal.ts'
 
 describe('private remote dispatch', () => {
@@ -63,6 +67,24 @@ describe('private remote dispatch', () => {
     ]) {
       expect(isRemoteInternalCommand(token)).toBe(false)
     }
+  })
+
+  test('runtime dispatch selects full and observation-only modes explicitly', async () => {
+    await dispatchRemoteInternalCommand('__remote-runtime', [])
+    expect(mocks.runRemoteRuntime).toHaveBeenCalledOnce()
+    expect(mocks.runRemoteObservationRuntime).not.toHaveBeenCalled()
+
+    vi.clearAllMocks()
+    await dispatchRemoteInternalCommand('__remote-runtime', ['--observe-only'])
+    expect(mocks.runRemoteObservationRuntime).toHaveBeenCalledOnce()
+    expect(mocks.runRemoteRuntime).not.toHaveBeenCalled()
+  })
+
+  test('runtime dispatch rejects every other mode', async () => {
+    await dispatchRemoteInternalCommand('__remote-runtime', ['--other'])
+    expect(process.exitCode).toBe(1)
+    expect(mocks.runRemoteRuntime).not.toHaveBeenCalled()
+    expect(mocks.runRemoteObservationRuntime).not.toHaveBeenCalled()
   })
 
   test('prepare consumes exactly the separator and preserves argv', async () => {

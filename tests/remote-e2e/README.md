@@ -56,6 +56,12 @@ the SSH integration automatically. Existing SSH aliases/functions are left alone
 Other shells are not yet supported for remote services. Unsupported invocations or
 existing multiplexing policies pass through unchanged. `command ssh` bypasses integration.
 
+The explicit `port shell-hook bash --remote-services` bridge remains non-persistent: while its
+SSH session is active, the admission watchdog owns an observation-only coordinator child through
+a parent pipe. It publishes the private handshake/snapshot cache but does not reconcile public
+routes. Closing the session closes that pipe and drains the temporary coordinator. The installed
+marker instead selects the detached supervisor and full routing runtime.
+
 The preflight uses `ssh -G`, which can evaluate `Match exec` a second time; this
 is not universally side-effect-free. Authentication stays with foreground SSH;
 the companion cannot start fallback transport. Missing remote Port disables the

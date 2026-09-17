@@ -44,10 +44,15 @@ function writeLine(value: string): void {
   process.stdout.write(value + '\n')
 }
 
-async function runRuntime(kind: '__remote-runtime' | '__remote-supervise'): Promise<void> {
-  if (kind === '__remote-runtime')
-    await (await import('../lib/remote/coordinator/runtime.ts')).runRemoteRuntime()
-  else await (await import('../lib/remote/coordinator/supervisor.ts')).runRemoteSupervisor()
+async function runRuntime(
+  kind: '__remote-runtime' | '__remote-supervise',
+  observeOnly = false
+): Promise<void> {
+  if (kind === '__remote-runtime') {
+    const runtime = await import('../lib/remote/coordinator/runtime.ts')
+    if (observeOnly) await runtime.runRemoteObservationRuntime()
+    else await runtime.runRemoteRuntime()
+  } else await (await import('../lib/remote/coordinator/supervisor.ts')).runRemoteSupervisor()
 }
 
 async function snapshot(args: string[]): Promise<void> {
@@ -102,6 +107,10 @@ export async function dispatchRemoteInternalCommand(token: string, args: string[
 
     switch (token) {
       case '__remote-runtime':
+        if (args.length === 0) await runRuntime(token)
+        else if (args.length === 1 && args[0] === '--observe-only') await runRuntime(token, true)
+        else fail()
+        return
       case '__remote-supervise':
         requireNoArguments(args)
         await runRuntime(token)

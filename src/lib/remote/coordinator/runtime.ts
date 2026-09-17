@@ -305,11 +305,97 @@ export async function startRemoteRuntime(options: {
   }
 }
 
+export async function startRemoteObservationRuntime(options: {
+  controlRoot: string
+  observeSession?: typeof observeRemoteSession
+  validateSession?: typeof isRemoteSessionObservable
+}) {
+  let stopped = false
+  let wake: (() => void) | undefined
+  const observations = createRemoteObservationTasks({
+    async run(directory, signal) {
+      await (options.observeSession ?? observeRemoteSession)(directory, signal)
+    },
+  })
+  const control = await startRemoteCoordinatorControl(options.controlRoot, {
+    observe(directory, signal) {
+      signal.throwIfAborted()
+      if (!(options.validateSession ?? isRemoteSessionObservable)(directory))
+        throw new Error('Session unavailable')
+      observations.observe(directory)
+    },
+    async unobserve(directory, signal) {
+      signal.throwIfAborted()
+      await observations.unobserve(directory)
+      signal.throwIfAborted()
+    },
+    wake() {},
+    shutdown() {
+      stopped = true
+      wake?.()
+    },
+  })
+  if (!control) {
+    await observations.close()
+    return null
+  }
+  const done = (async () => {
+    try {
+      while (!stopped)
+        await new Promise<void>(resolve => {
+          wake = resolve
+        })
+    } finally {
+      try {
+        await observations.close()
+      } finally {
+        await control.close()
+      }
+    }
+  })()
+  return {
+    incarnation: control.incarnation,
+    done,
+    async close() {
+      stopped = true
+      wake?.()
+      await done
+    },
+  }
+}
+
+export async function runRemoteObservationRuntime(): Promise<void> {
+  const { controlRoot } = await getRemoteRuntimePaths()
+  const runtime = await startRemoteObservationRuntime({ controlRoot })
+  if (!runtime) {
+    process.exitCode = 75
+    return
+  }
+  const stop = () => {
+    void runtime.close().catch(() => {})
+  }
+  process.once('SIGTERM', stop)
+  process.once('SIGINT', stop)
+  process.stdin.once('end', stop)
+  process.stdin.resume()
+  try {
+    await runtime.done
+  } finally {
+    process.removeListener('SIGTERM', stop)
+    process.removeListener('SIGINT', stop)
+    process.stdin.removeListener('end', stop)
+    process.stdin.pause()
+  }
+}
+
 export async function runRemoteRuntime() {
   const paths = await getRemoteRuntimePaths()
   await ensureTraefikDynamicDir()
   const runtime = await startRemoteRuntime(paths)
-  if (!runtime) return
+  if (!runtime) {
+    process.exitCode = 75
+    return
+  }
   const stop = () => {
     void runtime.close().catch(() => {})
   }
