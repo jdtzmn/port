@@ -8,6 +8,7 @@ import { allocateRemoteOwners } from './ownerStore.ts'
 import { createRemoteCoordinatorState, restoreRemoteCoordinatorState } from './state.ts'
 import {
   pinRemoteSessionObservation,
+  isRemoteSessionObservable,
   observeRemoteSession,
   restoreRemoteSessionObservation,
   openRemoteStream,
@@ -41,6 +42,7 @@ export async function startRemoteRuntime(options: {
   collectLocal?: (revision: number) => Promise<RemoteSnapshot>
   prepareProxy?: (ports: number[]) => Promise<RemoteRouteProxy>
   observeSession?: typeof observeRemoteSession
+  validateSession?: typeof isRemoteSessionObservable
 }) {
   const { root, controlRoot, dynamicDirectory } = options
   let stopped = false
@@ -64,6 +66,8 @@ export async function startRemoteRuntime(options: {
   const control = await startRemoteCoordinatorControl(controlRoot, {
     observe(directory, signal) {
       signal.throwIfAborted()
+      if (!(options.validateSession ?? isRemoteSessionObservable)(directory))
+        throw new Error('Session unavailable')
       observations.observe(directory)
     },
     async unobserve(directory, signal) {
@@ -266,10 +270,11 @@ export async function startRemoteRuntime(options: {
       } finally {
         stopped = true
         try {
-          await control.close()
+          // Closing admissions first prevents new tasks while the endpoint remains a settlement barrier.
+          await observations.close()
         } finally {
           try {
-            await observations.close()
+            await control.close()
           } finally {
             await reconciler?.close()
           }
@@ -288,10 +293,10 @@ export async function startRemoteRuntime(options: {
     }
   } catch (error) {
     try {
-      await control.close()
+      await observations.close()
     } finally {
       try {
-        await observations.close()
+        await control.close()
       } finally {
         await reconciler?.close()
       }

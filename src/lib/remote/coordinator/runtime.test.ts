@@ -54,7 +54,7 @@ afterEach(async () => {
   await new Promise<void>(resolve => backend.close(() => resolve()))
   await rm(root, { recursive: true, force: true })
 })
-async function start() {
+async function start(validateSession: (directory: string) => boolean = () => true) {
   runtime = await startRemoteRuntime({
     root,
     dynamicDirectory,
@@ -69,6 +69,7 @@ async function start() {
       targetAddress: '127.0.0.1',
     }),
     observeSession,
+    validateSession,
   })
   if (!runtime) throw new Error('runtime missing')
 }
@@ -152,6 +153,18 @@ describe('connected coordinator runtime', () => {
     ).rejects.toThrow()
   }, 10000)
 
+  it('rejects lexically valid sessions that fail private live-state validation', async () => {
+    observeSession = vi.fn()
+    await start(() => false)
+    const result = await requestRemoteCoordinator(join(root, 'control'), {
+      version: 1,
+      action: 'observe',
+      incarnation: runtime!.incarnation,
+      directory: '/tmp/port-ssh-Ab1234',
+    })
+    expect(result?.status).toBe('error')
+    expect(observeSession).not.toHaveBeenCalled()
+  })
   it('owns deduplicated observations beyond the admitting control request', async () => {
     let release!: () => void
     const held = new Promise<void>(resolve => {
@@ -224,6 +237,14 @@ describe('connected coordinator runtime', () => {
     })
     await vi.waitFor(() => expect(taskSignal?.aborted).toBe(true))
     expect(closed).toBe(false)
+    expect(
+      (
+        await requestRemoteCoordinator(join(root, 'control'), {
+          version: 1,
+          action: 'ping',
+        })
+      )?.status
+    ).toBe('ok')
     release()
     await closing
     expect(closed).toBe(true)

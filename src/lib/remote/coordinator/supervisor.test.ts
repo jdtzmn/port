@@ -48,7 +48,7 @@ describe('remote observation watchdog', () => {
     expect(actions.launch).not.toHaveBeenCalled()
   })
 
-  it('launches a missing coordinator and admits once per incarnation', async () => {
+  it('launches a missing coordinator and refreshes admission while it remains live', async () => {
     const control = new AbortController()
     const pings = [
       null,
@@ -79,6 +79,7 @@ describe('remote observation watchdog', () => {
       'ping',
       'observe',
       'ping',
+      'observe',
       'ping',
       'observe',
     ])
@@ -87,11 +88,12 @@ describe('remote observation watchdog', () => {
       .filter(value => value.action === 'observe')
     expect(admissions).toEqual([
       { version: 1, action: 'observe', incarnation: 'a'.repeat(32), directory },
+      { version: 1, action: 'observe', incarnation: 'a'.repeat(32), directory },
       { version: 1, action: 'observe', incarnation: 'b'.repeat(32), directory },
     ])
   })
 
-  it('retries rejected admission without accepting the incarnation', async () => {
+  it('retries rejected admission at the fast interval', async () => {
     const control = new AbortController()
     let admissions = 0
     const request = vi.fn(async (_root: string, value: RemoteCoordinatorRequest) => {
@@ -108,6 +110,7 @@ describe('remote observation watchdog', () => {
     await maintainRemoteRuntimeObservation(directory, control.signal, actions)
 
     expect(admissions).toBe(2)
+    expect(actions.pause.mock.calls.map(([milliseconds]) => milliseconds)).toEqual([250, 2000])
     expect(actions.launch).not.toHaveBeenCalled()
   })
 

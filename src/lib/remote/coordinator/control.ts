@@ -3,12 +3,12 @@ import { constants, type Stats } from 'node:fs'
 import { chmod, link, lstat, mkdir, open, realpath, unlink } from 'node:fs/promises'
 import { createConnection, createServer, type Socket } from 'node:net'
 import { isAbsolute, join, normalize } from 'node:path'
+import { isRemoteSessionDirectory } from '../session/directory.ts'
 import { withRemoteMutex } from './mutex.ts'
 
 const LIMIT = 8192
 const DEADLINE = 2000
 const HEX = /^[0-9a-f]{32}$(?![\s\S])/
-const DIRECTORY = /^\/tmp\/port-ssh-[A-Za-z0-9]{6}$(?![\s\S])/
 const unavailable = (): never => {
   throw new Error('Remote coordinator control unavailable')
 }
@@ -195,8 +195,7 @@ function parseRequest(bytes: Buffer): RemoteCoordinatorRequest | null {
     if (typeof value.incarnation !== 'string' || !HEX.test(value.incarnation)) return null
     if (value.action === 'observe' || value.action === 'unobserve')
       return keys === 'action,directory,incarnation,version' &&
-        typeof value.directory === 'string' &&
-        DIRECTORY.test(value.directory)
+        isRemoteSessionDirectory(value.directory)
         ? value
         : null
     if (value.action === 'wake' || value.action === 'shutdown')

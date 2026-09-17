@@ -1,3 +1,4 @@
+import { isRemoteSessionDirectory } from '../lib/remote/session/directory.ts'
 import { getRemoteInstanceId } from '../lib/remote/session/identity.ts'
 import { parseRemoteSnapshot } from '../lib/remote/session/snapshot.ts'
 import { collectRemoteSnapshot } from '../lib/remote/session/snapshotCollector.ts'
@@ -20,7 +21,6 @@ const commands = [
 type RemoteInternalCommand = (typeof commands)[number]
 
 const commandSet = new Set<string>(commands)
-const sessionDirectory = /^\/tmp\/port-ssh-[A-Za-z0-9]{6}$/
 const revision = /^(0|[1-9][0-9]{0,15})$/
 
 const fail = (): never => {
@@ -36,7 +36,7 @@ function requireNoArguments(args: string[]): void {
 }
 
 function requireSessionDirectory(args: string[]): string {
-  if (args.length !== 1 || !sessionDirectory.test(args[0]!)) fail()
+  if (args.length !== 1 || !isRemoteSessionDirectory(args[0])) fail()
   return args[0]!
 }
 
@@ -60,7 +60,7 @@ async function snapshot(args: string[]): Promise<void> {
 async function prepare(args: string[]): Promise<void> {
   if (args[0] !== '--' || args.length < 2) fail()
   const directory = await prepareRemoteSession(args.slice(1))
-  if (!directory || !sessionDirectory.test(directory)) throw new Error('Unavailable remote session')
+  if (!isRemoteSessionDirectory(directory)) throw new Error('Unavailable remote session')
   writeLine(directory)
 }
 

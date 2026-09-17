@@ -18,6 +18,7 @@ import * as fs from 'node:fs'
 import { execFile } from 'node:child_process'
 import {
   cleanupRemoteSession,
+  isRemoteSessionObservable,
   observeRemoteSession,
   openRemoteForward,
   prepareRemoteSession,
@@ -369,6 +370,14 @@ describe('remote session preflight', () => {
 })
 
 describe('private mux observation', () => {
+  test('admits only live private session state', async () => {
+    const directory = await withSocket()
+    expect(isRemoteSessionObservable(directory)).toBe(true)
+    chmodSync(directory, 0o755)
+    expect(isRemoteSessionObservable(directory)).toBe(false)
+    expect(isRemoteSessionObservable('/tmp/port-ssh-Ab1234')).toBe(false)
+  })
+
   test.each([
     '',
     '{}',
@@ -546,6 +555,23 @@ async function startObserver(directory: string) {
 }
 
 describe('live private snapshot cache', () => {
+  test('re-observes a live session with an existing valid handshake', async () => {
+    const directory = await withSocket()
+    const first = await startObserver(directory)
+    respond(JSON.stringify(snapshot(0)) + '\n')
+    await vi.advanceTimersByTimeAsync(0)
+    first.controller.abort()
+    await first.pending
+
+    const second = await startObserver(directory)
+    respond(JSON.stringify(snapshot(0)) + '\n')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(cache(directory).status).toBe('ready')
+    expect(execute).toHaveBeenCalledTimes(6)
+    second.controller.abort()
+    await second.pending
+  })
+
   test('refreshes live revisions, unchanged data and valid empty ownership privately', async () => {
     const directory = await withSocket()
     const { controller, pending } = await startObserver(directory)

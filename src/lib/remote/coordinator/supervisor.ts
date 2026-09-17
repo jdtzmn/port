@@ -129,28 +129,20 @@ export async function maintainRemoteRuntimeObservation(
   try {
     if (!(await operations.enabled())) return
     const { controlRoot } = await operations.paths()
-    let acceptedIncarnation: string | undefined
     while (!signal?.aborted) {
       const ping = await operations.request(controlRoot, { version: 1, action: 'ping' })
       if (!ping || ping.status !== 'ok') {
-        acceptedIncarnation = undefined
         operations.launch()
         await operations.pause(RETRY_INTERVAL, signal)
         continue
       }
-      if (acceptedIncarnation !== ping.incarnation) {
-        const result = await operations.request(controlRoot, {
-          version: 1,
-          action: 'observe',
-          incarnation: ping.incarnation,
-          directory,
-        })
-        if (result?.status === 'ok') acceptedIncarnation = ping.incarnation
-      }
-      await operations.pause(
-        acceptedIncarnation === ping.incarnation ? WATCH_INTERVAL : RETRY_INTERVAL,
-        signal
-      )
+      const result = await operations.request(controlRoot, {
+        version: 1,
+        action: 'observe',
+        incarnation: ping.incarnation,
+        directory,
+      })
+      await operations.pause(result?.status === 'ok' ? WATCH_INTERVAL : RETRY_INTERVAL, signal)
     }
   } catch {
     /* Integration failure never changes login, authentication or remote output. */
