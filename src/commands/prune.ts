@@ -20,8 +20,6 @@ interface PruneOptions {
   dryRun?: boolean
   force?: boolean
   noFetch?: boolean
-  /** Commander represents the negated --no-fetch option as fetch: false. */
-  fetch?: boolean
   base?: string
   cleanupImages?: boolean
 }
@@ -114,7 +112,7 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
   await ensurePortRuntimeDir(repoRoot)
 
   // 1. Fetch and prune remote refs
-  if (options.fetch !== false && !options.noFetch) {
+  if (!options.noFetch) {
     output.info('Fetching remote state...')
     await measureCommandPhase('prune.fetch', () => fetchAndPrune(repoRoot))
   }

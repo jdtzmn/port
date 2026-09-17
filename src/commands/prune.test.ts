@@ -157,8 +157,8 @@ describe('prune command', () => {
     )
   })
 
-  test('skips fetch when Commander provides fetch false for --no-fetch', async () => {
-    await prune({ dryRun: true, fetch: false })
+  test('skips fetch when noFetch is enabled', async () => {
+    await prune({ dryRun: true, noFetch: true })
 
     expect(mocks.fetchAndPrune).not.toHaveBeenCalled()
   })
