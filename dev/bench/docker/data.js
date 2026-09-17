@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789615196961,
+  "lastUpdate": 1789616621362,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port Docker operations": [
@@ -405,6 +405,51 @@ window.BENCHMARK_DATA = {
             "range": "655.8919999999999",
             "unit": "ms",
             "extra": "p95: 1442.059 ms\nsamples: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2829b5fc53565f8dbbafe2c07ce05f4ef11158a7",
+          "message": "Cache stale worktree snapshots (#168)\n\n* Cache stale worktree snapshots\n\n* Invalidate stale worktree cache on mutations\n\n* Format stale worktree cache files",
+          "timestamp": "2026-09-16T23:40:44-04:00",
+          "tree_id": "ac60389a081473b22e99ff4c2de23a798048596b",
+          "url": "https://github.com/jdtzmn/port/commit/2829b5fc53565f8dbbafe2c07ce05f4ef11158a7"
+        },
+        "date": 1789616621328,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Docker operations / status (small)",
+            "value": 383.937,
+            "range": "5.314999999999998",
+            "unit": "ms",
+            "extra": "p95: 389.252 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / status (large)",
+            "value": 3774.118,
+            "range": "60.22900000000027",
+            "unit": "ms",
+            "extra": "p95: 3834.347 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / up (warm)",
+            "value": 619.068,
+            "range": "232.94399999999996",
+            "unit": "ms",
+            "extra": "p95: 852.012 ms\nsamples: 10"
           }
         ]
       }
