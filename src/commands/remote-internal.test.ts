@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   observeRemoteSession: vi.fn(),
   cleanupRemoteSession: vi.fn(),
   maintainRemoteRuntimeObservation: vi.fn(),
+  registerRemoteRuntimeObservation: vi.fn(),
   stopRemoteRuntimeObservation: vi.fn(),
   runRemoteRuntime: vi.fn(),
   runRemoteObservationRuntime: vi.fn(),
@@ -47,9 +48,10 @@ describe('private remote dispatch', () => {
     process.exitCode = previous
   })
 
-  test('only recognizes the seven exact endpoints', () => {
+  test('only recognizes the eight exact endpoints', () => {
     for (const suffix of [
       'prepare',
+      'register',
       'observe',
       'cleanup',
       'handshake',
@@ -101,6 +103,30 @@ describe('private remote dispatch', () => {
     await dispatchRemoteInternalCommand('__remote-prepare', ['--', 'devbox.od'])
     expect(stdout).toHaveBeenCalledExactlyOnceWith(`managed ${directory}\n`)
     expect(process.exitCode).toBe(0)
+  })
+
+  test('register admits one exact lowercase OpenSSH connection id without output', async () => {
+    const id = 'abcdef0123456789'.repeat(3)
+    mocks.registerRemoteRuntimeObservation.mockResolvedValueOnce(false)
+    await dispatchRemoteInternalCommand('__remote-register', [id])
+    expect(mocks.registerRemoteRuntimeObservation).toHaveBeenCalledExactlyOnceWith(
+      `/tmp/port-ssh-${id}`
+    )
+    expect(stdout).not.toHaveBeenCalled()
+    expect(stderr).not.toHaveBeenCalled()
+    expect(process.exitCode).toBe(0)
+  })
+
+  test.each([
+    { args: [] },
+    { args: ['a'.repeat(39)] },
+    { args: ['a'.repeat(65)] },
+    { args: ['A'.repeat(40)] },
+    { args: ['a'.repeat(40), 'extra'] },
+  ])('register rejects malformed argv $args', async ({ args }) => {
+    await dispatchRemoteInternalCommand('__remote-register', args)
+    expect(mocks.registerRemoteRuntimeObservation).not.toHaveBeenCalled()
+    expect(process.exitCode).toBe(1)
   })
 
   test('handshake is only fixed protocol JSON', async () => {

@@ -70,6 +70,7 @@ const LAUNCH_INTERVAL = 10_000
 const WATCH_INTERVAL = 2_000
 const RETRY_INTERVAL = 250
 const STOP_DEADLINE = 10_000
+const REGISTER_DEADLINE = 5_000
 
 function launchRemoteSupervisor(): void {
   if (performance.now() - launchedAt < LAUNCH_INTERVAL) return
@@ -141,6 +142,37 @@ const observationOperations: RemoteObservationOperations = {
   endpointExists: coordinatorEndpointExists,
   pause,
   now: () => performance.now(),
+}
+
+/** Bounded one-shot admission used by OpenSSH LocalCommand. */
+export async function registerRemoteRuntimeObservation(
+  directory: string,
+  overrides: Partial<RemoteObservationOperations> = {}
+): Promise<boolean> {
+  const operations = { ...observationOperations, ...overrides }
+  try {
+    const { controlRoot } = await operations.paths()
+    const deadline = operations.now() + REGISTER_DEADLINE
+    while (operations.now() < deadline) {
+      const ping = await operations.request(controlRoot, { version: 1, action: 'ping' })
+      if (!ping || ping.status !== 'ok') {
+        await operations.launch()
+        await operations.pause(RETRY_INTERVAL)
+        continue
+      }
+      const result = await operations.request(controlRoot, {
+        version: 1,
+        action: 'observe',
+        incarnation: ping.incarnation,
+        directory,
+      })
+      if (result?.status === 'ok') return true
+      await operations.pause(RETRY_INTERVAL)
+    }
+  } catch {
+    /* Optional integration failure never changes SSH behavior. */
+  }
+  return false
 }
 
 /** Session-lived watchdog that re-admits observation after coordinator replacement. */

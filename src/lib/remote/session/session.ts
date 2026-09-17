@@ -1021,6 +1021,19 @@ function removeKnownFiles(directory: string, original: Stats): void {
   }
 }
 
+/** Removes settled managed state without ever signalling or unlinking an active SSH master. */
+export async function cleanupManagedRemoteSession(directory: string): Promise<void> {
+  try {
+    const state = readSession(directory)
+    if (state.lifecycle !== 'openssh-managed' || socket(directory, state.original)) return
+    removeKnownFiles(directory, state.original)
+    unchanged(directory, state.original)
+    rmdirSync(directory)
+  } catch {
+    /* Refuse unowned, active, or unexpected state. */
+  }
+}
+
 export async function cleanupRemoteSession(directory: string): Promise<void> {
   try {
     const state = readSession(directory)
