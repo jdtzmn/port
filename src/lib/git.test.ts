@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 const rawMock = vi.hoisted(() => vi.fn())
+const branchLocalMock = vi.hoisted(() => vi.fn())
 
 vi.mock('simple-git', () => ({
   default: vi.fn(() => ({
     raw: rawMock,
+    branchLocal: branchLocalMock,
   })),
 }))
 
@@ -22,6 +24,7 @@ import {
 
 beforeEach(() => {
   rawMock.mockReset()
+  branchLocalMock.mockReset()
 })
 
 describe('parseDuplicateWorktreeError', () => {
@@ -104,6 +107,35 @@ describe('createWorktree', () => {
 
     expect(rawMock).toHaveBeenCalledTimes(1)
     expect(rawMock).toHaveBeenCalledWith([
+      'worktree',
+      'add',
+      '/repo/.port/trees/my feature',
+      'my-feature',
+    ])
+  })
+
+  test('refreshes a stale caller preflight after worktree creation fails', async () => {
+    rawMock
+      .mockRejectedValueOnce(new Error('stale preflight'))
+      .mockRejectedValueOnce(new Error('invalid ref'))
+      .mockResolvedValueOnce(undefined)
+    branchLocalMock.mockResolvedValue({ all: ['my-feature'] })
+
+    await expect(
+      createWorktree('/repo', 'my feature', {
+        ref: 'my-feature',
+        localExists: true,
+        remoteExists: false,
+      })
+    ).resolves.toBe('/repo/.port/trees/my feature')
+
+    expect(rawMock).toHaveBeenNthCalledWith(1, [
+      'worktree',
+      'add',
+      '/repo/.port/trees/my feature',
+      'my-feature',
+    ])
+    expect(rawMock).toHaveBeenNthCalledWith(3, [
       'worktree',
       'add',
       '/repo/.port/trees/my feature',

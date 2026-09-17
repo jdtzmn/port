@@ -305,6 +305,9 @@ export async function createWorktree(
 
     return worktreePath
   } catch (error) {
+    if (preflight) {
+      return createWorktree(repoRoot, branch)
+    }
     throw new GitError(`Failed to create worktree for '${branch}': ${error}`)
   }
 }
