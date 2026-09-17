@@ -64,8 +64,6 @@ npm install -g @jdtzmn/port
 bun add -g @jdtzmn/port
 ```
 
-`port` executes with a Node.js shebang (`#!/usr/bin/env node`) and requires Node.js 22.5 or newer on your `PATH`. Bun is used for Port development, but is not required to install or run the CLI.
-
 ### Agent Skill
 
 Port ships an installable Agent Skill that teaches compatible coding agents the safe Port workflow: setup, entering worktrees, starting services, viewing URLs, running host processes, and cleaning up.
