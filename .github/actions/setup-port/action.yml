@@ -1,5 +1,5 @@
 name: Setup Port
-description: Install a pinned Bun runtime, restore dependency downloads, install dependencies, and build Port.
+description: Install pinned Bun and Node runtimes, restore dependencies, install dependencies, build Port, and verify its Node CLI.
 
 inputs:
   configure-git-identity:
@@ -16,6 +16,11 @@ runs:
       run: |
         git config --global user.email "ci@test.local"
         git config --global user.name "CI Runner"
+
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
 
     - name: Setup Bun
       uses: oven-sh/setup-bun@v2
@@ -37,3 +42,7 @@ runs:
     - name: Build
       shell: bash
       run: bun run build
+
+    - name: Verify Node runtime
+      shell: bash
+      run: bun run test:node-runtime
