@@ -27,9 +27,10 @@ function getCommandProgram(): Command {
 }
 
 export {
-  NON_WORKTREE_COMMANDS,
+  getCommandExecutionClass,
   shouldAutoRegisterWorktree,
   shouldSkipEarlyWork,
+  type CommandExecutionClass,
 } from './earlyWork.ts'
 
 // ---------------------------------------------------------------------------

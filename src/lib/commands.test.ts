@@ -8,6 +8,7 @@ import {
   getCommandFlags,
   getGlobalFlags,
   getCommandDescriptions,
+  getCommandExecutionClass,
   shouldAutoRegisterWorktree,
   shouldSkipEarlyWork,
   setCommandProgram,
@@ -168,14 +169,41 @@ describe('getCommandDescriptions', () => {
   })
 })
 
+describe('getCommandExecutionClass', () => {
+  test('classifies query commands and aliases', () => {
+    expect(getCommandExecutionClass('list')).toBe('query')
+    expect(getCommandExecutionClass('ls')).toBe('query')
+    expect(getCommandExecutionClass('status')).toBe('query')
+    expect(getCommandExecutionClass('urls')).toBe('query')
+    expect(getCommandExecutionClass('exit')).toBe('query')
+  })
+
+  test('classifies mutating commands and aliases', () => {
+    expect(getCommandExecutionClass('up')).toBe('mutating')
+    expect(getCommandExecutionClass('remove')).toBe('mutating')
+    expect(getCommandExecutionClass('rm')).toBe('mutating')
+    expect(getCommandExecutionClass('compose')).toBe('mutating')
+    expect(getCommandExecutionClass('dc')).toBe('mutating')
+  })
+
+  test('uses interactive entry as the default', () => {
+    expect(getCommandExecutionClass('enter')).toBe('interactive')
+    expect(getCommandExecutionClass('feature-branch')).toBe('interactive')
+    expect(getCommandExecutionClass(undefined)).toBe('interactive')
+  })
+})
+
 describe('shouldAutoRegisterWorktree', () => {
-  test('allows normal worktree-aware commands and no-arg invocation', () => {
+  test('skips query commands and allows ordinary worktree commands', () => {
     expect(shouldAutoRegisterWorktree(undefined)).toBe(true)
-    expect(shouldAutoRegisterWorktree('status')).toBe(true)
+    expect(shouldAutoRegisterWorktree('up')).toBe(true)
+    expect(shouldAutoRegisterWorktree('status')).toBe(false)
+    expect(shouldAutoRegisterWorktree('urls')).toBe(false)
+    expect(shouldAutoRegisterWorktree('exit')).toBe(false)
     expect(shouldAutoRegisterWorktree('list')).toBe(false)
   })
 
-  test('skips global-only commands and flags', () => {
+  test('preserves exceptions for global commands, enter, and flags', () => {
     expect(shouldAutoRegisterWorktree('help')).toBe(false)
     expect(shouldAutoRegisterWorktree('enter')).toBe(false)
     expect(shouldAutoRegisterWorktree('completion')).toBe(false)
@@ -190,13 +218,15 @@ describe('shouldAutoRegisterWorktree', () => {
 })
 
 describe('shouldSkipEarlyWork', () => {
-  test('skips pre-parse work for enter, completion, and shell-hook', () => {
+  test('skips pre-parse work for queries and enter', () => {
     expect(shouldSkipEarlyWork('enter')).toBe(true)
     expect(shouldSkipEarlyWork('completion')).toBe(true)
     expect(shouldSkipEarlyWork('shell-hook')).toBe(true)
     expect(shouldSkipEarlyWork('doctor')).toBe(true)
     expect(shouldSkipEarlyWork('list')).toBe(true)
-    expect(shouldSkipEarlyWork('status')).toBe(false)
+    expect(shouldSkipEarlyWork('status')).toBe(true)
+    expect(shouldSkipEarlyWork('urls')).toBe(true)
+    expect(shouldSkipEarlyWork('exit')).toBe(true)
     expect(shouldSkipEarlyWork(undefined)).toBe(false)
   })
 })
