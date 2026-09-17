@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789650860769,
+  "lastUpdate": 1789659097972,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -630,6 +630,51 @@ window.BENCHMARK_DATA = {
             "range": "6.233000000000004",
             "unit": "ms",
             "extra": "p95: 44.46 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e83d8e06b98a59b695bff0a8739c1a3ab3587d9e",
+          "message": "Honor prune --no-fetch (#175)\n\n* Honor prune no-fetch option\n\n* Wire prune no-fetch CLI option",
+          "timestamp": "2026-09-17T11:24:25-04:00",
+          "tree_id": "e1a704f8264fb51a99b514823f2322c1f434b0e4",
+          "url": "https://github.com/jdtzmn/port/commit/e83d8e06b98a59b695bff0a8739c1a3ab3587d9e"
+        },
+        "date": 1789659097463,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 38.424,
+            "range": "5.561",
+            "unit": "ms",
+            "extra": "p95: 43.985 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 27.281,
+            "range": "6.1270000000000024",
+            "unit": "ms",
+            "extra": "p95: 33.408 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 32.49,
+            "range": "2.5549999999999997",
+            "unit": "ms",
+            "extra": "p95: 35.045 ms\nsamples: 20"
           }
         ]
       }
