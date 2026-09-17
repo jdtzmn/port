@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789659100585,
+  "lastUpdate": 1789662567703,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port Docker operations": [
@@ -696,6 +696,72 @@ window.BENCHMARK_DATA = {
             "range": "34.074000000000524",
             "unit": "ms",
             "extra": "p95: 10795.508 ms\nsamples: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f237bc6c64ef025be851cc60c845e4c982db78a9",
+          "message": "Skip inactive Compose teardown during remove (#176)\n\n* Skip inactive Compose teardown during remove\n\n* Preserve active services during remove",
+          "timestamp": "2026-09-17T12:21:51-04:00",
+          "tree_id": "e2c64a06b4ee7ab2e79a57026a79b4f5d8e8da3a",
+          "url": "https://github.com/jdtzmn/port/commit/f237bc6c64ef025be851cc60c845e4c982db78a9"
+        },
+        "date": 1789662567677,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Docker operations / status (small)",
+            "value": 320.561,
+            "range": "14.388000000000034",
+            "unit": "ms",
+            "extra": "p95: 334.949 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / status (large)",
+            "value": 2497.306,
+            "range": "26.057999999999993",
+            "unit": "ms",
+            "extra": "p95: 2523.364 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / up (warm)",
+            "value": 782.403,
+            "range": "8.336000000000013",
+            "unit": "ms",
+            "extra": "p95: 790.739 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / down",
+            "value": 10617.067,
+            "range": "22.036000000000058",
+            "unit": "ms",
+            "extra": "p95: 10639.103 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / remove (inactive services)",
+            "value": 419.012,
+            "range": "7.749000000000024",
+            "unit": "ms",
+            "extra": "p95: 426.761 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / remove (running services)",
+            "value": 10815.628,
+            "range": "25.92199999999866",
+            "unit": "ms",
+            "extra": "p95: 10841.55 ms\nsamples: 10"
           }
         ]
       }
