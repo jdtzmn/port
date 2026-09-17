@@ -12,6 +12,7 @@ import {
 import { findRemoteRuntimePaths } from '../lib/remote/coordinator/paths.ts'
 import { readRemoteRouteView } from '../lib/remote/coordinator/store.ts'
 import { describeRemoteRoute } from '../lib/remote/routing/view.ts'
+import { measureCommandPhase } from '../lib/commandProfile.ts'
 import * as output from '../lib/output.ts'
 
 /**
@@ -29,7 +30,9 @@ export async function status(): Promise<void> {
     if (configExists(repoRoot)) {
       const config = await loadConfig(repoRoot)
       const composeFile = getComposeFile(config)
-      worktrees = await collectWorktreeStatuses(repoRoot, composeFile, config.domain)
+      worktrees = await measureCommandPhase('status.worktrees', () =>
+        collectWorktreeStatuses(repoRoot!, composeFile, config.domain)
+      )
     } else {
       output.info(
         'Current repository is not initialized with port. Showing global service status only.'
@@ -96,7 +99,9 @@ export async function status(): Promise<void> {
 
   if (repoRoot && configExists(repoRoot)) {
     try {
-      const staleWorktrees = await getStaleWorktreeCandidates(repoRoot)
+      const staleWorktrees = await measureCommandPhase('status.stale-worktrees', () =>
+        getStaleWorktreeCandidates(repoRoot!)
+      )
       if (staleWorktrees.length >= STALE_WORKTREE_WARNING_THRESHOLD) {
         output.warn(formatStaleWorktreeWarning(staleWorktrees.length))
       }

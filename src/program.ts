@@ -5,6 +5,7 @@ import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { shouldAutoRegisterWorktree, shouldSkipEarlyWork } from './lib/earlyWork.ts'
 import { handleCliError } from './lib/cli.ts'
+import { finishCommandProfile, measureCommandPhase } from './lib/commandProfile.ts'
 
 export const program = new Command()
 program.enablePositionalOptions()
@@ -366,26 +367,37 @@ export async function runCli(): Promise<void> {
   const entryToken = process.argv[2]
 
   try {
-    const commands = await import('./lib/commands.ts')
+    const commands = await measureCommandPhase(
+      'cli.command-metadata',
+      () => import('./lib/commands.ts')
+    )
     commands.setCommandProgram(program)
 
     let handledRemoteCommand = false
     if (entryToken?.startsWith('__remote-')) {
-      const remote = await import('./commands/remote-internal.ts')
+      const remote = await measureCommandPhase(
+        'cli.remote-load',
+        () => import('./commands/remote-internal.ts')
+      )
       if (remote.isRemoteInternalCommand(entryToken)) {
-        await remote.dispatchRemoteInternalCommand(entryToken, process.argv.slice(3))
+        await measureCommandPhase('cli.remote-dispatch', () =>
+          remote.dispatchRemoteInternalCommand(entryToken, process.argv.slice(3))
+        )
         handledRemoteCommand = true
       }
     }
 
     if (!handledRemoteCommand) {
       if (shouldAutoRegisterWorktree(entryToken)) {
-        await (await import('./lib/worktreeRegistration.ts')).ensureCurrentWorktreeRegistered()
+        await measureCommandPhase('cli.worktree-registration', async () => {
+          await (await import('./lib/worktreeRegistration.ts')).ensureCurrentWorktreeRegistered()
+        })
       }
 
-      await program.parseAsync()
+      await measureCommandPhase('cli.dispatch', () => program.parseAsync())
     }
   } catch (error) {
+    finishCommandProfile()
     handleCliError(error)
   }
 }

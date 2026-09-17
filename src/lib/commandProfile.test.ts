@@ -3,6 +3,7 @@ import {
   CommandProfileRecorder,
   finishCommandProfile,
   measureCommandPhase,
+  profileCommand,
   startCommandProfile,
 } from './commandProfile.ts'
 
@@ -59,6 +60,22 @@ describe('command profile lifecycle', () => {
       durationMs: expect.any(Number),
       spans: [{ name: 'status.worktrees', durationMs: expect.any(Number) }],
     })
+  })
+  test('finishes the profile when the command fails', async () => {
+    vi.stubEnv('PORT_PROFILE', '1')
+    const lines: string[] = []
+
+    await expect(
+      profileCommand(
+        ['status'],
+        async () => {
+          throw new Error('docker unavailable')
+        },
+        line => lines.push(line)
+      )
+    ).rejects.toThrow('docker unavailable')
+
+    expect(lines).toHaveLength(1)
   })
 
   test('does not write a profile unless enabled', async () => {

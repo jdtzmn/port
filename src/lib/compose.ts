@@ -6,6 +6,7 @@ import type { ParsedComposeFile, ParsedComposeService } from '../types.ts'
 import { TRAEFIK_NETWORK, TRAEFIK_DIR } from './traefik.ts'
 import { execAsync, execWithStdio } from './exec.ts'
 import { formatHostname, formatHostnameLabel } from './hostname.ts'
+import { measureCommandPhase } from './commandProfile.ts'
 
 /**
  * Escape a shell argument to prevent command injection.
@@ -247,21 +248,23 @@ export async function parseComposeFile(
   cwd: string,
   composeFile: string = 'docker-compose.yml'
 ): Promise<ParsedComposeFile> {
-  const cmd = await getComposeCommand()
+  return measureCommandPhase('docker.compose-config', async () => {
+    const cmd = await getComposeCommand()
 
-  try {
-    const { stdout } = await execAsync(
-      `${cmd} -f ${shellEscape(composeFile)} config --format json`,
-      {
-        cwd,
-        timeout: 30000,
-      }
-    )
+    try {
+      const { stdout } = await execAsync(
+        `${cmd} -f ${shellEscape(composeFile)} config --format json`,
+        {
+          cwd,
+          timeout: 30000,
+        }
+      )
 
-    return JSON.parse(stdout) as ParsedComposeFile
-  } catch (error) {
-    throw new ComposeError(`Failed to parse compose file: ${error}`)
-  }
+      return JSON.parse(stdout) as ParsedComposeFile
+    } catch (error) {
+      throw new ComposeError(`Failed to parse compose file: ${error}`)
+    }
+  })
 }
 
 /**
@@ -716,51 +719,53 @@ export async function composePs(
   projectName: string,
   runtimeContext?: ComposeRuntimeContext
 ): Promise<Array<{ name: string; status: string; running: boolean }>> {
-  const cmd = await getComposeCommand()
-  const renderedUserOverride = runtimeContext
-    ? await renderUserOverrideFile({
-        repoRoot: runtimeContext.repoRoot,
-        worktreePath: cwd,
-        branch: runtimeContext.branch,
-        domain: runtimeContext.domain,
-        composeFile,
-        projectName,
-      })
-    : null
-  const composeFiles = getComposeFileStack(composeFile, renderedUserOverride)
-  const composeFileFlags = composeFiles.map(file => `-f ${shellEscape(file)}`).join(' ')
+  return measureCommandPhase('docker.compose-ps', async () => {
+    const cmd = await getComposeCommand()
+    const renderedUserOverride = runtimeContext
+      ? await renderUserOverrideFile({
+          repoRoot: runtimeContext.repoRoot,
+          worktreePath: cwd,
+          branch: runtimeContext.branch,
+          domain: runtimeContext.domain,
+          composeFile,
+          projectName,
+        })
+      : null
+    const composeFiles = getComposeFileStack(composeFile, renderedUserOverride)
+    const composeFileFlags = composeFiles.map(file => `-f ${shellEscape(file)}`).join(' ')
 
-  try {
-    const { stdout } = await execAsync(
-      `${cmd} -p ${shellEscape(projectName)} ${composeFileFlags} ps --format json`,
-      { cwd }
-    )
+    try {
+      const { stdout } = await execAsync(
+        `${cmd} -p ${shellEscape(projectName)} ${composeFileFlags} ps --format json`,
+        { cwd }
+      )
 
-    if (!stdout.trim()) {
+      if (!stdout.trim()) {
+        return []
+      }
+
+      // docker compose ps --format json outputs one JSON object per line
+      const lines = stdout.trim().split('\n')
+      const services: Array<{ name: string; status: string; running: boolean }> = []
+
+      for (const line of lines) {
+        try {
+          const service = JSON.parse(line)
+          services.push({
+            name: service.Service || service.Name || 'unknown',
+            status: service.State || service.Status || 'unknown',
+            running: (service.State || '').toLowerCase().includes('running'),
+          })
+        } catch {
+          // Skip malformed lines
+        }
+      }
+
+      return services
+    } catch {
       return []
     }
-
-    // docker compose ps --format json outputs one JSON object per line
-    const lines = stdout.trim().split('\n')
-    const services: Array<{ name: string; status: string; running: boolean }> = []
-
-    for (const line of lines) {
-      try {
-        const service = JSON.parse(line)
-        services.push({
-          name: service.Service || service.Name || 'unknown',
-          status: service.State || service.Status || 'unknown',
-          running: (service.State || '').toLowerCase().includes('running'),
-        })
-      } catch {
-        // Skip malformed lines
-      }
-    }
-
-    return services
-  } catch {
-    return []
-  }
+  })
 }
 
 /**
