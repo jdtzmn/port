@@ -1,10 +1,18 @@
+import { createHash } from 'crypto'
+import { mkdir, readFile, unlink } from 'fs/promises'
+import { join } from 'path'
 import { getDefaultBranch, getGoneBranches, getMergedBranches, listWorktrees } from './git.ts'
 import { getMergedPrBranches, isGhAvailable, type MergedPrInfo } from './github.ts'
+import { GLOBAL_PORT_DIR } from './registry.ts'
 import { sanitizeBranchName } from './sanitize.ts'
+import { writeFileAtomic } from './state.ts'
 import { measureCommandPhase } from './commandProfile.ts'
 
 export const STALE_WORKTREE_WARNING_THRESHOLD = 10
 export const STALE_WORKTREE_EXTREME_THRESHOLD = 25
+export const STALE_WORKTREE_CACHE_TTL_MS = 30_000
+
+const STALE_WORKTREE_CACHE_DIR = join(GLOBAL_PORT_DIR, 'cache', 'stale-worktrees')
 
 export type StaleWorktreeReason = 'merged' | 'gone' | 'pr-merged'
 
@@ -15,14 +23,91 @@ export interface StaleWorktreeCandidate {
   pr?: MergedPrInfo
 }
 
+interface StaleWorktreeSnapshot {
+  createdAt: number
+  candidates: StaleWorktreeCandidate[]
+}
+
+interface StaleWorktreeOptions {
+  baseBranch?: string
+  fresh?: boolean
+}
+
+function getSnapshotPath(repoRoot: string): string {
+  const key = createHash('sha256').update(repoRoot).digest('hex')
+  return join(STALE_WORKTREE_CACHE_DIR, `${key}.json`)
+}
+
+function isStaleWorktreeCandidate(value: unknown): value is StaleWorktreeCandidate {
+  if (typeof value !== 'object' || value === null) return false
+
+  const candidate = value as Record<string, unknown>
+  return (
+    typeof candidate.branch === 'string' &&
+    typeof candidate.sanitized === 'string' &&
+    (candidate.reason === 'merged' || candidate.reason === 'gone' || candidate.reason === 'pr-merged')
+  )
+}
+
+async function readSnapshot(repoRoot: string): Promise<StaleWorktreeCandidate[] | null> {
+  try {
+    const snapshot = JSON.parse(
+      await readFile(getSnapshotPath(repoRoot), 'utf-8')
+    ) as Partial<StaleWorktreeSnapshot>
+    const createdAt = snapshot.createdAt
+    if (typeof createdAt !== 'number' || !Number.isFinite(createdAt)) return null
+
+    const ageMs = Date.now() - createdAt
+    if (
+      ageMs < 0 ||
+      ageMs >= STALE_WORKTREE_CACHE_TTL_MS ||
+      !Array.isArray(snapshot.candidates) ||
+      !snapshot.candidates.every(isStaleWorktreeCandidate)
+    ) {
+      return null
+    }
+
+    return snapshot.candidates
+  } catch {
+    return null
+  }
+}
+
+async function writeSnapshot(repoRoot: string, candidates: StaleWorktreeCandidate[]): Promise<void> {
+  try {
+    await mkdir(STALE_WORKTREE_CACHE_DIR, { recursive: true })
+    await writeFileAtomic(
+      getSnapshotPath(repoRoot),
+      JSON.stringify({ createdAt: Date.now(), candidates })
+    )
+  } catch {
+    // Caching is opportunistic; failed cache I/O must never hide stale worktrees.
+  }
+}
+
+/** Remove cached stale-worktree results after a worktree mutation. */
+export async function invalidateStaleWorktreeCache(repoRoot: string): Promise<void> {
+  try {
+    await unlink(getSnapshotPath(repoRoot))
+  } catch {
+    // A missing or unavailable cache is already equivalent to an invalidated cache.
+  }
+}
+
 export function formatStaleWorktreeWarning(count: number): string {
   return `You have ${count} stale port worktrees. Consider running port prune.`
 }
 
 export async function getStaleWorktreeCandidates(
   repoRoot: string,
-  options: { baseBranch?: string } = {}
+  options: StaleWorktreeOptions = {}
 ): Promise<StaleWorktreeCandidate[]> {
+  const useCache = !options.fresh && options.baseBranch === undefined
+  if (useCache) {
+    const cached = await readSnapshot(repoRoot)
+    if (cached) return cached
+  }
+
   try {
     const baseBranch =
       options.baseBranch ??
@@ -66,9 +151,7 @@ export async function getStaleWorktreeCandidates(
     }
 
     for (const branch of worktreeBranches) {
-      if (candidateMap.has(branch)) {
-        continue
-      }
+      if (candidateMap.has(branch)) continue
 
       const prInfo = prBranches.get(branch)
       if (prInfo) {
@@ -81,7 +164,9 @@ export async function getStaleWorktreeCandidates(
       }
     }
 
-    return Array.from(candidateMap.values())
+    const candidates = Array.from(candidateMap.values())
+    if (useCache) await writeSnapshot(repoRoot, candidates)
+    return candidates
   } catch {
     return []
   }

@@ -116,7 +116,7 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
 
   // 2. Determine the base branch
   const baseBranch = options.base ?? (await getDefaultBranch(repoRoot))
-  const candidates = await getStaleWorktreeCandidates(repoRoot, { baseBranch })
+  const candidates = await getStaleWorktreeCandidates(repoRoot, { baseBranch, fresh: true })
 
   if (candidates.length === 0) {
     output.success('No merged worktrees found. Everything is clean.')
