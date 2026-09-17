@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789606032986,
+  "lastUpdate": 1789606610838,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -135,6 +135,51 @@ window.BENCHMARK_DATA = {
             "range": "8.072000000000003",
             "unit": "ms",
             "extra": "p95: 222.339 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "721866b640f259892fa34fe719e55382f23fc86e",
+          "message": "Speed up CLI list startup (#157)\n\n* Lazy-load CLI command handlers\n\n* Preserve CLI entry point with lazy handlers\n\n* Optimize list CLI startup\n\n* Run remote split bundle on supported Bun",
+          "timestamp": "2026-09-16T20:54:00-04:00",
+          "tree_id": "15ab11cc2ee1f0a4fc07f932e3ddb0410e1d6a15",
+          "url": "https://github.com/jdtzmn/port/commit/721866b640f259892fa34fe719e55382f23fc86e"
+        },
+        "date": 1789606609641,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 42.514,
+            "range": "7.501999999999995",
+            "unit": "ms",
+            "extra": "p95: 50.016 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 32.238,
+            "range": "7.727000000000004",
+            "unit": "ms",
+            "extra": "p95: 39.965 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 36.009,
+            "range": "6.814",
+            "unit": "ms",
+            "extra": "p95: 42.823 ms\nsamples: 20"
           }
         ]
       }
