@@ -1,6 +1,7 @@
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, getComposeFile } from '../lib/config.ts'
 import { parseComposeFile, getServicePorts, composePs } from '../lib/compose.ts'
+import { getRunningComposeServiceInventory } from '../lib/dockerInventory.ts'
 import { buildProjectName as getProjectName } from '../lib/projectName.ts'
 import { formatHostname, formatHostnameLabel } from '../lib/hostname.ts'
 import { findRemoteRuntimePaths } from '../lib/remote/coordinator/paths.ts'
@@ -82,30 +83,32 @@ export async function urls(serviceName?: string, options: UrlOptions = {}): Prom
   const projectName = getProjectName(repoRoot, name)
 
   let parsedCompose
-  const psPromise = composePs(worktreePath, composeFile, projectName).catch(() => [])
-
-  let psResult: Array<{ name: string; status: string; running: boolean }>
+  let runningServices: Set<string>
+  let useInventory = false
   try {
-    const [composeResult, statusResult] = await Promise.all([
+    const [composeResult, inventory] = await Promise.all([
       parseComposeFile(worktreePath, composeFile),
-      psPromise,
+      getRunningComposeServiceInventory(),
     ])
     parsedCompose = composeResult
-    psResult = statusResult
+    useInventory = inventory !== null
+    runningServices = inventory
+      ? (inventory.get(projectName) ?? new Set<string>())
+      : new Set(
+          (await composePs(worktreePath, composeFile, projectName).catch(() => []))
+            .filter(service => service.running)
+            .map(service => service.name)
+        )
   } catch (error) {
     output.error(`Failed to parse docker-compose file: ${error}`)
     process.exit(1)
   }
-
-  // Query Docker for running container status
-  const runningServices = new Map(psResult.map(s => [s.name, s.running]))
-
   const services = Object.entries(parsedCompose.services)
     .map(([service, definition]) => {
       const ports = getServicePorts(definition)
-      const running = Array.from(runningServices.entries()).some(
-        ([containerName, isRunning]) => containerName.includes(service) && isRunning
-      )
+      const running = useInventory
+        ? runningServices.has(service)
+        : Array.from(runningServices).some(containerName => containerName.includes(service))
       const urls =
         ports.length > 0 ? [`http://${service}.${formatHostnameLabel(name)}.${config.domain}`] : []
       urls.push(...ports.map(port => `http://${formatHostname(name, config.domain)}:${port}`))
