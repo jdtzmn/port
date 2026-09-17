@@ -94,7 +94,8 @@ export const BENCHMARK_DEFINITIONS: Record<BenchmarkId, BenchmarkDefinition> = {
     id: 'down',
     category: 'docker',
     name: 'Docker operations / down',
-    budget: { p95: 6000 },
+    // Docker Compose uses a 10-second stop timeout by default.
+    budget: { p95: 15000 },
     requiresDocker: true,
   },
   'remove-inactive': {
@@ -108,7 +109,8 @@ export const BENCHMARK_DEFINITIONS: Record<BenchmarkId, BenchmarkDefinition> = {
     id: 'remove-running',
     category: 'docker',
     name: 'Docker operations / remove (running services)',
-    budget: { p95: 7500 },
+    // Removal stops running Compose services before removing the worktree.
+    budget: { p95: 15000 },
     requiresDocker: true,
   },
   'prune-dry-run': {
