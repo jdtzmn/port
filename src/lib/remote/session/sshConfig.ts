@@ -1,3 +1,9 @@
+import { randomUUID } from 'node:crypto'
+import { constants, type Stats } from 'node:fs'
+import { lstat, mkdir, open, rename, unlink } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+
 const MAX_PATTERNS = 64
 const MAX_PATTERN_BYTES = 253
 const MAX_PATTERNS_BYTES = 4096
@@ -38,4 +44,237 @@ export function renderManagedSshConfig(patterns: readonly string[]): string {
     '    LocalCommand port __remote-register %C',
     '',
   ].join('\n')
+}
+
+const INCLUDE_START = '# >>> port remote services >>>'
+const INCLUDE_END = '# <<< port remote services <<<'
+const INCLUDE_LINE = 'Include ~/.ssh/port.conf'
+const INCLUDE_BLOCK = [INCLUDE_START, INCLUDE_LINE, INCLUDE_END].join('\n')
+const MAX_CONFIG_BYTES = 1024 * 1024
+
+const unavailable = (): never => {
+  throw new Error('Managed SSH configuration unavailable')
+}
+const errorCode = (error: unknown) => (error as NodeJS.ErrnoException).code
+const sameFile = (left: Stats, right: Stats) =>
+  left.dev === right.dev && left.ino === right.ino && left.uid === right.uid
+const unchangedFile = (left: Stats, right: Stats) =>
+  sameFile(left, right) &&
+  left.size === right.size &&
+  left.mtimeMs === right.mtimeMs &&
+  left.ctimeMs === right.ctimeMs
+
+async function optionalStat(path: string): Promise<Stats | null> {
+  try {
+    return await lstat(path)
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return null
+    throw error
+  }
+}
+
+function checkDirectory(info: Stats): void {
+  if (!info.isDirectory() || info.uid !== process.getuid?.() || (info.mode & 0o7777) !== 0o700)
+    unavailable()
+}
+
+function checkFile(info: Stats, managed: boolean): void {
+  const mode = info.mode & 0o7777
+  if (
+    !info.isFile() ||
+    info.uid !== process.getuid?.() ||
+    info.nlink !== 1 ||
+    info.size > MAX_CONFIG_BYTES ||
+    (managed ? mode !== 0o600 : (mode & 0o022) !== 0)
+  )
+    unavailable()
+}
+
+async function readOptionalFile(
+  path: string,
+  managed = false
+): Promise<{ content: string; pin: Stats | null }> {
+  const pin = await optionalStat(path)
+  if (!pin) return { content: '', pin }
+  checkFile(pin, managed)
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+  try {
+    const opened = await file.stat()
+    checkFile(opened, managed)
+    if (!unchangedFile(opened, pin)) unavailable()
+    const bytes = await file.readFile()
+    if (bytes.length > MAX_CONFIG_BYTES) unavailable()
+    const content = bytes.toString('utf8')
+    if (!bytes.equals(Buffer.from(content))) unavailable()
+    const after = await file.stat()
+    checkFile(after, managed)
+    if (!unchangedFile(after, pin) || !unchangedFile(await lstat(path), pin)) unavailable()
+    return { content, pin }
+  } finally {
+    await file.close()
+  }
+}
+
+async function checkPinnedFile(path: string, pin: Stats | null, managed = false): Promise<void> {
+  const current = await optionalStat(path)
+  if (!pin) {
+    if (current) unavailable()
+    return
+  }
+  if (!current) return unavailable()
+  checkFile(current, managed)
+  if (!unchangedFile(current, pin)) unavailable()
+}
+
+async function writeAtomic(
+  directory: string,
+  directoryPin: Stats,
+  path: string,
+  pin: Stats | null,
+  content: string,
+  managed = false
+): Promise<void> {
+  if (!sameFile(await lstat(directory), directoryPin)) unavailable()
+  const temporary = join(directory, `.port-${randomUUID()}.tmp`)
+  let temporaryPin: Stats | undefined
+  try {
+    const file = await open(
+      temporary,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      0o600
+    )
+    try {
+      temporaryPin = await file.stat()
+      checkFile(temporaryPin, true)
+      await file.writeFile(content)
+      await file.sync()
+      const complete = await file.stat()
+      checkFile(complete, true)
+      if (!sameFile(complete, temporaryPin)) unavailable()
+      temporaryPin = complete
+    } finally {
+      await file.close()
+    }
+    checkDirectory(await lstat(directory))
+    if (!sameFile(await lstat(directory), directoryPin)) unavailable()
+    await checkPinnedFile(path, pin, managed)
+    await rename(temporary, path)
+  } finally {
+    const current = await optionalStat(temporary)
+    if (temporaryPin && current && sameFile(current, temporaryPin)) await unlink(temporary)
+  }
+}
+
+function withIncludeBlock(content: string): { content: string; installed: boolean } {
+  const prefix = INCLUDE_BLOCK + '\n'
+  if (content.startsWith(prefix)) {
+    if (
+      content.slice(prefix.length).includes(INCLUDE_START) ||
+      content.includes(INCLUDE_END + '\n', prefix.length)
+    )
+      unavailable()
+    return { content, installed: true }
+  }
+  if (
+    content.includes(INCLUDE_START) ||
+    content.includes(INCLUDE_END) ||
+    content.includes(INCLUDE_LINE)
+  )
+    unavailable()
+  return { content: prefix + (content ? '\n' + content : ''), installed: false }
+}
+
+function managedFragmentPatterns(content: string): string[] | null {
+  const host = content.split('\n')[1]
+  if (!host?.startsWith('Host ')) return null
+  try {
+    const patterns = normalizeRemoteSshHostPatterns(host.slice(5).split(' '))
+    return renderManagedSshConfig(patterns) === content ? patterns : null
+  } catch {
+    return null
+  }
+}
+
+export type ManagedSshConfigInstallResult = {
+  status: 'installed' | 'updated' | 'already-installed'
+  configPath: string
+  fragmentPath: string
+  patterns: string[]
+}
+
+export async function installManagedSshConfig(
+  requestedPatterns: readonly string[],
+  options: { home?: string } = {}
+): Promise<ManagedSshConfigInstallResult> {
+  const patterns = normalizeRemoteSshHostPatterns(requestedPatterns)
+  const sshDirectory = join(options.home ?? homedir(), '.ssh')
+  await mkdir(sshDirectory, { mode: 0o700 }).catch(error => {
+    if (errorCode(error) !== 'EEXIST') throw error
+  })
+  const directoryPin = await lstat(sshDirectory)
+  checkDirectory(directoryPin)
+  const configPath = join(sshDirectory, 'config')
+  const fragmentPath = join(sshDirectory, 'port.conf')
+  const config = await readOptionalFile(configPath)
+  const fragment = await readOptionalFile(fragmentPath, true)
+  const existingPatterns = fragment.pin ? managedFragmentPatterns(fragment.content) : null
+  if (fragment.pin && !existingPatterns) unavailable()
+  const included = withIncludeBlock(config.content)
+  const rendered = renderManagedSshConfig(patterns)
+  if (fragment.content !== rendered)
+    await writeAtomic(sshDirectory, directoryPin, fragmentPath, fragment.pin, rendered, true)
+  if (config.content !== included.content)
+    await writeAtomic(sshDirectory, directoryPin, configPath, config.pin, included.content)
+  const unchanged = included.installed && fragment.content === rendered
+  return {
+    status: unchanged ? 'already-installed' : included.installed ? 'updated' : 'installed',
+    configPath,
+    fragmentPath,
+    patterns,
+  }
+}
+
+function withoutIncludeBlock(content: string): { content: string; installed: boolean } {
+  const prefix = INCLUDE_BLOCK + '\n'
+  if (content.startsWith(prefix)) {
+    const remainder = content.slice(prefix.length)
+    if (remainder.includes(INCLUDE_START) || remainder.includes(INCLUDE_END)) unavailable()
+    return { content: remainder.startsWith('\n') ? remainder.slice(1) : remainder, installed: true }
+  }
+  if (
+    content.includes(INCLUDE_START) ||
+    content.includes(INCLUDE_END) ||
+    content.includes(INCLUDE_LINE)
+  )
+    unavailable()
+  return { content, installed: false }
+}
+
+export type ManagedSshConfigRemovalResult = {
+  status: 'removed' | 'not-installed'
+  configPath: string
+  fragmentPath: string
+}
+
+export async function removeManagedSshConfig(
+  options: { home?: string } = {}
+): Promise<ManagedSshConfigRemovalResult> {
+  const sshDirectory = join(options.home ?? homedir(), '.ssh')
+  const configPath = join(sshDirectory, 'config')
+  const fragmentPath = join(sshDirectory, 'port.conf')
+  const directoryPin = await optionalStat(sshDirectory)
+  if (!directoryPin) return { status: 'not-installed', configPath, fragmentPath }
+  checkDirectory(directoryPin)
+  const config = await readOptionalFile(configPath)
+  const fragment = await readOptionalFile(fragmentPath, true)
+  const included = withoutIncludeBlock(config.content)
+  if (!included.installed && !fragment.pin)
+    return { status: 'not-installed', configPath, fragmentPath }
+  if (!fragment.pin || !managedFragmentPatterns(fragment.content)) unavailable()
+  if (config.content !== included.content)
+    await writeAtomic(sshDirectory, directoryPin, configPath, config.pin, included.content)
+  await checkPinnedFile(fragmentPath, fragment.pin, true)
+  if (!sameFile(await lstat(sshDirectory), directoryPin)) unavailable()
+  await unlink(fragmentPath)
+  return { status: 'removed', configPath, fragmentPath }
 }

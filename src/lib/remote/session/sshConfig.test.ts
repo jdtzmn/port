@@ -1,5 +1,14 @@
-import { describe, expect, test } from 'vitest'
-import { normalizeRemoteSshHostPatterns, renderManagedSshConfig } from './sshConfig.ts'
+import { execFileSync } from 'node:child_process'
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import {
+  installManagedSshConfig,
+  removeManagedSshConfig,
+  normalizeRemoteSshHostPatterns,
+  renderManagedSshConfig,
+} from './sshConfig.ts'
 
 describe('managed SSH host patterns', () => {
   test('normalizes explicit hosts and wildcards deterministically', () => {
@@ -47,5 +56,137 @@ Host *.od devbox
     PermitLocalCommand yes
     LocalCommand port __remote-register %C
 `)
+  })
+})
+
+describe('managed SSH config installation', () => {
+  let home: string
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'port-ssh-config-'))
+  })
+
+  afterEach(async () => {
+    await rm(home, { recursive: true, force: true })
+  })
+
+  test('installs the include before user settings and creates a private fragment', async () => {
+    const ssh = join(home, '.ssh')
+    await mkdir(ssh, { mode: 0o700 })
+    await writeFile(join(ssh, 'config'), 'Host *\n    LogLevel ERROR\n', { mode: 0o600 })
+
+    const result = await installManagedSshConfig(['*.od'], { home })
+
+    expect(result).toEqual({
+      status: 'installed',
+      configPath: join(ssh, 'config'),
+      fragmentPath: join(ssh, 'port.conf'),
+      patterns: ['*.od'],
+    })
+    expect(await readFile(join(ssh, 'config'), 'utf8')).toBe(`# >>> port remote services >>>
+Include ~/.ssh/port.conf
+# <<< port remote services <<<
+
+Host *
+    LogLevel ERROR
+`)
+    expect(await readFile(join(ssh, 'port.conf'), 'utf8')).toBe(renderManagedSshConfig(['*.od']))
+    expect((await stat(ssh)).mode & 0o777).toBe(0o700)
+    expect((await stat(join(ssh, 'config'))).mode & 0o777).toBe(0o600)
+    expect((await stat(join(ssh, 'port.conf'))).mode & 0o777).toBe(0o600)
+    const effective = execFileSync('ssh', ['-G', '-F', join(ssh, 'port.conf'), 'api.od'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    expect(effective).toContain('controlmaster auto\n')
+    expect(effective).toMatch(/controlpath \/tmp\/port-ssh-[a-f0-9]{40,64}\/s\n/)
+    expect(effective).toContain('controlpersist 3\n')
+    expect(effective).toContain('permitlocalcommand yes\n')
+    expect(effective).toContain('localcommand port __remote-register %C\n')
+  })
+
+  test('is idempotent and replaces only the generated fragment patterns', async () => {
+    await installManagedSshConfig(['*.od'], { home })
+    const config = await readFile(join(home, '.ssh', 'config'), 'utf8')
+
+    expect(await installManagedSshConfig(['devbox'], { home })).toMatchObject({
+      status: 'updated',
+      patterns: ['devbox'],
+    })
+    expect(await readFile(join(home, '.ssh', 'config'), 'utf8')).toBe(config)
+    expect(await readFile(join(home, '.ssh', 'port.conf'), 'utf8')).toBe(
+      renderManagedSshConfig(['devbox'])
+    )
+    expect(await installManagedSshConfig(['devbox'], { home })).toMatchObject({
+      status: 'already-installed',
+    })
+  })
+
+  test('refuses an existing non-private SSH directory', async () => {
+    const ssh = join(home, '.ssh')
+    await mkdir(ssh, { mode: 0o700 })
+    await chmod(ssh, 0o755)
+
+    await expect(installManagedSshConfig(['*.od'], { home })).rejects.toThrow(
+      'Managed SSH configuration unavailable'
+    )
+  })
+
+  test('uninstalls only Port-owned bytes and restores the original user config', async () => {
+    const ssh = join(home, '.ssh')
+    await mkdir(ssh, { mode: 0o700 })
+    const original = 'Host devbox\n    User person\n'
+    await writeFile(join(ssh, 'config'), original, { mode: 0o600 })
+    await installManagedSshConfig(['*.od'], { home })
+
+    expect(await removeManagedSshConfig({ home })).toEqual({
+      status: 'removed',
+      configPath: join(ssh, 'config'),
+      fragmentPath: join(ssh, 'port.conf'),
+    })
+    expect(await readFile(join(ssh, 'config'), 'utf8')).toBe(original)
+    await expect(stat(join(ssh, 'port.conf'))).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(await removeManagedSshConfig({ home })).toMatchObject({ status: 'not-installed' })
+  })
+
+  test('refuses malformed managed blocks and edited fragments without changing them', async () => {
+    const ssh = join(home, '.ssh')
+    await mkdir(ssh, { mode: 0o700 })
+    const config = '# >>> port remote services >>>\nInclude other.conf\n'
+    const fragment = '# user-owned\n'
+    await writeFile(join(ssh, 'config'), config, { mode: 0o600 })
+    await writeFile(join(ssh, 'port.conf'), fragment, { mode: 0o600 })
+
+    await expect(installManagedSshConfig(['*.od'], { home })).rejects.toThrow(
+      'Managed SSH configuration unavailable'
+    )
+    await expect(removeManagedSshConfig({ home })).rejects.toThrow(
+      'Managed SSH configuration unavailable'
+    )
+    expect(await readFile(join(ssh, 'config'), 'utf8')).toBe(config)
+    expect(await readFile(join(ssh, 'port.conf'), 'utf8')).toBe(fragment)
+  })
+
+  test('refuses symlinked config paths', async () => {
+    const ssh = join(home, '.ssh')
+    await mkdir(ssh, { mode: 0o700 })
+    await writeFile(join(home, 'elsewhere'), '', { mode: 0o600 })
+    await symlink(join(home, 'elsewhere'), join(ssh, 'config'))
+
+    await expect(installManagedSshConfig(['*.od'], { home })).rejects.toThrow(
+      'Managed SSH configuration unavailable'
+    )
+  })
+
+  test('refuses to rewrite non-UTF-8 user configuration', async () => {
+    const ssh = join(home, '.ssh')
+    await mkdir(ssh, { mode: 0o700 })
+    const original = Buffer.from([0xff, 0xfe])
+    await writeFile(join(ssh, 'config'), original, { mode: 0o600 })
+
+    await expect(installManagedSshConfig(['*.od'], { home })).rejects.toThrow(
+      'Managed SSH configuration unavailable'
+    )
+    expect(await readFile(join(ssh, 'config'))).toEqual(original)
   })
 })
