@@ -277,7 +277,13 @@ program
     'Clean up Docker images (requires explicit opt-in in non-interactive mode)'
   )
   .action(async (...args) => {
-    await (await import('./commands/prune.ts')).prune(args[0])
+    const options = args[0] as { fetch?: boolean }
+    await (
+      await import('./commands/prune.ts')
+    ).prune({
+      ...options,
+      noFetch: options.fetch === false,
+    })
   })
 
 // port hook [hook-name]
