@@ -9,6 +9,7 @@ import {
 } from './git.ts'
 import { unregisterProject } from './registry.ts'
 import { runCompose } from './compose.ts'
+import { getRunningComposeServiceInventory } from './dockerInventory.ts'
 import { buildProjectName as getProjectName } from './projectName.ts'
 import { sanitizeBranchName } from './sanitize.ts'
 import { getWorktreePath } from './worktree.ts'
@@ -31,6 +32,8 @@ export interface RemoveWorktreeOptions {
   nonStandardPath?: string
   /** Skip stopping services (used by batched prune workflows) */
   skipServices?: boolean
+  /** Skip Compose teardown when Docker confirms the project has no running services */
+  skipComposeWhenInactive?: boolean
   /** Suppress per-step output (for batch operations) */
   quiet?: boolean
 }
@@ -44,6 +47,8 @@ export interface RemoveWorktreeResult {
 interface StopWorktreeServicesOptions {
   /** Whether the worktree is at a non-standard path */
   nonStandardPath?: string
+  /** Skip Compose teardown when Docker confirms the project has no running services */
+  skipComposeWhenInactive?: boolean
   /** Suppress output while stopping services */
   quiet?: boolean
 }
@@ -75,6 +80,13 @@ export async function stopWorktreeServices(
   }
 
   const projectName = getProjectName(ctx.repoRoot, sanitized)
+
+  if (options.skipComposeWhenInactive) {
+    const runningProjects = await getRunningComposeServiceInventory()
+    if (runningProjects && !runningProjects.has(projectName)) {
+      return
+    }
+  }
   log(`Stopping services in ${output.branch(sanitized)}...`)
 
   const { exitCode } = await measureCommandPhase('removal.compose-down', () =>
@@ -116,6 +128,7 @@ export async function removeWorktreeAndCleanup(
       await stopWorktreeServices(ctx, branch, {
         nonStandardPath: options.nonStandardPath,
         quiet: options.quiet,
+        skipComposeWhenInactive: options.skipComposeWhenInactive,
       })
     } catch (error) {
       if (!options.quiet) {

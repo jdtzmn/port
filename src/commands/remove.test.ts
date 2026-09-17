@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   cleanupDockerResources: vi.fn(),
   scanDockerResourcesForProject: vi.fn(),
   getImagesSizeInBytes: vi.fn(),
+  getRunningComposeServiceInventory: vi.fn(),
 }))
 
 vi.mock('inquirer', () => ({
@@ -103,6 +104,9 @@ vi.mock('../lib/docker-cleanup.ts', () => ({
   getImagesSizeInBytes: mocks.getImagesSizeInBytes,
 }))
 
+vi.mock('../lib/dockerInventory.ts', () => ({
+  getRunningComposeServiceInventory: mocks.getRunningComposeServiceInventory,
+}))
 import { remove } from './remove.ts'
 
 describe('remove command', () => {
@@ -136,6 +140,7 @@ describe('remove command', () => {
     mocks.hasRegisteredProjects.mockResolvedValue(false)
 
     mocks.runCompose.mockResolvedValue({ exitCode: 0 })
+    mocks.getRunningComposeServiceInventory.mockResolvedValue(new Map())
     mocks.stopTraefik.mockResolvedValue(undefined)
     mocks.isTraefikRunning.mockResolvedValue(false)
     mocks.buildProjectName.mockReturnValue('repo-demo-2')
@@ -176,6 +181,31 @@ describe('remove command', () => {
     expect(mocks.prompt).not.toHaveBeenCalled()
   })
 
+  test('skips Compose teardown when the project has no running services', async () => {
+    await remove('demo-2')
+
+    expect(mocks.getRunningComposeServiceInventory).toHaveBeenCalledOnce()
+    expect(mocks.runCompose).not.toHaveBeenCalled()
+  })
+
+  test('falls back to Compose teardown when Docker inventory is unavailable', async () => {
+    mocks.getRunningComposeServiceInventory.mockResolvedValue(null)
+
+    await remove('demo-2')
+
+    expect(mocks.runCompose).toHaveBeenCalledWith(
+      '/repo/.port/trees/demo-2',
+      'docker-compose.yml',
+      'repo-demo-2',
+      ['down'],
+      {
+        repoRoot: '/repo',
+        branch: 'demo-2',
+        domain: 'port',
+      }
+    )
+  })
+
   test('prompts before removing non-standard worktree path', async () => {
     const nestedPath = '/repo/.port/trees/demo-1/.port/trees/demo-2'
     mocks.worktreeExists.mockReturnValue(false)
@@ -185,6 +215,9 @@ describe('remove command', () => {
       isMain: false,
     })
     mocks.prompt.mockResolvedValue({ removeConfirm: true })
+    mocks.getRunningComposeServiceInventory.mockResolvedValue(
+      new Map([['repo-demo-2', new Set(['web'])]])
+    )
 
     await remove('demo-2')
 
