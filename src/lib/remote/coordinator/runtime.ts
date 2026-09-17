@@ -62,13 +62,6 @@ export async function startRemoteRuntime(options: {
     },
   })
   const control = await startRemoteCoordinatorControl(controlRoot, {
-    async register(directory, signal) {
-      signal.throwIfAborted()
-      const handle = pinRemoteSessionObservation(directory)
-      if (!handle) throw new Error('Session unavailable')
-      await registerRemotePin(root, handle.checkpoint())
-      wake?.()
-    },
     observe(directory, signal) {
       signal.throwIfAborted()
       observations.observe(directory)

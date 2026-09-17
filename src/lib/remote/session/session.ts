@@ -232,6 +232,7 @@ async function observeSnapshots(
       } catch {
         /* Transport and validation failures retain the last known ownership. */
       }
+      if (signal?.aborted) break
       if (!sameSocket(directory, original, pinned)) break
       if (candidate && last && candidate.instanceId !== last.instanceId) break
       if (candidate) last = candidate
@@ -890,15 +891,19 @@ export async function observeRemoteSession(
         const ready = await ssh(
           [...companion(directory), '-O', 'check', 'dummy'],
           Math.max(1, Math.min(1000, deadline - Date.now())),
-          8192
+          8192,
+          signal
         )
+        if (signal?.aborted) return
         if (ready !== null) {
           if (!sameSocket(directory, original, pinned)) return
           const output = await ssh(
             [...companion(directory), 'dummy', 'port __remote-handshake'],
             5000,
-            8192
+            8192,
+            signal
           )
+          if (signal?.aborted) return
           if (output === null) return
           const value = JSON.parse(output)
           if (

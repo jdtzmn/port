@@ -390,16 +390,17 @@ describe('private mux observation', () => {
 
   test('publishes exact handshake privately using clean companion argv', async () => {
     const directory = await withSocket()
-    respond('')
     const controller = new AbortController()
+    respond('')
+    respond(JSON.stringify(remoteHandshake()) + '\n')
     execute.mockImplementationOnce(((
       _file: unknown,
       _args: unknown,
       _options: unknown,
-      callback: (error: null, stdout: string) => void
+      callback: (error: Error) => void
     ) => {
       controller.abort()
-      callback(null, JSON.stringify(remoteHandshake()) + '\n')
+      callback(new Error('cancelled'))
     }) as typeof execFile)
     await observeRemoteSession(directory, controller.signal)
     const base = [
@@ -420,13 +421,35 @@ describe('private mux observation', () => {
     expect(execute.mock.calls[1]!.slice(0, 3)).toEqual([
       'ssh',
       [...base, 'dummy', 'port __remote-handshake'],
-      { timeout: 5000, maxBuffer: 8192, encoding: 'utf8' },
+      { timeout: 5000, maxBuffer: 8192, encoding: 'utf8', signal: controller.signal },
     ])
     expect(JSON.parse(readFileSync(`${directory}/handshake.json`, 'utf8'))).toEqual(
       remoteHandshake()
     )
     expect(lstatSync(`${directory}/handshake.json`).mode & 0o777).toBe(0o600)
     expect(existsSync(`${directory}/handshake.json.tmp`)).toBe(false)
+  })
+
+  test('does not publish a handshake after coordinator cancellation', async () => {
+    const directory = await withSocket()
+    const controller = new AbortController()
+    respond('')
+    execute.mockImplementationOnce(((
+      _file: unknown,
+      _args: unknown,
+      _options: unknown,
+      callback: (error: null, stdout: string) => void
+    ) => {
+      controller.abort()
+      callback(null, JSON.stringify(remoteHandshake()) + '\n')
+    }) as typeof execFile)
+
+    await observeRemoteSession(directory, controller.signal)
+
+    expect(existsSync(`${directory}/handshake.json`)).toBe(false)
+    expect(execute).toHaveBeenCalledTimes(2)
+    for (const call of execute.mock.calls)
+      expect(call[2]).toEqual(expect.objectContaining({ signal: controller.signal }))
   })
 
   test('bounds failed mux polling and never enables transport fallback', async () => {

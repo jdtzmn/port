@@ -3,7 +3,6 @@ import { parseRemoteSnapshot } from '../lib/remote/session/snapshot.ts'
 import { collectRemoteSnapshot } from '../lib/remote/session/snapshotCollector.ts'
 import {
   cleanupRemoteSession,
-  observeRemoteSession,
   prepareRemoteSession,
   remoteHandshake,
 } from '../lib/remote/session/session.ts'
@@ -66,11 +65,26 @@ async function prepare(args: string[]): Promise<void> {
 }
 
 async function observe(directory: string): Promise<void> {
-  await observeRemoteSession(directory, undefined, async () => {
+  const controller = new AbortController()
+  const stop = () => controller.abort()
+  process.once('SIGTERM', stop)
+  process.once('SIGINT', stop)
+  try {
     await (
       await import('../lib/remote/coordinator/supervisor.ts')
-    ).registerRemoteRuntimeSession(directory)
-  })
+    ).maintainRemoteRuntimeObservation(directory, controller.signal)
+  } finally {
+    process.removeListener('SIGTERM', stop)
+    process.removeListener('SIGINT', stop)
+  }
+}
+
+async function cleanup(directory: string): Promise<void> {
+  const stopped = await (
+    await import('../lib/remote/coordinator/supervisor.ts')
+  ).stopRemoteRuntimeObservation(directory)
+  if (!stopped) throw new Error('Remote observation is still active')
+  await cleanupRemoteSession(directory)
 }
 
 /** Identifies commands that bypass Commander and speak the private SSH protocol. */
@@ -106,7 +120,7 @@ export async function dispatchRemoteInternalCommand(token: string, args: string[
         await observe(requireSessionDirectory(args))
         return
       case '__remote-cleanup':
-        await cleanupRemoteSession(requireSessionDirectory(args))
+        await cleanup(requireSessionDirectory(args))
         return
     }
   } catch {

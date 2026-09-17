@@ -20,7 +20,7 @@ export type RemoteCoordinatorRequest =
   | { version: 1; action: 'ping' }
   | {
       version: 1
-      action: 'register' | 'observe' | 'unobserve'
+      action: 'observe' | 'unobserve'
       incarnation: string
       directory: string
     }
@@ -34,11 +34,10 @@ export interface RemoteCoordinatorResponse {
  * Callbacks must be short, nonblocking and cancellation-cooperative. The signal is
  * aborted on disconnect, deadline or close. Queue long route work elsewhere;
  * a promise timeout cannot undo side effects or interrupt synchronous JavaScript.
- * Registration and observation validation belong in handlers, not this transport.
+ * Observation validation belongs in handlers, not this transport.
  * A handler that admits long-lived work must detach its lifetime from this request signal.
  */
 export interface RemoteCoordinatorHandlers {
-  register(directory: string, signal: AbortSignal): void | Promise<void>
   observe(directory: string, signal: AbortSignal): void | Promise<void>
   unobserve(directory: string, signal: AbortSignal): void | Promise<void>
   wake(signal: AbortSignal): void | Promise<void>
@@ -194,7 +193,7 @@ function parseRequest(bytes: Buffer): RemoteCoordinatorRequest | null {
     const keys = Object.keys(value).sort().join(',')
     if (value.action === 'ping') return keys === 'action,version' ? value : null
     if (typeof value.incarnation !== 'string' || !HEX.test(value.incarnation)) return null
-    if (value.action === 'register' || value.action === 'observe' || value.action === 'unobserve')
+    if (value.action === 'observe' || value.action === 'unobserve')
       return keys === 'action,directory,incarnation,version' &&
         typeof value.directory === 'string' &&
         DIRECTORY.test(value.directory)
@@ -274,11 +273,7 @@ function serveClient(
     }
     void (async () => {
       try {
-        if (
-          request.action === 'register' ||
-          request.action === 'observe' ||
-          request.action === 'unobserve'
-        )
+        if (request.action === 'observe' || request.action === 'unobserve')
           await handlers[request.action](request.directory, controller.signal)
         else await handlers[request.action](controller.signal)
         respond('ok')
