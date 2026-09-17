@@ -13,6 +13,7 @@ import { buildProjectName as getProjectName } from './projectName.ts'
 import { sanitizeBranchName } from './sanitize.ts'
 import { getWorktreePath } from './worktree.ts'
 import * as output from './output.ts'
+import { measureCommandPhase } from './commandProfile.ts'
 
 export interface RemovalContext {
   /** Absolute path to repo root */
@@ -76,12 +77,13 @@ export async function stopWorktreeServices(
   const projectName = getProjectName(ctx.repoRoot, sanitized)
   log(`Stopping services in ${output.branch(sanitized)}...`)
 
-  const { exitCode } = await runCompose(worktreePath, ctx.composeFile, projectName, ['down'], {
-    repoRoot: ctx.repoRoot,
-    branch: sanitized,
-    domain: ctx.domain,
-  })
-
+  const { exitCode } = await measureCommandPhase('removal.compose-down', () =>
+    runCompose(worktreePath, ctx.composeFile, projectName, ['down'], {
+      repoRoot: ctx.repoRoot,
+      branch: sanitized,
+      domain: ctx.domain,
+    })
+  )
   if (exitCode !== 0 && !options.quiet) {
     output.warn('Failed to stop services')
   }
@@ -124,38 +126,44 @@ export async function removeWorktreeAndCleanup(
 
   // 2. Remove git worktree
   try {
-    if (worktreePathExists) {
-      if (options.nonStandardPath) {
-        await removeWorktreeAtPath(ctx.repoRoot, worktreePath, true)
+    await measureCommandPhase('removal.git-worktree-remove', async () => {
+      if (worktreePathExists) {
+        if (options.nonStandardPath) {
+          await removeWorktreeAtPath(ctx.repoRoot, worktreePath, true)
+        } else {
+          await removeWorktree(ctx.repoRoot, branch, true)
+        }
       } else {
-        await removeWorktree(ctx.repoRoot, branch, true)
+        await pruneWorktrees(ctx.repoRoot)
       }
-    } else {
-      await pruneWorktrees(ctx.repoRoot)
-    }
+    })
   } catch (error) {
     return { success: false, error: `Failed to remove worktree: ${error}` }
   }
 
   // 3. Unregister from global registry
-  await unregisterProject(ctx.repoRoot, sanitized)
+  await measureCommandPhase('removal.registry-unregister', () =>
+    unregisterProject(ctx.repoRoot, sanitized)
+  )
 
   // 4. Handle local branch
   let archivedBranch: string | undefined
-  if (options.branchAction === 'archive') {
-    try {
-      const archived = await archiveBranch(ctx.repoRoot, branch)
-      if (archived) archivedBranch = archived
-    } catch {
-      // Non-fatal — worktree is already removed
+  await measureCommandPhase('removal.branch-action', async () => {
+    if (options.branchAction === 'archive') {
+      try {
+        const archived = await archiveBranch(ctx.repoRoot, branch)
+        if (archived) archivedBranch = archived
+      } catch {
+        // Non-fatal — worktree is already removed
+      }
+    } else if (options.branchAction === 'delete') {
+      try {
+        await deleteLocalBranch(ctx.repoRoot, branch, true)
+      } catch {
+        // Non-fatal — branch may already be gone
+      }
     }
-  } else if (options.branchAction === 'delete') {
-    try {
-      await deleteLocalBranch(ctx.repoRoot, branch, true)
-    } catch {
-      // Non-fatal — branch may already be gone
-    }
-  }
+  })
 
   return { success: true, archivedBranch }
 }

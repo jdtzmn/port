@@ -42,6 +42,22 @@ describe('CommandProfileRecorder', () => {
       spans: [{ name: 'docker.worktrees', durationMs: 10 }],
     })
   })
+
+  test('records nested spans individually in completion order', async () => {
+    const times = [0, 10, 20, 30, 40, 50]
+    const recorder = new CommandProfileRecorder('status', () => times.shift() ?? 0)
+
+    await recorder.measure('outer', () => recorder.measure('inner', async () => undefined))
+
+    expect(recorder.finish()).toEqual({
+      command: 'status',
+      durationMs: 50,
+      spans: [
+        { name: 'inner', durationMs: 10 },
+        { name: 'outer', durationMs: 30 },
+      ],
+    })
+  })
 })
 
 describe('command profile lifecycle', () => {

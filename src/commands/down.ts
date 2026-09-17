@@ -21,6 +21,7 @@ import { buildProjectName as getProjectName } from '../lib/projectName.ts'
 import { execAsync } from '../lib/exec.ts'
 import { stopHostService } from '../lib/hostService.ts'
 import * as output from '../lib/output.ts'
+import { measureCommandPhase } from '../lib/commandProfile.ts'
 
 function uniqueNumbers(values: number[]): number[] {
   return Array.from(new Set(values)).sort((a, b) => a - b)
@@ -153,11 +154,13 @@ export async function down(
 
       composeExitCode = containerResult.exitCode
     } else {
-      const { exitCode } = await runCompose(worktreePath, composeFile, projectName, ['down'], {
-        repoRoot,
-        branch: name,
-        domain: config.domain,
-      })
+      const { exitCode } = await measureCommandPhase('down.compose-stop', () =>
+        runCompose(worktreePath, composeFile, projectName, ['down'], {
+          repoRoot,
+          branch: name,
+          domain: config.domain,
+        })
+      )
       composeExitCode = exitCode
     }
   } catch (error) {

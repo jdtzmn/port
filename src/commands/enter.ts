@@ -33,6 +33,7 @@ import {
   STALE_WORKTREE_EXTREME_THRESHOLD,
   formatStaleWorktreeWarning,
 } from '../lib/staleWorktrees.ts'
+import { measureCommandPhase } from '../lib/commandProfile.ts'
 
 /**
  * Enter a worktree (create if needed).
@@ -87,9 +88,15 @@ export async function enter(branch: string): Promise<void> {
   } else {
     // Git refs cannot contain spaces, so existence checks must use the resolved
     // ref (e.g. "my feature" → "my-feature") rather than the raw input.
-    const ref = await resolveBranchRef(repoRoot, branch)
-    const localBranch = await branchExists(repoRoot, ref)
-    const remoteBranch = localBranch ? false : await remoteBranchExists(repoRoot, ref)
+    const { localBranch, remoteBranch } = await measureCommandPhase(
+      'enter.branch-preflight',
+      async () => {
+        const ref = await resolveBranchRef(repoRoot, branch)
+        const localBranch = await branchExists(repoRoot, ref)
+        const remoteBranch = localBranch ? false : await remoteBranchExists(repoRoot, ref)
+        return { localBranch, remoteBranch }
+      }
+    )
 
     if (!localBranch && !remoteBranch) {
       const similarCommand = findSimilarCommand(branch)
@@ -133,7 +140,9 @@ export async function enter(branch: string): Promise<void> {
     }
 
     try {
-      const staleWorktrees = await getStaleWorktreeCandidates(repoRoot)
+      const staleWorktrees = await measureCommandPhase('enter.stale-warning', () =>
+        getStaleWorktreeCandidates(repoRoot)
+      )
       if (staleWorktrees.length >= STALE_WORKTREE_EXTREME_THRESHOLD) {
         output.warn(formatStaleWorktreeWarning(staleWorktrees.length))
       }
@@ -143,7 +152,9 @@ export async function enter(branch: string): Promise<void> {
 
     output.info(`Creating worktree for branch: ${sanitized}`)
     try {
-      worktreePath = await createWorktree(repoRoot, branch)
+      worktreePath = await measureCommandPhase('enter.create-worktree', () =>
+        createWorktree(repoRoot, branch)
+      )
       isNewWorktree = true
       await invalidateStaleWorktreeCache(repoRoot)
       output.success(`Created worktree: ${sanitized}`)
@@ -193,13 +204,14 @@ export async function enter(branch: string): Promise<void> {
   if (isNewWorktree && (await hookExists(repoRoot, 'post-create'))) {
     output.info('Running post-create hook...')
 
-    const result = await runPostCreateHook({
-      repoRoot,
-      worktreePath,
-      branch: sanitized,
-      domain: config.domain,
-    })
-
+    const result = await measureCommandPhase('enter.post-create-hook', () =>
+      runPostCreateHook({
+        repoRoot,
+        worktreePath,
+        branch: sanitized,
+        domain: config.domain,
+      })
+    )
     if (!result.success) {
       output.error(`Post-create hook failed (exit code ${result.exitCode})`)
       output.dim('See .port/logs/latest.log for details')
@@ -223,15 +235,19 @@ export async function enter(branch: string): Promise<void> {
   // registration check that runs before every other `port` command does
   // not treat it as unmanaged and re-run the post-create hook again.
   if (isNewWorktree) {
-    await markWorktreeRegistered(repoRoot, sanitized)
+    await measureCommandPhase('enter.registration', () =>
+      markWorktreeRegistered(repoRoot, sanitized)
+    )
   }
 
   // Parse docker-compose file and generate override file
   const composeFile = getComposeFile(config)
   try {
-    const parsedCompose = await parseComposeFile(worktreePath, composeFile)
-    const projectName = getProjectName(repoRoot, sanitized)
-    await writeOverrideFile(worktreePath, parsedCompose, sanitized, config.domain, projectName)
+    await measureCommandPhase('enter.override-write', async () => {
+      const parsedCompose = await parseComposeFile(worktreePath, composeFile)
+      const projectName = getProjectName(repoRoot, sanitized)
+      await writeOverrideFile(worktreePath, parsedCompose, sanitized, config.domain, projectName)
+    })
     output.success('Generated .port/override.yml')
   } catch (error) {
     // It's okay if compose parsing fails here - the file might not exist yet in the
