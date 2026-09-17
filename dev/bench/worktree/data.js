@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789585552095,
+  "lastUpdate": 1789606034434,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port worktree operations": [
@@ -104,6 +104,58 @@ window.BENCHMARK_DATA = {
             "range": "21.970999999999947",
             "unit": "ms",
             "extra": "p95: 417.441 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a4460c0de9311ea36e36a0ac00a03204097fa547",
+          "message": "Improve Port discoverability (#161)\n\n* Improve npm search metadata\n\n* Explain Docker port conflict problem\n\n* Document Port alternatives\n\n* Clarify Tug comparison",
+          "timestamp": "2026-09-16T20:44:02-04:00",
+          "tree_id": "47debc2dd8492b6374844e0312a475ec3ab73c2e",
+          "url": "https://github.com/jdtzmn/port/commit/a4460c0de9311ea36e36a0ac00a03204097fa547"
+        },
+        "date": 1789606034403,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Worktree operations / enter existing (small)",
+            "value": 206.283,
+            "range": "5.183000000000021",
+            "unit": "ms",
+            "extra": "p95: 211.466 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter existing (large)",
+            "value": 212.787,
+            "range": "7.588999999999999",
+            "unit": "ms",
+            "extra": "p95: 220.376 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (small)",
+            "value": 292.926,
+            "range": "8.045000000000016",
+            "unit": "ms",
+            "extra": "p95: 300.971 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (large)",
+            "value": 305.592,
+            "range": "8.634000000000015",
+            "unit": "ms",
+            "extra": "p95: 314.226 ms\nsamples: 20"
           }
         ]
       }
