@@ -12,6 +12,7 @@ import { REGISTRY_FILE } from './registry.ts'
 import { getStaleWorktreeCandidates, STALE_WORKTREE_WARNING_THRESHOLD } from './staleWorktrees.ts'
 import { loadTraefikConfig, traefikFilesExist } from './traefik.ts'
 import { detectWorktree } from './worktree.ts'
+import { measureCommandPhase } from './commandProfile.ts'
 
 export type DoctorStatus = 'pass' | 'warn' | 'fail' | 'info'
 
@@ -93,7 +94,7 @@ async function readRegistry(): Promise<{ registry?: Registry; check: DoctorCheck
 
 async function checkDocker(): Promise<DoctorCheck> {
   try {
-    await execAsync('docker info', { timeout: 5000 })
+    await measureCommandPhase('docker.info', () => execAsync('docker info', { timeout: 5000 }))
     return check('docker', 'prerequisites', 'pass', 'Docker is running.')
   } catch {
     return check(
@@ -108,7 +109,9 @@ async function checkDocker(): Promise<DoctorCheck> {
 
 async function checkCompose(): Promise<DoctorCheck> {
   try {
-    const { stdout } = await execAsync('docker compose version --short', { timeout: 5000 })
+    const { stdout } = await measureCommandPhase('docker.compose-version', () =>
+      execAsync('docker compose version --short', { timeout: 5000 })
+    )
     const version = stdout.trim()
     if (!version) throw new Error('No version')
     return check('compose', 'prerequisites', 'pass', `Docker Compose ${version}.`)

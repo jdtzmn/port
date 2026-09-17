@@ -13,12 +13,21 @@ export function isMainModule(moduleUrl = import.meta.url, entryPath = process.ar
   }
 }
 
-if (isMainModule()) {
-  const args = process.argv.slice(2)
-
+async function runCommand(args: readonly string[]): Promise<void> {
   if (isListInvocation(args)) {
     await (await import('./commands/list.ts')).list()
   } else {
     await (await import('./program.ts')).runCli()
+  }
+}
+
+if (isMainModule()) {
+  const args = process.argv.slice(2)
+
+  if (process.env.PORT_PROFILE === '1') {
+    const { profileCommand } = await import('./lib/commandProfile.ts')
+    await profileCommand(args, () => runCommand(args))
+  } else {
+    await runCommand(args)
   }
 }

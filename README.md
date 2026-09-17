@@ -716,6 +716,14 @@ BENCHMARK_INCLUDE_DOCKER=1 bun run benchmark
 
 The benchmark suite measures p50 and p95 command latency against small and 32-worktree fixtures. p95 budgets are defined in `src/lib/benchmarkPolicy.ts` and may be adjusted by the maintainer as expectations evolve.
 
+For per-command diagnosis, set `PORT_PROFILE=1`. Port emits one machine-readable JSON profile to stderr after the command finishes, including CLI startup, registration, Git/GitHub, and Docker/Compose phases:
+
+```bash
+PORT_PROFILE=1 port status
+```
+
+Profiling is opt-in, does not change normal command output, and records only the command name—not its arguments.
+
 CI keeps developer-facing CLI, worktree, and Docker history on the generated `gh-pages` branch. Pull requests compare the merge result against that history, upload raw samples and a non-persistent chart preview for 30 days, and fail only when an absolute p95 budget is exceeded. Relative regressions of 25% are reported but do not fail CI.
 
 ### Testing in Ubuntu Container
