@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789606610838,
+  "lastUpdate": 1789606989679,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -180,6 +180,51 @@ window.BENCHMARK_DATA = {
             "range": "6.814",
             "unit": "ms",
             "extra": "p95: 42.823 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "49a401da997368158606a54975adcd20c64b35fc",
+          "message": "Fix Bun-only runtime requirement (#163)\n\n* Run published CLI with Node\n\n* Smoke test Port under Node in CI\n\n* Document Node runtime requirement\n\n* Verify packaged CLI runs without Bun\n\n* Format Node package smoke test\n\n* Restore Bun installation guidance\n\n* Remove Node runtime installation note",
+          "timestamp": "2026-09-16T21:00:17-04:00",
+          "tree_id": "1895259e12473b7fcf5c01f71c23091387013592",
+          "url": "https://github.com/jdtzmn/port/commit/49a401da997368158606a54975adcd20c64b35fc"
+        },
+        "date": 1789606988954,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 48.658,
+            "range": "9.714999999999996",
+            "unit": "ms",
+            "extra": "p95: 58.373 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 36.16,
+            "range": "4.240000000000002",
+            "unit": "ms",
+            "extra": "p95: 40.4 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 35.41,
+            "range": "5.416000000000004",
+            "unit": "ms",
+            "extra": "p95: 40.826 ms\nsamples: 20"
           }
         ]
       }
