@@ -68,8 +68,13 @@ async function snapshot(args: string[]): Promise<void> {
 }
 
 async function prepare(args: string[]): Promise<void> {
-  if (args[0] !== '--' || args.length < 2) fail()
-  const directory = await prepareRemoteSession(args.slice(1))
+  const managedOnly = args[0] === '--managed-only'
+  const separator = managedOnly ? 1 : 0
+  if (args[separator] !== '--' || args.length < separator + 2) fail()
+  const argv = args.slice(separator + 1)
+  const directory = managedOnly
+    ? await prepareRemoteSession(argv, true)
+    : await prepareRemoteSession(argv)
   if (!isRemoteSessionDirectory(directory)) throw new Error('Unavailable remote session')
   writeLine(`${isManagedRemoteSessionDirectory(directory) ? 'managed' : 'legacy'} ${directory}`)
 }

@@ -521,15 +521,15 @@ export async function install(options?: {
   shellHook?: boolean
   shellHookOnly?: boolean
   remoteServices?: boolean
-  remoteHosts?: string[]
+  remoteHost?: string[]
 }): Promise<void> {
   if (options?.remoteServices) {
     let remoteHosts: string[] = []
     try {
-      if (options.remoteHosts?.length)
+      if (options.remoteHost?.length)
         remoteHosts = (
           await import('../lib/remote/session/sshConfig.ts')
-        ).normalizeRemoteSshHostPatterns(options.remoteHosts)
+        ).normalizeRemoteSshHostPatterns(options.remoteHost)
     } catch (error) {
       output.error(`Invalid remote SSH host pattern: ${(error as Error).message}`)
       process.exitCode = 1

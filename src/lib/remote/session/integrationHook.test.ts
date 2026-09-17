@@ -134,6 +134,20 @@ printf '%s' "$__port_ssh_dir"`)
     ).toBe(false)
   })
 
+  test('prepares managed non-TTY commands without taking over their lifecycle', () => {
+    const result = run('ssh host command', { PREPARE_OUTPUT: `managed ${managedDirectory}` }, '')
+    expect(result.status).toBe(0)
+    expect(result.calls.map(call => call.name)).toEqual(['port', 'ssh'])
+    expect(result.calls[0]?.args).toEqual([
+      '__remote-prepare',
+      '--managed-only',
+      '--',
+      'host',
+      'command',
+    ])
+    expect(result.calls[1]?.args).toEqual(['host', 'command'])
+  })
+
   test('does not signal a completed observer absent from the live job table', () => {
     const result = run(
       `jobs() { return 0; }
@@ -167,10 +181,12 @@ ssh host`,
     expect(result.calls.find(c => c.name === 'ssh')?.args).toEqual(['host'])
   })
 
-  test('non-TTY calls never prepare', () => {
+  test('non-TTY calls probe only managed config and preserve passthrough', () => {
     const result = run('ssh host', { SSH_STATUS: '17' }, '')
     expect(result.status).toBe(17)
-    expect(result.calls.map(c => c.name)).toEqual(['ssh'])
+    expect(result.calls.map(c => c.name)).toEqual(['port', 'ssh'])
+    expect(result.calls[0]?.args).toEqual(['__remote-prepare', '--managed-only', '--', 'host'])
+    expect(result.calls[1]?.args).toEqual(['host'])
   })
 
   test.each(['HUP', 'INT', 'TERM'])('signal %s cleans up and preserves signal status', signal => {

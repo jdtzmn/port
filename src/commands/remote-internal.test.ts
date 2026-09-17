@@ -105,6 +105,22 @@ describe('private remote dispatch', () => {
     expect(process.exitCode).toBe(0)
   })
 
+  test('managed-only prepare preserves noninteractive argv without legacy state', async () => {
+    const directory = `/tmp/port-ssh-${'b'.repeat(40)}`
+    mocks.prepareRemoteSession.mockResolvedValueOnce(directory)
+    await dispatchRemoteInternalCommand('__remote-prepare', [
+      '--managed-only',
+      '--',
+      'devbox.od',
+      'command',
+    ])
+    expect(mocks.prepareRemoteSession).toHaveBeenCalledExactlyOnceWith(
+      ['devbox.od', 'command'],
+      true
+    )
+    expect(stdout).toHaveBeenCalledExactlyOnceWith(`managed ${directory}\n`)
+  })
+
   test('register admits one exact lowercase OpenSSH connection id without output', async () => {
     const id = 'abcdef0123456789'.repeat(3)
     mocks.registerRemoteRuntimeObservation.mockResolvedValueOnce(false)

@@ -275,7 +275,7 @@ describe('install + uninstall round-trip', () => {
       await install({
         yes: true,
         remoteServices: true,
-        remoteHosts: ['box.od', '*.od', 'box.od'],
+        remoteHost: ['box.od', '*.od', 'box.od'],
         shellHook: false,
       })
 

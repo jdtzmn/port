@@ -67,9 +67,20 @@ export async function enableRemoteRuntime(): Promise<void> {
 
 export async function disableRemoteRuntime(): Promise<boolean> {
   if (!(await remoteRuntimeEnabled())) return false
-  const { root } = await getRemoteRuntimePaths()
+  const { root, controlRoot } = await getRemoteRuntimePaths()
   try {
     await unlink(join(root, 'enabled.json'))
+    try {
+      const ping = await requestRemoteCoordinator(controlRoot, { version: 1, action: 'ping' })
+      if (ping?.status === 'ok')
+        await requestRemoteCoordinator(controlRoot, {
+          version: 1,
+          action: 'shutdown',
+          incarnation: ping.incarnation,
+        })
+    } catch {
+      /* The marker is authoritative; an unavailable worker has nothing left to stop. */
+    }
     return true
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false

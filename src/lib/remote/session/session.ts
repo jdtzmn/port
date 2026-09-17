@@ -185,6 +185,11 @@ function pause(milliseconds: number, signal?: AbortSignal): Promise<void> {
     signal?.addEventListener('abort', done, { once: true })
   })
 }
+function controlSocketPath(directory: string): string {
+  return isManagedRemoteSessionDirectory(directory)
+    ? `/tmp/port-control-${directory.slice('/tmp/port-ssh-'.length)}`
+    : `${directory}/s`
+}
 
 function sameSocket(
   directory: string,
@@ -200,7 +205,8 @@ async function observeSnapshots(
   original: Stats,
   pinned: Stats,
   signal?: AbortSignal,
-  onSnapshot?: () => Promise<void>
+  onSnapshot?: () => Promise<void>,
+  intervalMilliseconds = 2000
 ): Promise<void> {
   let last: RemoteSnapshot | null = null
   let revision = 0
@@ -243,7 +249,7 @@ async function observeSnapshots(
       }
       if (revision === Number.MAX_SAFE_INTEGER) break
       revision++
-      await pause(2000, signal)
+      await pause(intervalMilliseconds, signal)
     }
   } catch {
     /* Local ownership loss is terminal, never retarget or recreate. */
@@ -585,7 +591,7 @@ function observationHandle(
   const checkPresence = (): void => {
     for (const [path, original] of [
       [directory, pinned.original],
-      [`${directory}/s`, control],
+      [controlSocketPath(directory), control],
     ] as const) {
       try {
         if (!sameInode(lstatSync(path), original)) disconnected = true
@@ -653,7 +659,7 @@ function observationHandle(
 function socket(directory: string, original: RemoteSessionFileIdentity): Stats | null {
   unchanged(directory, original)
   try {
-    const stat = lstatSync(`${directory}/s`)
+    const stat = lstatSync(controlSocketPath(directory))
     if (!stat.isSocket() || stat.uid !== process.getuid?.()) throw new Error('Invalid socket')
     return stat
   } catch (error) {
@@ -667,7 +673,7 @@ function companion(directory: string): string[] {
     '-F',
     '/dev/null',
     '-S',
-    `${directory}/s`,
+    controlSocketPath(directory),
     '-o',
     'ControlMaster=no',
     '-o',
@@ -882,11 +888,14 @@ export async function openRemoteStream(
   }
 }
 
-export async function prepareRemoteSession(argv: string[]): Promise<string | null> {
+export async function prepareRemoteSession(
+  argv: string[],
+  managedOnly = false
+): Promise<string | null> {
   let directory: string | undefined
   let created = false
   try {
-    const invocation = classifySshInvocation(argv)
+    const invocation = classifySshInvocation(argv, managedOnly)
     if (!invocation) return null
     const config = await ssh(['-G', ...argv], 3000, 65536)
     if (config === null) return null
@@ -922,7 +931,7 @@ export async function prepareRemoteSession(argv: string[]): Promise<string | nul
       }
       return directory
     }
-    if (!isEligibleSshConfig(config)) return null
+    if (managedOnly || !isEligibleSshConfig(config)) return null
     directory = mkdtempSync('/tmp/port-ssh-')
     created = true
     const original = ownedDirectory(directory)
@@ -953,7 +962,10 @@ export async function observeRemoteSession(
   onSnapshot?: () => Promise<void>
 ): Promise<void> {
   try {
-    const original = session(directory)
+    const state = readSession(directory)
+    const { original } = state
+    // Managed companion sessions must leave a gap longer than ControlPersist (3s).
+    const snapshotInterval = state.lifecycle === 'openssh-managed' ? 5000 : 2000
     const deadline = Date.now() + 90_000
     let pinned: Stats | undefined
     while (!signal?.aborted && Date.now() < deadline) {
@@ -982,7 +994,7 @@ export async function observeRemoteSession(
           if (!validHandshake(value)) return
           if (!sameSocket(directory, original, pinned)) return
           ensureHandshake(directory, original)
-          await observeSnapshots(directory, original, pinned, signal, onSnapshot)
+          await observeSnapshots(directory, original, pinned, signal, onSnapshot, snapshotInterval)
           return
         }
       }
@@ -1045,7 +1057,7 @@ export async function cleanupRemoteSession(directory: string): Promise<void> {
       if (stopped === null) return // Retain the socket so a failed shutdown remains recoverable.
       const after = socket(directory, original)
       if (after && (after.dev !== before.dev || after.ino !== before.ino)) return
-      if (after) unlinkSync(`${directory}/s`)
+      if (after) unlinkSync(controlSocketPath(directory))
     }
     removeKnownFiles(directory, original)
     unchanged(directory, original)

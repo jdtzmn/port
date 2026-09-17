@@ -40,7 +40,7 @@ const managedConfig = `${safeConfig
   .replace(
     'controlpersist no',
     'controlpersist 3'
-  )}controlpath /tmp/port-ssh-${managedConnectionId}/s
+  )}controlpath /tmp/port-control-${managedConnectionId}
 permitlocalcommand yes
 localcommand port __remote-register %C
 `
@@ -332,6 +332,12 @@ describe('remote session preflight', () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
+  test('managed-only preflight never creates legacy wrapper state', async () => {
+    respond(safeConfig)
+    expect(await prepareRemoteSession(['host'], true)).toBeNull()
+    expect(execute).toHaveBeenCalledOnce()
+  })
+
   test.each([
     '',
     'garbage',
@@ -587,6 +593,32 @@ async function startObserver(directory: string) {
 }
 
 describe('live private snapshot cache', () => {
+  test('leaves managed masters an idle gap longer than finite persistence', async () => {
+    respond(managedConfig)
+    const directory = (await prepareRemoteSession(['devbox.od']))!
+    directories.push(directory)
+    const server = createServer()
+    servers.push(server)
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(`/tmp/port-control-${managedConnectionId}`, resolve)
+    })
+    execute.mockClear()
+    vi.useFakeTimers()
+    respond('')
+    respond(JSON.stringify(remoteHandshake()))
+    respond(JSON.stringify(snapshot(0)))
+    const controller = new AbortController()
+    const pending = observeRemoteSession(directory, controller.signal)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(execute).toHaveBeenCalledTimes(3)
+    expect(execute.mock.calls[0]?.[1]).toContain(`/tmp/port-control-${managedConnectionId}`)
+    await vi.advanceTimersByTimeAsync(4_999)
+    expect(execute).toHaveBeenCalledTimes(3)
+    controller.abort()
+    await pending
+  })
+
   test('re-observes a live session with an existing valid handshake', async () => {
     const directory = await withSocket()
     const first = await startObserver(directory)
@@ -851,7 +883,7 @@ describe('local state and cleanup safety', () => {
     servers.push(server)
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
-      server.listen(`${directory}/s`, resolve)
+      server.listen(`/tmp/port-control-${managedConnectionId}`, resolve)
     })
 
     execute.mockClear()

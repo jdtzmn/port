@@ -36,6 +36,17 @@ describe('classifySshInvocation', () => {
     expect(classifySshInvocation(['--', destination])).toEqual({ destination })
   })
 
+  test.each([
+    ['host', 'command'],
+    ['host', 'echo hello'],
+    ['host', ''],
+    ['host', '-t'],
+    ['--', 'host', 'command'],
+  ])('accepts a direct remote command only for managed preparation: %j', (...args) => {
+    expect(classifySshInvocation(args)).toBeNull()
+    expect(classifySshInvocation(args, true)).toEqual({ destination: 'host' })
+  })
+
   test.each(['-4', '-6', '-A', '-a', '-C', '-q', '-v', '-vvv', '-t', '-tt', '-x', '-X', '-Y'])(
     'accepts reviewed flag %s and repetitions',
     flag => {
@@ -145,11 +156,6 @@ describe('classifySshInvocation', () => {
     ['--'],
     ['--', ''],
     ['--', '-host'],
-    ['host', 'host2'],
-    ['host', 'echo hello'],
-    ['host', ''],
-    ['host', '-t'],
-    ['--', 'host', 'command'],
     ['-o'],
     ['-o', 'User'],
     ['-oUser='],
