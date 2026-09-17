@@ -5,6 +5,7 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin no
 UsePAM no
+Subsystem sftp internal-sftp
 AllowUsers fixture
 AllowTcpForwarding local
 # Fixture-only discovered Docker targets; the library still validates private IPs.

@@ -15,6 +15,20 @@ and requires automatic local HTTP and TLS/SNI routing through production Traefik
 - `scenarios/`: executable Python acceptance scenarios and their bounded runner.
 - `compose.yaml` and `run.sh`: topology and orchestration only.
 
+### Fixture-only LocalCommand lifecycle proof
+
+`scenarios/local_command.py` isolates a proposed `Host *.od` OpenSSH integration from
+the production installer. It verifies that direct interactive and noninteractive connections
+run a `%C`-only `LocalCommand`, a multiplexed client reuses the master's registration, and
+finite `ControlPersist` removes the test-owned master only after the final active session
+exits. An uncancelled stream-local forward does not keep that master alive. OpenSSH leaves
+the closed forward's Unix pathname behind, so the future coordinator must remove that
+Port-owned path after observing master shutdown. The same gate verifies that modern `scp`
+and `sftp` succeed without invoking `LocalCommand`.
+
+This is a prerequisite proof only. Production activation remains the opt-in Bash `ssh`
+integration described below until the coordinator and installer changes land.
+
 ## Run
 
 From the worktree root:

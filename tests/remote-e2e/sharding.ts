@@ -15,6 +15,7 @@ export const REMOTE_E2E_SUITES = [
   { file: 'automatic-a.remote-e2e.test.ts', estimatedDurationMs: 35_000 },
   { file: 'automatic-b.remote-e2e.test.ts', estimatedDurationMs: 35_000 },
   { file: 'foundation.remote-e2e.test.ts', estimatedDurationMs: 15_000 },
+  { file: 'local-command.remote-e2e.test.ts', estimatedDurationMs: 12_000 },
   { file: 'transport.remote-e2e.test.ts', estimatedDurationMs: 10_000 },
   { file: 'missing-port.remote-e2e.test.ts', estimatedDurationMs: 2_000 },
 ] as const satisfies readonly RemoteE2ESuite[]
@@ -27,6 +28,7 @@ export const REMOTE_E2E_SHARD_BUDGET = {
 
 const REMOTE_E2E_EXECUTION_ORDER = new Map<string, number>([
   ['transport.remote-e2e.test.ts', 0],
+  ['local-command.remote-e2e.test.ts', 1],
   ['foundation.remote-e2e.test.ts', 1],
   ['automatic-a.remote-e2e.test.ts', 2],
   ['automatic-b.remote-e2e.test.ts', 2],
