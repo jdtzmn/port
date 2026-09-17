@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789618866808,
+  "lastUpdate": 1789619278109,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port worktree operations": [
@@ -624,6 +624,58 @@ window.BENCHMARK_DATA = {
             "range": "16.374000000000024",
             "unit": "ms",
             "extra": "p95: 320.331 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fb08f8ff1664aaba158ef1284d06924df62145cc",
+          "message": "Bump version to 0.6.1 (#171)",
+          "timestamp": "2026-09-17T04:25:14Z",
+          "tree_id": "114272ae78f4dec4c3aa1cc9952911dbfdc61578",
+          "url": "https://github.com/jdtzmn/port/commit/fb08f8ff1664aaba158ef1284d06924df62145cc"
+        },
+        "date": 1789619278078,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Worktree operations / enter existing (small)",
+            "value": 334.725,
+            "range": "24.97999999999996",
+            "unit": "ms",
+            "extra": "p95: 359.705 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter existing (large)",
+            "value": 334.331,
+            "range": "5.9839999999999804",
+            "unit": "ms",
+            "extra": "p95: 340.315 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (small)",
+            "value": 444.664,
+            "range": "10.944000000000017",
+            "unit": "ms",
+            "extra": "p95: 455.608 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (large)",
+            "value": 463.434,
+            "range": "5.766999999999996",
+            "unit": "ms",
+            "extra": "p95: 469.201 ms\nsamples: 20"
           }
         ]
       }
