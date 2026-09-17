@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789619278109,
+  "lastUpdate": 1789650865119,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port worktree operations": [
@@ -676,6 +676,58 @@ window.BENCHMARK_DATA = {
             "range": "5.766999999999996",
             "unit": "ms",
             "extra": "p95: 469.201 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b84fa6f9f6c45cb1d2f61ff2d92570849f90dfc2",
+          "message": "Profile lifecycle command phases (#172)",
+          "timestamp": "2026-09-17T09:11:16-04:00",
+          "tree_id": "e0ed5faf28732a1e3eac9423041d36d9e1b35c77",
+          "url": "https://github.com/jdtzmn/port/commit/b84fa6f9f6c45cb1d2f61ff2d92570849f90dfc2"
+        },
+        "date": 1789650865085,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Worktree operations / enter existing (small)",
+            "value": 279.22,
+            "range": "9.350999999999999",
+            "unit": "ms",
+            "extra": "p95: 288.571 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter existing (large)",
+            "value": 281.144,
+            "range": "15.37700000000001",
+            "unit": "ms",
+            "extra": "p95: 296.521 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (small)",
+            "value": 370.519,
+            "range": "62.504999999999995",
+            "unit": "ms",
+            "extra": "p95: 433.024 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (large)",
+            "value": 383.622,
+            "range": "10.856999999999971",
+            "unit": "ms",
+            "extra": "p95: 394.479 ms\nsamples: 20"
           }
         ]
       }
