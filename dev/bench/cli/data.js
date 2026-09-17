@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789618076147,
+  "lastUpdate": 1789618865349,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -495,6 +495,51 @@ window.BENCHMARK_DATA = {
             "range": "4.722000000000001",
             "unit": "ms",
             "extra": "p95: 40.879 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "111c82adddff7a5ec07c6a995b7de9d63751dddb",
+          "message": "Use Docker inventory for URLs (#170)",
+          "timestamp": "2026-09-17T00:18:20-04:00",
+          "tree_id": "4c928ae61603fb131bc4c3a4418fc169551067d3",
+          "url": "https://github.com/jdtzmn/port/commit/111c82adddff7a5ec07c6a995b7de9d63751dddb"
+        },
+        "date": 1789618864358,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 49.058,
+            "range": "7.625999999999998",
+            "unit": "ms",
+            "extra": "p95: 56.684 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 34.648,
+            "range": "6.724999999999994",
+            "unit": "ms",
+            "extra": "p95: 41.373 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 36.971,
+            "range": "6.749000000000002",
+            "unit": "ms",
+            "extra": "p95: 43.72 ms\nsamples: 20"
           }
         ]
       }
