@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789606613502,
+  "lastUpdate": 1789606992793,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port Docker operations": [
@@ -180,6 +180,51 @@ window.BENCHMARK_DATA = {
             "range": "48.254999999999995",
             "unit": "ms",
             "extra": "p95: 620.799 ms\nsamples: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "49a401da997368158606a54975adcd20c64b35fc",
+          "message": "Fix Bun-only runtime requirement (#163)\n\n* Run published CLI with Node\n\n* Smoke test Port under Node in CI\n\n* Document Node runtime requirement\n\n* Verify packaged CLI runs without Bun\n\n* Format Node package smoke test\n\n* Restore Bun installation guidance\n\n* Remove Node runtime installation note",
+          "timestamp": "2026-09-16T21:00:17-04:00",
+          "tree_id": "1895259e12473b7fcf5c01f71c23091387013592",
+          "url": "https://github.com/jdtzmn/port/commit/49a401da997368158606a54975adcd20c64b35fc"
+        },
+        "date": 1789606992776,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Docker operations / status (small)",
+            "value": 394.08,
+            "range": "8.153999999999996",
+            "unit": "ms",
+            "extra": "p95: 402.234 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / status (large)",
+            "value": 3551.919,
+            "range": "40.777000000000044",
+            "unit": "ms",
+            "extra": "p95: 3592.696 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / up (warm)",
+            "value": 545.535,
+            "range": "54.756000000000085",
+            "unit": "ms",
+            "extra": "p95: 600.291 ms\nsamples: 10"
           }
         ]
       }
