@@ -27,7 +27,13 @@ let root: string
 let handles: RemoteCoordinatorControl[]
 let servers: Server[]
 let sockets: Socket[]
-const handlers = () => ({ register: vi.fn(), wake: vi.fn(), shutdown: vi.fn() })
+const handlers = () => ({
+  register: vi.fn(),
+  observe: vi.fn(),
+  unobserve: vi.fn(),
+  wake: vi.fn(),
+  shutdown: vi.fn(),
+})
 const ping = { version: 1, action: 'ping' } as const
 async function start(callbacks = handlers()) {
   const handle = await startRemoteCoordinatorControl(root, callbacks)
@@ -102,6 +108,8 @@ async function bunSmoke(
         registrations++
         validDirectory = value === '/tmp/port-ssh-Smoke1'
       },
+      observe() {},
+      unobserve() {},
       wake() {},
       shutdown() {},
     })
@@ -236,17 +244,22 @@ describe('private coordinator control', () => {
       ).toBe('ok')
       expect(callbacks[action]).toHaveBeenCalledTimes(1)
     }
-    expect(
-      (
-        await requestRemoteCoordinator(root, {
-          version: 1,
-          incarnation,
-          action: 'register',
-          directory: '/tmp/port-ssh-Ab12',
-        })
-      )?.status
-    ).toBe('ok')
-    expect(callbacks.register).toHaveBeenCalledWith('/tmp/port-ssh-Ab12', expect.any(AbortSignal))
+    for (const action of ['register', 'observe', 'unobserve'] as const) {
+      expect(
+        (
+          await requestRemoteCoordinator(root, {
+            version: 1,
+            incarnation,
+            action,
+            directory: '/tmp/port-ssh-Ab1234',
+          })
+        )?.status
+      ).toBe('ok')
+      expect(callbacks[action]).toHaveBeenCalledWith(
+        '/tmp/port-ssh-Ab1234',
+        expect.any(AbortSignal)
+      )
+    }
     expect(
       (
         await requestRemoteCoordinator(root, {
@@ -279,16 +292,22 @@ describe('private coordinator control', () => {
       '/tmp/port-ssh-a/../b',
       '/tmp/port-ssh-a/',
       '/tmp/port-ssh-a-b',
+      '/tmp/port-ssh-a',
+      '/tmp/port-ssh-Ab12345',
+      '/tmp/port-ssh-Ab_12',
       '/tmp/port-ssh-',
       '/private/tmp/port-ssh-a',
       '/tmp/port-ssh-a\n',
     ]) {
-      frames.push(JSON.stringify({ version: 1, incarnation, action: 'register', directory }) + '\n')
+      for (const action of ['register', 'observe', 'unobserve'])
+        frames.push(JSON.stringify({ version: 1, incarnation, action, directory }) + '\n')
     }
     for (const frame of frames)
       expect(await raw(frame, !frame.includes('\n') && frame.length < 8192)).toBe('')
     expect(callbacks.wake).not.toHaveBeenCalled()
     expect(callbacks.register).not.toHaveBeenCalled()
+    expect(callbacks.observe).not.toHaveBeenCalled()
+    expect(callbacks.unobserve).not.toHaveBeenCalled()
     const desc = await descriptor()
     const socket = createConnection(join(root, desc.socket))
     sockets.push(socket)
@@ -444,7 +463,7 @@ describe('private coordinator control', () => {
       version: 1,
       incarnation: handle.incarnation,
       action: 'register',
-      directory: '/tmp/port-ssh-A',
+      directory: '/tmp/port-ssh-Ab1234',
     })
     await entry
     await handle.close()

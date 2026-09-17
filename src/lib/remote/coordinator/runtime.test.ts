@@ -14,6 +14,8 @@ let backend: Server
 let runtime: Awaited<ReturnType<typeof startRemoteRuntime>>
 let broken: boolean
 let snapshot: RemoteSnapshot
+type ObserveSession = NonNullable<Parameters<typeof startRemoteRuntime>[0]['observeSession']>
+let observeSession: ObserveSession | undefined
 beforeEach(async () => {
   root = await realpath(await mkdtemp('/tmp/port-runtime-'))
   dynamicDirectory = join(root, 'dynamic')
@@ -45,6 +47,7 @@ beforeEach(async () => {
     ],
   }
   broken = false
+  observeSession = undefined
 })
 afterEach(async () => {
   await runtime?.close()
@@ -65,6 +68,7 @@ async function start() {
       bind: { kind: 'loopback' },
       targetAddress: '127.0.0.1',
     }),
+    observeSession,
   })
   if (!runtime) throw new Error('runtime missing')
 }
@@ -147,4 +151,81 @@ describe('connected coordinator runtime', () => {
       readFile(join(dynamicDirectory, 'port-remote-routes.yml'), 'utf8')
     ).rejects.toThrow()
   }, 10000)
+
+  it('owns deduplicated observations beyond the admitting control request', async () => {
+    let release!: () => void
+    const held = new Promise<void>(resolve => {
+      release = resolve
+    })
+    let taskSignal: AbortSignal | undefined
+    observeSession = vi.fn(async (_directory, signal) => {
+      taskSignal = signal
+      await held
+    })
+    await start()
+    const directory = '/tmp/port-ssh-Ab1234'
+    const observe = () =>
+      requestRemoteCoordinator(join(root, 'control'), {
+        version: 1,
+        action: 'observe',
+        incarnation: runtime!.incarnation,
+        directory,
+      })
+
+    expect((await observe())?.status).toBe('ok')
+    await vi.waitFor(() => expect(taskSignal).toBeDefined())
+    expect(taskSignal?.aborted).toBe(false)
+    expect((await observe())?.status).toBe('ok')
+    expect(observeSession).toHaveBeenCalledTimes(1)
+
+    let stopped = false
+    const unobserve = requestRemoteCoordinator(join(root, 'control'), {
+      version: 1,
+      action: 'unobserve',
+      incarnation: runtime!.incarnation,
+      directory,
+    }).then(result => {
+      stopped = true
+      return result
+    })
+    await vi.waitFor(() => expect(taskSignal?.aborted).toBe(true))
+    expect(stopped).toBe(false)
+    release()
+    expect((await unobserve)?.status).toBe('ok')
+    expect(stopped).toBe(true)
+  })
+
+  it('aborts and drains observations before runtime close resolves', async () => {
+    let release!: () => void
+    const held = new Promise<void>(resolve => {
+      release = resolve
+    })
+    let taskSignal: AbortSignal | undefined
+    observeSession = vi.fn(async (_directory, signal) => {
+      taskSignal = signal
+      await held
+    })
+    await start()
+    expect(
+      (
+        await requestRemoteCoordinator(join(root, 'control'), {
+          version: 1,
+          action: 'observe',
+          incarnation: runtime!.incarnation,
+          directory: '/tmp/port-ssh-Ab1234',
+        })
+      )?.status
+    ).toBe('ok')
+    await vi.waitFor(() => expect(taskSignal).toBeDefined())
+
+    let closed = false
+    const closing = runtime!.close().then(() => {
+      closed = true
+    })
+    await vi.waitFor(() => expect(taskSignal?.aborted).toBe(true))
+    expect(closed).toBe(false)
+    release()
+    await closing
+    expect(closed).toBe(true)
+  })
 })

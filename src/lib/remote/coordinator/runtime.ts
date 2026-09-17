@@ -2,11 +2,13 @@ import { connect } from 'node:net'
 import { ensureTraefikDynamicDir } from '../../traefik.ts'
 import { getRemoteRuntimePaths } from './paths.ts'
 import { startRemoteCoordinatorControl, requestRemoteCoordinator } from './control.ts'
+import { createRemoteObservationTasks } from './observationTasks.ts'
 import { createRemoteOwnerRegistry } from './ownerRegistry.ts'
 import { allocateRemoteOwners } from './ownerStore.ts'
 import { createRemoteCoordinatorState, restoreRemoteCoordinatorState } from './state.ts'
 import {
   pinRemoteSessionObservation,
+  observeRemoteSession,
   restoreRemoteSessionObservation,
   openRemoteStream,
   type RemoteSessionObservationHandle,
@@ -38,11 +40,27 @@ export async function startRemoteRuntime(options: {
   dynamicDirectory: string
   collectLocal?: (revision: number) => Promise<RemoteSnapshot>
   prepareProxy?: (ports: number[]) => Promise<RemoteRouteProxy>
+  observeSession?: typeof observeRemoteSession
 }) {
   const { root, controlRoot, dynamicDirectory } = options
   let stopped = false
   let wake: (() => void) | undefined
   let failure: unknown
+  const observations = createRemoteObservationTasks({
+    async run(directory, signal) {
+      await (options.observeSession ?? observeRemoteSession)(directory, signal, async () => {
+        signal.throwIfAborted()
+        const handle = pinRemoteSessionObservation(directory)
+        if (!handle) return
+        await registerRemotePin(root, handle.checkpoint())
+        signal.throwIfAborted()
+        wake?.()
+      })
+    },
+    onSettled() {
+      wake?.()
+    },
+  })
   const control = await startRemoteCoordinatorControl(controlRoot, {
     async register(directory, signal) {
       signal.throwIfAborted()
@@ -50,6 +68,15 @@ export async function startRemoteRuntime(options: {
       if (!handle) throw new Error('Session unavailable')
       await registerRemotePin(root, handle.checkpoint())
       wake?.()
+    },
+    observe(directory, signal) {
+      signal.throwIfAborted()
+      observations.observe(directory)
+    },
+    async unobserve(directory, signal) {
+      signal.throwIfAborted()
+      await observations.unobserve(directory)
+      signal.throwIfAborted()
     },
     async wake() {
       wake?.()
@@ -59,7 +86,10 @@ export async function startRemoteRuntime(options: {
       wake?.()
     },
   })
-  if (!control) return null
+  if (!control) {
+    await observations.close()
+    return null
+  }
   let owners = createRemoteOwnerRegistry().serialize()
   let registry = createRemoteOwnerRegistry(owners)
   const registryView = {
@@ -243,9 +273,13 @@ export async function startRemoteRuntime(options: {
       } finally {
         stopped = true
         try {
-          await reconciler?.close()
-        } finally {
           await control.close()
+        } finally {
+          try {
+            await observations.close()
+          } finally {
+            await reconciler?.close()
+          }
         }
       }
       if (failure) throw failure
@@ -261,9 +295,13 @@ export async function startRemoteRuntime(options: {
     }
   } catch (error) {
     try {
-      await reconciler?.close()
-    } finally {
       await control.close()
+    } finally {
+      try {
+        await observations.close()
+      } finally {
+        await reconciler?.close()
+      }
     }
     throw error
   }
