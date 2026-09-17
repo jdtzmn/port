@@ -13,6 +13,7 @@ import * as output from '../lib/output.ts'
 import { failWithError } from '../lib/cli.ts'
 import { exit } from './exit.ts'
 import { cleanupDockerResources, scanDockerResourcesForProject } from '../lib/docker-cleanup.ts'
+import { measureCommandPhase } from '../lib/commandProfile.ts'
 
 interface RemoveOptions {
   force?: boolean
@@ -118,13 +119,11 @@ export async function remove(
 
   output.info(`Removing worktree: ${output.branch(sanitized)}...`)
 
-  const result = await removeWorktreeAndCleanup(
-    { repoRoot, composeFile, domain: config.domain },
-    sourceBranch,
-    {
+  const result = await measureCommandPhase('remove.worktree-cleanup', () =>
+    removeWorktreeAndCleanup({ repoRoot, composeFile, domain: config.domain }, sourceBranch, {
       branchAction: options.keepBranch ? 'keep' : 'archive',
       nonStandardPath,
-    }
+    })
   )
 
   if (!result.success) {
@@ -141,10 +140,12 @@ export async function remove(
 
   // 1. Always run low-risk cleanup (containers/networks/volumes)
   output.info('Cleaning up Docker resources...')
-  const lowRiskCleanup = await cleanupDockerResources(projectName, {
-    skipImages: true,
-    quiet: false,
-  })
+  const lowRiskCleanup = await measureCommandPhase('remove.docker-low-risk-cleanup', () =>
+    cleanupDockerResources(projectName, {
+      skipImages: true,
+      quiet: false,
+    })
+  )
 
   // Display warnings non-fatally
   for (const warning of lowRiskCleanup.warnings) {
@@ -168,7 +169,9 @@ export async function remove(
 
   // 2. Conditional image cleanup (confirm-gated in interactive mode)
   // Scan for images
-  const imageResources = await scanDockerResourcesForProject(projectName)
+  const imageResources = await measureCommandPhase('remove.docker-image-scan', () =>
+    scanDockerResourcesForProject(projectName)
+  )
 
   if (imageResources.images.length > 0) {
     let shouldCleanupImages = false

@@ -30,6 +30,7 @@ import {
 import { checkDns } from '../lib/dns.ts'
 import { hookExists, runPostUpHook } from '../lib/hooks.ts'
 import * as output from '../lib/output.ts'
+import { measureCommandPhase } from '../lib/commandProfile.ts'
 
 /**
  * Start docker-compose services in the current worktree
@@ -53,7 +54,9 @@ export async function up(requestedServices: string[] = []): Promise<void> {
   await ensurePortRuntimeDir(repoRoot)
 
   // Check docker-compose version
-  const { supported, version } = await checkComposeVersion()
+  const { supported, version } = await measureCommandPhase('up.compose-version', () =>
+    checkComposeVersion()
+  )
   if (!version) {
     output.error('docker-compose not found. Please install Docker.')
     process.exit(1)
@@ -66,7 +69,9 @@ export async function up(requestedServices: string[] = []): Promise<void> {
   const config = await loadConfigOrDefault(repoRoot)
   const composeFile = getComposeFile(config)
 
-  const [projects, hostServices] = await Promise.all([getAllProjects(), getAllHostServices()])
+  const [projects, hostServices] = await measureCommandPhase('up.registry-state', () =>
+    Promise.all([getAllProjects(), getAllHostServices()])
+  )
   const liveHostServices = hostServices.filter(service => isProcessRunning(service.pid))
   const collisions = findHostnameLabelCollisions(repoRoot, name, [...projects, ...liveHostServices])
   if (collisions.length > 0) {
@@ -75,7 +80,7 @@ export async function up(requestedServices: string[] = []): Promise<void> {
     )
   }
 
-  const dnsConfigured = await checkDns(config.domain)
+  const dnsConfigured = await measureCommandPhase('up.dns-check', () => checkDns(config.domain))
   if (!dnsConfigured) {
     output.warn(`DNS is not configured for *.${config.domain} domains`)
     const installCommand =
@@ -107,29 +112,33 @@ export async function up(requestedServices: string[] = []): Promise<void> {
   // Ensure Traefik files exist
   if (!traefikFilesExist()) {
     output.info('Initializing Traefik configuration...')
-    await initTraefikFiles(ports)
+    await measureCommandPhase('up.traefik-files', () => initTraefikFiles(ports))
     output.success('Traefik configuration created')
   }
 
   // Ensure all required ports are configured in Traefik
-  const configUpdated = await ensureTraefikPorts(ports)
+  const configUpdated = await measureCommandPhase('up.traefik-ports', () =>
+    ensureTraefikPorts(ports)
+  )
   if (configUpdated) {
     output.info('Updated Traefik configuration')
   }
 
   // Ensure the 404 handler image is available (builds locally when running from source)
-  await ensure404HandlerImage(
-    () => output.info('Building 404 handler image from source...'),
-    () => output.success('404 handler image built')
+  await measureCommandPhase('up.404-image', () =>
+    ensure404HandlerImage(
+      () => output.info('Building 404 handler image from source...'),
+      () => output.success('404 handler image built')
+    )
   )
 
   // Check if Traefik is running
-  const traefikRunning = await isTraefikRunning()
+  const traefikRunning = await measureCommandPhase('up.traefik-status', () => isTraefikRunning())
 
   if (!traefikRunning) {
     output.info('Starting Traefik...')
     try {
-      await startTraefik()
+      await measureCommandPhase('up.traefik-start', () => startTraefik())
       output.success('Traefik started')
     } catch (error) {
       output.error(`Failed to start Traefik: ${error}`)
@@ -141,7 +150,7 @@ export async function up(requestedServices: string[] = []): Promise<void> {
     // process recreated the container from a stale compose file).
     output.info('Restarting Traefik with new configuration...')
     try {
-      await restartTraefik()
+      await measureCommandPhase('up.traefik-restart', () => restartTraefik())
       output.success('Traefik restarted')
     } catch (error) {
       output.warn(`Failed to restart Traefik: ${error}`)
@@ -152,7 +161,9 @@ export async function up(requestedServices: string[] = []): Promise<void> {
 
   // Generate/update override file
   try {
-    await writeOverrideFile(worktreePath, parsedCompose, name, config.domain, projectName)
+    await measureCommandPhase('up.override-write', () =>
+      writeOverrideFile(worktreePath, parsedCompose, name, config.domain, projectName)
+    )
     output.dim('Updated .port/override.yml')
   } catch (error) {
     output.error(`Failed to generate override file: ${error}`)
@@ -161,16 +172,12 @@ export async function up(requestedServices: string[] = []): Promise<void> {
 
   // Start docker-compose services
   output.info(`Starting services in ${output.branch(name)}...`)
-  const { exitCode } = await runCompose(
-    worktreePath,
-    composeFile,
-    projectName,
-    ['up', '-d', ...requestedServices],
-    {
+  const { exitCode } = await measureCommandPhase('up.compose-up', () =>
+    runCompose(worktreePath, composeFile, projectName, ['up', '-d', ...requestedServices], {
       repoRoot,
       branch: name,
       domain: config.domain,
-    }
+    })
   )
   if (exitCode !== 0) {
     output.error('Failed to start services')
@@ -179,7 +186,7 @@ export async function up(requestedServices: string[] = []): Promise<void> {
   output.success('Services started')
 
   // Register project in global registry
-  await registerProject(repoRoot, name, ports)
+  await measureCommandPhase('up.registry-register', () => registerProject(repoRoot, name, ports))
 
   // Show success message with URLs
   output.newline()
@@ -208,13 +215,14 @@ export async function up(requestedServices: string[] = []): Promise<void> {
     output.newline()
     output.info('Running post-up hook...')
 
-    const result = await runPostUpHook({
-      repoRoot,
-      worktreePath,
-      branch: name,
-      domain: config.domain,
-    })
-
+    const result = await measureCommandPhase('up.post-up-hook', () =>
+      runPostUpHook({
+        repoRoot,
+        worktreePath,
+        branch: name,
+        domain: config.domain,
+      })
+    )
     if (!result.success) {
       output.warn(`Post-up hook failed (exit code ${result.exitCode})`)
       output.dim('See .port/logs/latest.log for details')

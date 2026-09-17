@@ -14,6 +14,7 @@ import {
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
 import { exit } from './exit.ts'
+import { measureCommandPhase } from '../lib/commandProfile.ts'
 
 interface PruneOptions {
   dryRun?: boolean
@@ -113,14 +114,18 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
   // 1. Fetch and prune remote refs
   if (!options.noFetch) {
     output.info('Fetching remote state...')
-    await fetchAndPrune(repoRoot)
+    await measureCommandPhase('prune.fetch', () => fetchAndPrune(repoRoot))
   }
 
   output.info('Detecting merged worktrees...')
 
   // 2. Determine the base branch
-  const baseBranch = options.base ?? (await getDefaultBranch(repoRoot))
-  const candidates = await getStaleWorktreeCandidates(repoRoot, { baseBranch, fresh: true })
+  const baseBranch =
+    options.base ??
+    (await measureCommandPhase('prune.base-branch', () => getDefaultBranch(repoRoot)))
+  const candidates = await measureCommandPhase('prune.candidate-discovery', () =>
+    getStaleWorktreeCandidates(repoRoot, { baseBranch, fresh: true })
+  )
 
   if (candidates.length === 0) {
     output.success('No merged worktrees found. Everything is clean.')
@@ -188,18 +193,20 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
 
   // 9. Stop services in parallel first (most expensive part)
   output.info('Stopping services for prune candidates...')
-  const stopResults = await mapWithConcurrency(candidates, 3, async candidate => {
-    try {
-      await stopWorktreeServices(ctx, candidate.branch, { quiet: true })
-      return { candidate, ok: true as const }
-    } catch (error) {
-      return {
-        candidate,
-        ok: false as const,
-        error: `Failed to stop services: ${error}`,
+  const stopResults = await measureCommandPhase('prune.stop-services', () =>
+    mapWithConcurrency(candidates, 3, async candidate => {
+      try {
+        await stopWorktreeServices(ctx, candidate.branch, { quiet: true })
+        return { candidate, ok: true as const }
+      } catch (error) {
+        return {
+          candidate,
+          ok: false as const,
+          error: `Failed to stop services: ${error}`,
+        }
       }
-    }
-  })
+    })
+  )
 
   for (const stopResult of stopResults) {
     if (!stopResult.ok) {
@@ -236,10 +243,12 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
   // 11a. Low-risk cleanup for each candidate (non-fatal)
   for (const candidate of candidates) {
     const projectName = getProjectName(repoRoot, candidate.sanitized)
-    const lowRiskCleanup = await cleanupDockerResources(projectName, {
-      skipImages: true,
-      quiet: false,
-    })
+    const lowRiskCleanup = await measureCommandPhase('prune.docker-low-risk-cleanup', () =>
+      cleanupDockerResources(projectName, {
+        skipImages: true,
+        quiet: false,
+      })
+    )
 
     // Display warnings non-fatally
     for (const warning of lowRiskCleanup.warnings) {
@@ -268,13 +277,15 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
 
   // 11b. Batch image cleanup decision flow
   // Scan all candidates for images
-  const imageScans = await mapWithConcurrency(candidates, 3, async candidate => {
-    const projectName = getProjectName(repoRoot, candidate.sanitized)
-    return {
-      candidate,
-      resources: await scanDockerResourcesForProject(projectName),
-    }
-  })
+  const imageScans = await measureCommandPhase('prune.docker-image-scan', () =>
+    mapWithConcurrency(candidates, 3, async candidate => {
+      const projectName = getProjectName(repoRoot, candidate.sanitized)
+      return {
+        candidate,
+        resources: await scanDockerResourcesForProject(projectName),
+      }
+    })
+  )
 
   // Filter to candidates with images
   const candidatesWithImages = imageScans.filter(scan => scan.resources.images.length > 0)
@@ -318,10 +329,12 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
     if (shouldCleanupImages) {
       // Run image-only cleanup for each candidate with images
       for (const { candidate, resources } of candidatesWithImages) {
-        const imageCleanup = await cleanupDockerResources(resources.projectName, {
-          imagesOnly: true,
-          quiet: false,
-        })
+        const imageCleanup = await measureCommandPhase('prune.docker-image-cleanup', () =>
+          cleanupDockerResources(resources.projectName, {
+            imagesOnly: true,
+            quiet: false,
+          })
+        )
 
         for (const warning of imageCleanup.warnings) {
           output.warn(warning)
