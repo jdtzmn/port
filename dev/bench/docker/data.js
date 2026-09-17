@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789618868407,
+  "lastUpdate": 1789619279303,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port Docker operations": [
@@ -540,6 +540,51 @@ window.BENCHMARK_DATA = {
             "range": "6.0359999999999445",
             "unit": "ms",
             "extra": "p95: 755.872 ms\nsamples: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fb08f8ff1664aaba158ef1284d06924df62145cc",
+          "message": "Bump version to 0.6.1 (#171)",
+          "timestamp": "2026-09-17T04:25:14Z",
+          "tree_id": "114272ae78f4dec4c3aa1cc9952911dbfdc61578",
+          "url": "https://github.com/jdtzmn/port/commit/fb08f8ff1664aaba158ef1284d06924df62145cc"
+        },
+        "date": 1789619279271,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Docker operations / status (small)",
+            "value": 325.981,
+            "range": "12.918999999999983",
+            "unit": "ms",
+            "extra": "p95: 338.9 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / status (large)",
+            "value": 2330.152,
+            "range": "33.541999999999916",
+            "unit": "ms",
+            "extra": "p95: 2363.694 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / up (warm)",
+            "value": 762.594,
+            "range": "8.55499999999995",
+            "unit": "ms",
+            "extra": "p95: 771.149 ms\nsamples: 10"
           }
         ]
       }
