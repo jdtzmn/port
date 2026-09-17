@@ -35,6 +35,7 @@ if ('${name}' === 'ssh') {
 }
 if (args[0] === '__remote-prepare') {
   console.error('suppressed prepare diagnostic');
+  if (args.includes('--managed-only') && !process.env.PREPARE_OUTPUT) process.exit(Number(process.env.PREPARE_STATUS || 0));
   console.log(process.env.PREPARE_OUTPUT || ('legacy ' + process.env.PREPARE_PATH));
   process.exit(Number(process.env.PREPARE_STATUS || 0));
 }
@@ -93,8 +94,13 @@ ssh 'a b' '' '$(touch NEVER)' 'quote"x'`,
     expect(result.stderr).toBe('')
     const argv = ['a b', '', '$(touch NEVER)', 'quote"x']
     expect(
-      result.calls.find(c => c.name === 'port' && c.args[0] === '__remote-prepare')?.args
-    ).toEqual(['__remote-prepare', '--', ...argv])
+      result.calls
+        .filter(c => c.name === 'port' && c.args[0] === '__remote-prepare')
+        .map(c => c.args)
+    ).toEqual([
+      ['__remote-prepare', '--managed-only', '--', ...argv],
+      ['__remote-prepare', '--', ...argv],
+    ])
     expect(result.calls.find(c => c.name === 'ssh')?.args).toEqual([
       '-o',
       'ControlMaster=yes',

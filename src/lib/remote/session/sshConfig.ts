@@ -42,6 +42,7 @@ export function renderManagedSshConfig(patterns: readonly string[]): string {
     '    ControlPersist 3',
     '    PermitLocalCommand yes',
     '    LocalCommand port __remote-register %C',
+    'Match all',
     '',
   ].join('\n')
 }
@@ -121,36 +122,36 @@ function checkDirectory(info: Stats): void {
     unavailable()
 }
 
-function checkFile(info: Stats, managed: boolean): void {
+function checkFile(info: Stats, requirePrivateMode: boolean): void {
   const mode = info.mode & 0o7777
   if (
     !info.isFile() ||
     info.uid !== process.getuid?.() ||
     info.nlink !== 1 ||
     info.size > MAX_CONFIG_BYTES ||
-    (managed ? mode !== 0o600 : (mode & 0o022) !== 0)
+    (requirePrivateMode ? mode !== 0o600 : (mode & 0o022) !== 0)
   )
     unavailable()
 }
 
 async function readOptionalFile(
   path: string,
-  managed = false
+  requirePrivateMode = false
 ): Promise<{ content: string; pin: Stats | null }> {
   const pin = await optionalStat(path)
   if (!pin) return { content: '', pin }
-  checkFile(pin, managed)
+  checkFile(pin, requirePrivateMode)
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
   try {
     const opened = await file.stat()
-    checkFile(opened, managed)
+    checkFile(opened, requirePrivateMode)
     if (!unchangedFile(opened, pin)) unavailable()
     const bytes = await file.readFile()
     if (bytes.length > MAX_CONFIG_BYTES) unavailable()
     const content = bytes.toString('utf8')
     if (!bytes.equals(Buffer.from(content))) unavailable()
     const after = await file.stat()
-    checkFile(after, managed)
+    checkFile(after, requirePrivateMode)
     if (!unchangedFile(after, pin) || !unchangedFile(await lstat(path), pin)) unavailable()
     return { content, pin }
   } finally {
@@ -158,14 +159,18 @@ async function readOptionalFile(
   }
 }
 
-async function checkPinnedFile(path: string, pin: Stats | null, managed = false): Promise<void> {
+async function checkPinnedFile(
+  path: string,
+  pin: Stats | null,
+  requirePrivateMode = false
+): Promise<void> {
   const current = await optionalStat(path)
   if (!pin) {
     if (current) unavailable()
     return
   }
   if (!current) return unavailable()
-  checkFile(current, managed)
+  checkFile(current, requirePrivateMode)
   if (!unchangedFile(current, pin)) unavailable()
 }
 
@@ -175,7 +180,7 @@ async function writeAtomic(
   path: string,
   pin: Stats | null,
   content: string,
-  managed = false
+  requirePrivateMode = false
 ): Promise<void> {
   if (!sameFile(await lstat(directory), directoryPin)) unavailable()
   const temporary = join(directory, `.port-${randomUUID()}.tmp`)
@@ -200,7 +205,7 @@ async function writeAtomic(
     }
     checkDirectory(await lstat(directory))
     if (!sameFile(await lstat(directory), directoryPin)) unavailable()
-    await checkPinnedFile(path, pin, managed)
+    await checkPinnedFile(path, pin, requirePrivateMode)
     await rename(temporary, path)
   } finally {
     const current = await optionalStat(temporary)

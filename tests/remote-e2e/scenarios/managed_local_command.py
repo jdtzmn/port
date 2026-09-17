@@ -78,11 +78,11 @@ def main():
         connection_id = match.group(1)
 
         before = session_directories()
-        run([
-            'bash', '--noprofile', '--norc', '-c',
-            'eval "$(port shell-hook bash)"; '
-            'ssh remote-a.od \'test ! -t 0 && test "$(id -un)" = fixture && exit 0\'',
-        ], timeout=30)
+        shell.marker(
+            "test -t 0 && test -t 1 && "
+            "ssh remote-a.od 'test \"$(id -un)\" = fixture'",
+            timeout=30,
+        )
         expected = Path(f'/tmp/port-ssh-{connection_id}')
         shell.wait_for(lambda: expected in session_directories(), timeout=10)
         directory = expected

@@ -2,21 +2,24 @@
 export function generateSshIntegrationHook(): string {
   return `if ! alias ssh >/dev/null 2>&1 && ! declare -F ssh >/dev/null 2>&1; then
   function ssh () (
-    __port_ssh_managed_only=''
+    __port_ssh_allow_legacy=''
     if [ ! -t 0 ] || [ ! -t 1 ]; then
-      __port_ssh_managed_only='1'
+      :
+    else
+      __port_ssh_allow_legacy='1'
     fi
     __port_ssh_prepared=''
-    if [ -n "$__port_ssh_managed_only" ]; then
-      if __port_ssh_prepared="$(command port __remote-prepare --managed-only -- "$@" 2>/dev/null)"; then
+    if __port_ssh_prepared="$(command port __remote-prepare --managed-only -- "$@" 2>/dev/null)"; then
+      :
+    else
+      __port_ssh_prepared=''
+    fi
+    if [ -z "$__port_ssh_prepared" ] && [ -n "$__port_ssh_allow_legacy" ]; then
+      if __port_ssh_prepared="$(command port __remote-prepare -- "$@" 2>/dev/null)"; then
         :
       else
         __port_ssh_prepared=''
       fi
-    elif __port_ssh_prepared="$(command port __remote-prepare -- "$@" 2>/dev/null)"; then
-      :
-    else
-      __port_ssh_prepared=''
     fi
     __port_ssh_mode=''
     __port_ssh_dir=''
@@ -33,7 +36,7 @@ export function generateSshIntegrationHook(): string {
       legacy\\ /tmp/port-ssh-[a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9])
         __port_ssh_mode='legacy'
         __port_ssh_dir="\${__port_ssh_prepared#legacy }"
-        if [ -n "$__port_ssh_managed_only" ]; then
+        if [ -z "$__port_ssh_allow_legacy" ]; then
           command ssh "$@"
           exit $?
         fi

@@ -56,6 +56,7 @@ Host *.od devbox
     ControlPersist 3
     PermitLocalCommand yes
     LocalCommand port __remote-register %C
+Match all
 `)
   })
 })
@@ -74,7 +75,9 @@ describe('managed SSH config installation', () => {
   test('installs the include before user settings and creates a private fragment', async () => {
     const ssh = join(home, '.ssh')
     await mkdir(ssh, { mode: 0o700 })
-    await writeFile(join(ssh, 'config'), 'Host *\n    LogLevel ERROR\n', { mode: 0o600 })
+    await writeFile(join(ssh, 'config'), 'ServerAliveInterval 17\nHost *\n    LogLevel ERROR\n', {
+      mode: 0o600,
+    })
 
     const result = await installManagedSshConfig(['*.od'], { home })
 
@@ -88,6 +91,7 @@ describe('managed SSH config installation', () => {
 Include ~/.ssh/port.conf
 # <<< port remote services <<<
 
+ServerAliveInterval 17
 Host *
     LogLevel ERROR
 `)
@@ -95,10 +99,26 @@ Host *
     expect((await stat(ssh)).mode & 0o777).toBe(0o700)
     expect((await stat(join(ssh, 'config'))).mode & 0o777).toBe(0o600)
     expect((await stat(join(ssh, 'port.conf'))).mode & 0o777).toBe(0o600)
-    const effective = execFileSync('ssh', ['-G', '-F', join(ssh, 'port.conf'), 'api.od'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
+    const completeConfig = join(ssh, 'effective-config')
+    await writeFile(
+      completeConfig,
+      (await readFile(join(ssh, 'config'), 'utf8')).replace(
+        '~/.ssh/port.conf',
+        join(ssh, 'port.conf')
+      ),
+      { mode: 0o600 }
+    )
+    const sshConfig = (host: string): string =>
+      execFileSync('ssh', ['-G', '-F', completeConfig, host], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+    const unrelated = sshConfig('unrelated.example')
+    expect(unrelated).toContain('serveraliveinterval 17\n')
+    expect(unrelated).toContain('controlmaster false\n')
+    expect(unrelated).toContain('permitlocalcommand no\n')
+    const effective = sshConfig('api.od')
+    expect(effective).toContain('serveraliveinterval 17\n')
     expect(effective).toContain('controlmaster auto\n')
     expect(effective).toMatch(/controlpath \/tmp\/port-control-[a-f0-9]{40,64}\n/)
     expect(effective).toContain('controlpersist 3\n')

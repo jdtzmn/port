@@ -338,6 +338,11 @@ describe('remote session preflight', () => {
     expect(execute).toHaveBeenCalledOnce()
   })
 
+  test('default preflight leaves legacy remote commands untouched', async () => {
+    expect(await prepareRemoteSession(['host', 'printf ready'])).toBeNull()
+    expect(execute).not.toHaveBeenCalled()
+  })
+
   test.each([
     '',
     'garbage',
@@ -386,7 +391,7 @@ describe('remote session preflight', () => {
 
   test('prepares deterministic metadata for the exact managed ControlPath', async () => {
     respond(managedConfig)
-    const directory = await prepareRemoteSession(['devbox.od'])
+    const directory = await prepareRemoteSession(['devbox.od', 'printf ready'], true)
     expect(directory).toBe(`/tmp/port-ssh-${managedConnectionId}`)
     directories.push(directory!)
     expect(lstatSync(directory!).mode & 0o777).toBe(0o700)
@@ -403,7 +408,7 @@ describe('remote session preflight', () => {
     })
 
     respond(managedConfig)
-    expect(await prepareRemoteSession(['devbox.od'])).toBe(directory)
+    expect(await prepareRemoteSession(['devbox.od', 'printf ready'], true)).toBe(directory)
   })
 })
 
