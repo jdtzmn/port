@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789616620161,
+  "lastUpdate": 1789618077569,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port worktree operations": [
@@ -520,6 +520,58 @@ window.BENCHMARK_DATA = {
             "range": "6.948999999999955",
             "unit": "ms",
             "extra": "p95: 466.186 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "241fc5493c11c322a4404440e208ddd455399dcc",
+          "message": "Use Docker inventory for status (#169)\n\n* Add Docker Compose service inventory\n\n* Use Docker inventory for worktree status\n\n* Avoid Compose fallback for absent projects\n\n* Harden Docker status inventory",
+          "timestamp": "2026-09-17T00:05:09-04:00",
+          "tree_id": "2318033580383f82c5c39d978eef09e8267e9b41",
+          "url": "https://github.com/jdtzmn/port/commit/241fc5493c11c322a4404440e208ddd455399dcc"
+        },
+        "date": 1789618077535,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Worktree operations / enter existing (small)",
+            "value": 326.887,
+            "range": "6.065999999999974",
+            "unit": "ms",
+            "extra": "p95: 332.953 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter existing (large)",
+            "value": 327.752,
+            "range": "5.807999999999993",
+            "unit": "ms",
+            "extra": "p95: 333.56 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (small)",
+            "value": 431.599,
+            "range": "8.355000000000018",
+            "unit": "ms",
+            "extra": "p95: 439.954 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (large)",
+            "value": 447.89,
+            "range": "6.896999999999991",
+            "unit": "ms",
+            "extra": "p95: 454.787 ms\nsamples: 20"
           }
         ]
       }
