@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   parseComposeFile: vi.fn(),
   getServicePorts: vi.fn(),
   composePs: vi.fn(),
+  getRunningComposeServiceInventory: vi.fn(),
   buildProjectName: vi.fn(),
   header: vi.fn(),
   serviceUrls: vi.fn(),
@@ -34,6 +35,10 @@ vi.mock('../lib/compose.ts', () => ({
   parseComposeFile: mocks.parseComposeFile,
   getServicePorts: mocks.getServicePorts,
   composePs: mocks.composePs,
+}))
+
+vi.mock('../lib/dockerInventory.ts', () => ({
+  getRunningComposeServiceInventory: mocks.getRunningComposeServiceInventory,
 }))
 
 vi.mock('../lib/projectName.ts', () => ({
@@ -80,6 +85,7 @@ describe('urls command', () => {
     mocks.dim.mockImplementation((value: string) => value)
     mocks.findRemoteRuntimePaths.mockResolvedValue(undefined)
     mocks.composePs.mockResolvedValue([])
+    mocks.getRunningComposeServiceInventory.mockResolvedValue(new Map())
 
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => {
       throw new Error(`process.exit:${typeof code === 'number' ? code : 0}`)
@@ -111,11 +117,8 @@ describe('urls command', () => {
 
     expect(mocks.header).toHaveBeenCalledWith('Service URLs for feature-1:')
     expect(mocks.ensurePortRuntimeDir).not.toHaveBeenCalled()
-    expect(mocks.composePs).toHaveBeenCalledWith(
-      '/repo/.port/trees/feature-1',
-      'docker-compose.yml',
-      'repo-feature-1'
-    )
+    expect(mocks.getRunningComposeServiceInventory).toHaveBeenCalledTimes(1)
+    expect(mocks.composePs).not.toHaveBeenCalled()
     expect(mocks.serviceUrls).toHaveBeenCalledWith([
       {
         name: 'web',
@@ -242,10 +245,9 @@ describe('urls command', () => {
       if (service === db) return [5432]
       return []
     })
-    mocks.composePs.mockResolvedValue([
-      { name: 'repo-feature-1-web-1', running: true },
-      { name: 'repo-feature-1-db-1', running: false },
-    ])
+    mocks.getRunningComposeServiceInventory.mockResolvedValue(
+      new Map([['repo-feature-1', new Set(['web'])]])
+    )
 
     await urls()
 
@@ -259,6 +261,31 @@ describe('urls command', () => {
         name: 'db',
         urls: ['http://db.feature-1.port', 'http://feature-1.port:5432'],
         running: false,
+      },
+    ])
+  })
+
+  test('falls back to compose ps when Docker inventory is unavailable', async () => {
+    mocks.parseComposeFile.mockResolvedValue({
+      name: 'repo',
+      services: { web: {} },
+    })
+    mocks.getServicePorts.mockReturnValue([3000])
+    mocks.getRunningComposeServiceInventory.mockResolvedValue(null)
+    mocks.composePs.mockResolvedValue([{ name: 'repo-feature-1-web-1', running: true }])
+
+    await urls()
+
+    expect(mocks.composePs).toHaveBeenCalledWith(
+      '/repo/.port/trees/feature-1',
+      'docker-compose.yml',
+      'repo-feature-1'
+    )
+    expect(mocks.serviceUrls).toHaveBeenCalledWith([
+      {
+        name: 'web',
+        urls: ['http://web.feature-1.port', 'http://feature-1.port:3000'],
+        running: true,
       },
     ])
   })
