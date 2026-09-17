@@ -5,6 +5,7 @@ import { getTreesDir } from './config.ts'
 import { composePs, parseComposeFile, getServicePorts } from './compose.ts'
 import { buildProjectName as getProjectName } from './projectName.ts'
 import { sanitizeBranchName } from './sanitize.ts'
+import { getRunningComposeServiceInventory } from './dockerInventory.ts'
 
 export interface WorktreeServiceStatus {
   name: string
@@ -97,29 +98,34 @@ export async function fetchWorktreeServices(
   domain: string,
   worktreePath: string,
   composeFile: string,
-  projectName: string
+  projectName: string,
+  inventoryServices?: Set<string>
 ): Promise<WorktreeServiceStatus[]> {
   const services: WorktreeServiceStatus[] = []
 
   try {
     const parsedCompose = await parseComposeFile(worktreePath, composeFile)
-    const psResult = await composePs(worktreePath, composeFile, projectName, {
-      repoRoot,
-      branch,
-      domain,
-    })
-    const runningServices = new Map(psResult.map(service => [service.name, service.running]))
-
-    for (const [serviceName, service] of Object.entries(parsedCompose.services)) {
-      const ports = getServicePorts(service)
-      const running = Array.from(runningServices.entries()).some(
-        ([name, isRunning]) => name.includes(serviceName) && isRunning
+    const runningServices =
+      inventoryServices ??
+      new Set(
+        (
+          await composePs(worktreePath, composeFile, projectName, {
+            repoRoot,
+            branch,
+            domain,
+          })
+        )
+          .filter(service => service.running)
+          .map(service => service.name)
       )
 
+    for (const [serviceName, service] of Object.entries(parsedCompose.services)) {
       services.push({
         name: serviceName,
-        ports,
-        running,
+        ports: getServicePorts(service),
+        running: inventoryServices
+          ? runningServices.has(serviceName)
+          : Array.from(runningServices).some(name => name.includes(serviceName)),
       })
     }
   } catch {
@@ -138,6 +144,7 @@ export async function collectWorktreeStatuses(
   domain: string
 ): Promise<WorktreeStatus[]> {
   const skeletons = getWorktreeSkeletons(repoRoot)
+  const inventory = await getRunningComposeServiceInventory()
 
   const serviceResults = await mapWithConcurrency(skeletons, 4, async wt => {
     const projectName = getProjectName(repoRoot, wt.name)
@@ -147,7 +154,8 @@ export async function collectWorktreeStatuses(
       domain,
       wt.path,
       composeFile,
-      projectName
+      projectName,
+      inventory ? (inventory.get(projectName) ?? new Set()) : undefined
     )
 
     return {
