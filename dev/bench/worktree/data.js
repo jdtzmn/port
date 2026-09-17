@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789615195476,
+  "lastUpdate": 1789616620161,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port worktree operations": [
@@ -468,6 +468,58 @@ window.BENCHMARK_DATA = {
             "range": "44.798",
             "unit": "ms",
             "extra": "p95: 511.994 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2829b5fc53565f8dbbafe2c07ce05f4ef11158a7",
+          "message": "Cache stale worktree snapshots (#168)\n\n* Cache stale worktree snapshots\n\n* Invalidate stale worktree cache on mutations\n\n* Format stale worktree cache files",
+          "timestamp": "2026-09-16T23:40:44-04:00",
+          "tree_id": "ac60389a081473b22e99ff4c2de23a798048596b",
+          "url": "https://github.com/jdtzmn/port/commit/2829b5fc53565f8dbbafe2c07ce05f4ef11158a7"
+        },
+        "date": 1789616620135,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Worktree operations / enter existing (small)",
+            "value": 333.049,
+            "range": "10.730999999999995",
+            "unit": "ms",
+            "extra": "p95: 343.78 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter existing (large)",
+            "value": 337.927,
+            "range": "11.859999999999957",
+            "unit": "ms",
+            "extra": "p95: 349.787 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (small)",
+            "value": 446.796,
+            "range": "9.192000000000007",
+            "unit": "ms",
+            "extra": "p95: 455.988 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (large)",
+            "value": 459.237,
+            "range": "6.948999999999955",
+            "unit": "ms",
+            "extra": "p95: 466.186 ms\nsamples: 20"
           }
         ]
       }
