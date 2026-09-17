@@ -2,7 +2,7 @@ import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfig, configExists, getComposeFile } from '../lib/config.ts'
 import { isTraefikRunning } from '../lib/compose.ts'
 import { getAllHostServices } from '../lib/registry.ts'
-import { isProcessRunning, cleanupStaleHostServices } from '../lib/hostService.ts'
+import { isProcessRunning } from '../lib/hostService.ts'
 import { collectWorktreeStatuses, type WorktreeStatus } from '../lib/worktreeStatus.ts'
 import {
   getStaleWorktreeCandidates,
@@ -71,7 +71,6 @@ export async function status(): Promise<void> {
     output.warn('Remote route view is unavailable')
   }
 
-  await cleanupStaleHostServices()
   const hostServices = await getAllHostServices()
 
   if (hostServices.length > 0) {
