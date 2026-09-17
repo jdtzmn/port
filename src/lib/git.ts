@@ -278,11 +278,13 @@ export async function createWorktree(
   // getWorktreePath, so the directory name is unaffected by this resolution.
   const ref = preflight?.ref ?? (await resolveBranchRef(repoRoot, branch))
 
+  let attemptedWorktreeAdd = false
   try {
     const localExists = preflight?.localExists ?? (await branchExists(repoRoot, ref))
 
     if (localExists) {
       // Branch exists locally, create worktree for it
+      attemptedWorktreeAdd = true
       await git.raw(['worktree', 'add', worktreePath, ref])
     } else {
       // Check if branch exists on remote
@@ -296,16 +298,18 @@ export async function createWorktree(
         }
 
         // Track the remote branch
+        attemptedWorktreeAdd = true
         await git.raw(['worktree', 'add', '--track', '-b', ref, worktreePath, `origin/${ref}`])
       } else {
         // Create new branch from HEAD
+        attemptedWorktreeAdd = true
         await git.raw(['worktree', 'add', '-b', ref, worktreePath])
       }
     }
 
     return worktreePath
   } catch (error) {
-    if (preflight) {
+    if (preflight && attemptedWorktreeAdd) {
       return createWorktree(repoRoot, branch)
     }
     throw new GitError(`Failed to create worktree for '${branch}': ${error}`)

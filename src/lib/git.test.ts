@@ -142,4 +142,29 @@ describe('createWorktree', () => {
       'my-feature',
     ])
   })
+
+  test('does not retry discovery when remote branch fetching fails', async () => {
+    rawMock.mockResolvedValueOnce('').mockRejectedValueOnce(new Error('authentication failed'))
+
+    await expect(
+      createWorktree('/repo', 'feature', {
+        ref: 'feature',
+        localExists: false,
+        remoteExists: true,
+      })
+    ).rejects.toThrow("Failed to create worktree for 'feature': GitError: Failed to fetch 'feature'")
+
+    expect(rawMock).toHaveBeenCalledTimes(2)
+    expect(rawMock).toHaveBeenNthCalledWith(1, [
+      'rev-parse',
+      '--verify',
+      '--quiet',
+      'refs/remotes/origin/feature',
+    ])
+    expect(rawMock).toHaveBeenNthCalledWith(2, [
+      'fetch',
+      'origin',
+      '+refs/heads/feature:refs/remotes/origin/feature',
+    ])
+  })
 })
