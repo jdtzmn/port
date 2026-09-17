@@ -15,6 +15,7 @@ vi.mock('./worktree.ts', () => ({
 import {
   isValidBranchRef,
   parseDuplicateWorktreeError,
+  createWorktree,
   renameWorktree,
   resolveBranchRef,
 } from './git.ts'
@@ -86,5 +87,27 @@ describe('resolveBranchRef', () => {
     rawMock.mockResolvedValueOnce('simple\n')
 
     await expect(resolveBranchRef('/repo', 'simple')).resolves.toBe('simple')
+  })
+})
+
+describe('createWorktree', () => {
+  test('uses a caller-provided preflight without repeating branch checks', async () => {
+    rawMock.mockResolvedValue(undefined)
+
+    await expect(
+      createWorktree('/repo', 'my feature', {
+        ref: 'my-feature',
+        localExists: true,
+        remoteExists: false,
+      })
+    ).resolves.toBe('/repo/.port/trees/my feature')
+
+    expect(rawMock).toHaveBeenCalledTimes(1)
+    expect(rawMock).toHaveBeenCalledWith([
+      'worktree',
+      'add',
+      '/repo/.port/trees/my feature',
+      'my-feature',
+    ])
   })
 })
