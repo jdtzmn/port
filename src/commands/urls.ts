@@ -1,5 +1,5 @@
 import { detectWorktree } from '../lib/worktree.ts'
-import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
+import { loadConfigOrDefault, getComposeFile } from '../lib/config.ts'
 import { parseComposeFile, getServicePorts, composePs } from '../lib/compose.ts'
 import { buildProjectName as getProjectName } from '../lib/projectName.ts'
 import { formatHostname, formatHostnameLabel } from '../lib/hostname.ts'
@@ -59,8 +59,6 @@ export async function urls(serviceName?: string, options: UrlOptions = {}): Prom
 
   const { repoRoot, worktreePath, name } = worktreeInfo
 
-  await ensurePortRuntimeDir(repoRoot)
-
   const config = await loadConfigOrDefault(repoRoot)
   if (config.domain === 'port') {
     try {
@@ -84,11 +82,7 @@ export async function urls(serviceName?: string, options: UrlOptions = {}): Prom
   const projectName = getProjectName(repoRoot, name)
 
   let parsedCompose
-  const psPromise = composePs(worktreePath, composeFile, projectName, {
-    repoRoot,
-    branch: name,
-    domain: config.domain,
-  }).catch(() => [])
+  const psPromise = composePs(worktreePath, composeFile, projectName).catch(() => [])
 
   let psResult: Array<{ name: string; status: string; running: boolean }>
   try {

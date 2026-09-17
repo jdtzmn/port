@@ -50,14 +50,14 @@ describe('port urls command', () => {
     }
   })
 
-  test('uses defaults and creates runtime .port/.gitignore when config is missing', async () => {
+  test('uses defaults without creating runtime files when config is missing', async () => {
     const sample = await prepareSample('db-and-server', { gitInit: true })
 
     try {
       const result = await execPortAsync(['urls'], sample.dir)
       expect(result.stderr).toContain(sample.urlWithPort(3000))
       expect(result.stderr).toContain(sample.urlWithPort(5432))
-      expect(existsSync(`${sample.dir}/.port/.gitignore`)).toBe(true)
+      expect(existsSync(`${sample.dir}/.port/.gitignore`)).toBe(false)
     } finally {
       await sample.cleanup()
     }

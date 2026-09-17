@@ -113,6 +113,7 @@ describe('status command', () => {
     expect(outputLines).toContain('  api: 3000 (running)')
     expect(outputLines).toContain('  db: no published ports (stopped)')
     expect(mocks.header).toHaveBeenCalledWith('Worktree service status:')
+    expect(mocks.cleanupStaleHostServices).not.toHaveBeenCalled()
     logSpy.mockRestore()
   })
 
@@ -127,7 +128,7 @@ describe('status command', () => {
       'Not in a git repository. Showing global service status only.'
     )
     expect(mocks.collectWorktreeStatuses).not.toHaveBeenCalled()
-    expect(mocks.cleanupStaleHostServices).toHaveBeenCalledTimes(1)
+    expect(mocks.cleanupStaleHostServices).not.toHaveBeenCalled()
     expect(mocks.error).not.toHaveBeenCalled()
   })
 
@@ -140,7 +141,7 @@ describe('status command', () => {
       'Current repository is not initialized with port. Showing global service status only.'
     )
     expect(mocks.collectWorktreeStatuses).not.toHaveBeenCalled()
-    expect(mocks.cleanupStaleHostServices).toHaveBeenCalledTimes(1)
+    expect(mocks.cleanupStaleHostServices).not.toHaveBeenCalled()
     expect(mocks.error).not.toHaveBeenCalled()
   })
 

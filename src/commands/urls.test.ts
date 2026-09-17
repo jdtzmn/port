@@ -110,6 +110,12 @@ describe('urls command', () => {
     await urls()
 
     expect(mocks.header).toHaveBeenCalledWith('Service URLs for feature-1:')
+    expect(mocks.ensurePortRuntimeDir).not.toHaveBeenCalled()
+    expect(mocks.composePs).toHaveBeenCalledWith(
+      '/repo/.port/trees/feature-1',
+      'docker-compose.yml',
+      'repo-feature-1'
+    )
     expect(mocks.serviceUrls).toHaveBeenCalledWith([
       {
         name: 'web',
