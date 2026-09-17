@@ -260,5 +260,4 @@ Remove DNS configuration for wildcard domain used by this repo
 ## Reference
 
 - Project README: <https://github.com/jdtzmn/port#readme>
-- Install the CLI: `npm install -g @jdtzmn/port` or
-  `bun add -g @jdtzmn/port`
+- Install the CLI with Node.js 22.5+: `npm install -g @jdtzmn/port`

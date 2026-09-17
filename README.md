@@ -58,13 +58,11 @@ Port is designed for Git worktrees that need both Docker Compose isolation and s
 ## Installation
 
 ```bash
-# Port is published on npm, but requires Bun at runtime
+# Port is published on npm and runs on Node.js
 npm install -g @jdtzmn/port
-# or install globally with Bun
-bun add -g @jdtzmn/port
 ```
 
-`port` executes with a Bun shebang (`#!/usr/bin/env bun`), so Bun must be installed and available on `PATH` even when the package is installed via npm.
+`port` executes with a Node.js shebang (`#!/usr/bin/env node`) and requires Node.js 22.5 or newer on your `PATH`. Bun is used for Port development, but is not required to install or run the CLI.
 
 ### Agent Skill
 
@@ -666,7 +664,7 @@ port/
 
 ## Requirements
 
-- Bun 1.0+ (required runtime for the `port` CLI)
+- Node.js 22.5+ (required runtime for the `port` CLI)
 - Git 2.7+
 - Docker & Docker Compose v2.24.0+
 - macOS or Linux
