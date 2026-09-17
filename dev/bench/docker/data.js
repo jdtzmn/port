@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789611386368,
+  "lastUpdate": 1789614532610,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port Docker operations": [
@@ -315,6 +315,51 @@ window.BENCHMARK_DATA = {
             "range": "8.134000000000015",
             "unit": "ms",
             "extra": "p95: 586.576 ms\nsamples: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7645b3e7bc4838b2721045c15d79ca588c52dd6e",
+          "message": "Make query commands side-effect free (#167)\n\n* Classify query commands before dispatch\n\n* Keep status and urls side-effect free\n\n* Fix query command integration expectations",
+          "timestamp": "2026-09-16T23:04:45-04:00",
+          "tree_id": "64b449cf0ec940e1600599dece70d5093166d026",
+          "url": "https://github.com/jdtzmn/port/commit/7645b3e7bc4838b2721045c15d79ca588c52dd6e"
+        },
+        "date": 1789614532593,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Docker operations / status (small)",
+            "value": 554.055,
+            "range": "5.472000000000094",
+            "unit": "ms",
+            "extra": "p95: 559.527 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / status (large)",
+            "value": 5034.671,
+            "range": "89.23899999999958",
+            "unit": "ms",
+            "extra": "p95: 5123.91 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / up (warm)",
+            "value": 772.548,
+            "range": "17.721000000000004",
+            "unit": "ms",
+            "extra": "p95: 790.269 ms\nsamples: 10"
           }
         ]
       }
