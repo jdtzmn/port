@@ -98,7 +98,8 @@ export function generatePortSkillMarkdown(): string {
   lines.push('## Reference')
   lines.push('')
   lines.push('- Project README: <https://github.com/jdtzmn/port#readme>')
-  lines.push('- Install the CLI with Node.js 22.5+: `npm install -g @jdtzmn/port`')
+  lines.push('- Install the CLI: `npm install -g @jdtzmn/port` or `bun add -g @jdtzmn/port`')
+  lines.push('  (Port runs with Node.js 22.5+.)')
 
   return lines.join('\n')
 }
