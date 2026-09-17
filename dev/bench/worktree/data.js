@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789650865119,
+  "lastUpdate": 1789659099267,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port worktree operations": [
@@ -728,6 +728,65 @@ window.BENCHMARK_DATA = {
             "range": "10.856999999999971",
             "unit": "ms",
             "extra": "p95: 394.479 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e83d8e06b98a59b695bff0a8739c1a3ab3587d9e",
+          "message": "Honor prune --no-fetch (#175)\n\n* Honor prune no-fetch option\n\n* Wire prune no-fetch CLI option",
+          "timestamp": "2026-09-17T11:24:25-04:00",
+          "tree_id": "e1a704f8264fb51a99b514823f2322c1f434b0e4",
+          "url": "https://github.com/jdtzmn/port/commit/e83d8e06b98a59b695bff0a8739c1a3ab3587d9e"
+        },
+        "date": 1789659099237,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Worktree operations / enter existing (small)",
+            "value": 269.93,
+            "range": "3.5469999999999686",
+            "unit": "ms",
+            "extra": "p95: 273.477 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter existing (large)",
+            "value": 269.43,
+            "range": "7.433999999999969",
+            "unit": "ms",
+            "extra": "p95: 276.864 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (small)",
+            "value": 356.372,
+            "range": "27.968999999999994",
+            "unit": "ms",
+            "extra": "p95: 384.341 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (large)",
+            "value": 368.001,
+            "range": "6.057000000000016",
+            "unit": "ms",
+            "extra": "p95: 374.058 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / prune dry run",
+            "value": 212.346,
+            "range": "5.439999999999998",
+            "unit": "ms",
+            "extra": "p95: 217.786 ms\nsamples: 20"
           }
         ]
       }
