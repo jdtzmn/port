@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789606612175,
+  "lastUpdate": 1789606991418,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port worktree operations": [
@@ -208,6 +208,58 @@ window.BENCHMARK_DATA = {
             "range": "22.740999999999985",
             "unit": "ms",
             "extra": "p95: 428.613 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "49a401da997368158606a54975adcd20c64b35fc",
+          "message": "Fix Bun-only runtime requirement (#163)\n\n* Run published CLI with Node\n\n* Smoke test Port under Node in CI\n\n* Document Node runtime requirement\n\n* Verify packaged CLI runs without Bun\n\n* Format Node package smoke test\n\n* Restore Bun installation guidance\n\n* Remove Node runtime installation note",
+          "timestamp": "2026-09-16T21:00:17-04:00",
+          "tree_id": "1895259e12473b7fcf5c01f71c23091387013592",
+          "url": "https://github.com/jdtzmn/port/commit/49a401da997368158606a54975adcd20c64b35fc"
+        },
+        "date": 1789606991401,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Worktree operations / enter existing (small)",
+            "value": 267.268,
+            "range": "501.526",
+            "unit": "ms",
+            "extra": "p95: 768.794 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter existing (large)",
+            "value": 269.173,
+            "range": "100.66399999999999",
+            "unit": "ms",
+            "extra": "p95: 369.837 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (small)",
+            "value": 354.086,
+            "range": "9.361999999999966",
+            "unit": "ms",
+            "extra": "p95: 363.448 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (large)",
+            "value": 369.23,
+            "range": "11.98599999999999",
+            "unit": "ms",
+            "extra": "p95: 381.216 ms\nsamples: 20"
           }
         ]
       }
