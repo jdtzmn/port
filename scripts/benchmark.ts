@@ -16,6 +16,7 @@ import {
   type BenchmarkDefinition,
   type BenchmarkId,
 } from '../src/lib/benchmarkPolicy.ts'
+import type { CommandProfile } from '../src/lib/commandProfile.ts'
 
 const execFileAsync = promisify(execFile)
 const WARMUP_COUNT = Number.parseInt(process.env.BENCHMARK_WARMUPS ?? '5', 10)
@@ -45,7 +46,12 @@ interface BenchmarkResult {
   name: string
   budget: BenchmarkDefinition['budget']
   summary: BenchmarkSummary
+  profiles?: CommandProfile[]
   passed: boolean
+}
+interface ProfiledBenchmarkSummary {
+  summary: BenchmarkSummary
+  profiles: CommandProfile[]
 }
 
 function assertValidRunSettings(): void {
@@ -102,11 +108,36 @@ async function assertDockerRuntimeIsIsolated(): Promise<void> {
   }
 }
 
-async function runPort(fixture: Fixture, args: string[]): Promise<void> {
-  await run('bun', [CLI_PATH, ...args], fixture.root, {
+async function runPort(
+  fixture: Fixture,
+  args: string[],
+  cwd: string = fixture.root
+): Promise<void> {
+  await run('bun', [CLI_PATH, ...args], cwd, {
     ...process.env,
     PORT_GLOBAL_DIR: fixture.globalDir,
   })
+}
+
+async function runProfiledPort(
+  fixture: Fixture,
+  args: string[],
+  cwd: string = fixture.root
+): Promise<CommandProfile> {
+  const { stderr } = await execFileAsync('bun', [CLI_PATH, ...args], {
+    cwd,
+    env: {
+      ...process.env,
+      PORT_GLOBAL_DIR: fixture.globalDir,
+      PORT_PROFILE: '1',
+    },
+    maxBuffer: 10 * 1024 * 1024,
+  })
+  const profileLine = stderr.split('\n').find(line => line.startsWith('[port-profile] '))
+  if (!profileLine) {
+    throw new Error(`Profiled command did not emit a profile: port ${args[0] ?? '(interactive)'}`)
+  }
+  return JSON.parse(profileLine.slice('[port-profile] '.length)) as CommandProfile
 }
 
 async function prepareFixture(worktreeCount: number): Promise<Fixture> {
@@ -166,15 +197,18 @@ async function cleanupFixture(fixture: Fixture): Promise<void> {
 
 async function measure(
   operation: () => Promise<void>,
-  reset: () => Promise<void> = async () => {}
+  reset: () => Promise<void> = async () => {},
+  prepare: () => Promise<void> = async () => {}
 ): Promise<BenchmarkSummary> {
   for (let index = 0; index < WARMUP_COUNT; index += 1) {
+    await prepare()
     await operation()
     await reset()
   }
 
   const samples: number[] = []
   for (let index = 0; index < SAMPLE_COUNT; index += 1) {
+    await prepare()
     const start = performance.now()
     await operation()
     samples.push(performance.now() - start)
@@ -182,6 +216,31 @@ async function measure(
   }
 
   return summarizeSamples(samples)
+}
+
+async function measureProfiled(
+  operation: () => Promise<CommandProfile>,
+  reset: () => Promise<void> = async () => {},
+  prepare: () => Promise<void> = async () => {}
+): Promise<ProfiledBenchmarkSummary> {
+  for (let index = 0; index < WARMUP_COUNT; index += 1) {
+    await prepare()
+    await operation()
+    await reset()
+  }
+
+  const samples: number[] = []
+  const profiles: CommandProfile[] = []
+  for (let index = 0; index < SAMPLE_COUNT; index += 1) {
+    await prepare()
+    const start = performance.now()
+    const profile = await operation()
+    samples.push(performance.now() - start)
+    profiles.push(profile)
+    await reset()
+  }
+
+  return { summary: summarizeSamples(samples), profiles }
 }
 
 async function measureNewWorktree(fixture: Fixture, prefix: string): Promise<BenchmarkSummary> {
@@ -221,7 +280,69 @@ async function measureWarmUp(fixture: Fixture): Promise<BenchmarkSummary> {
   )
 }
 
-function result(definition: BenchmarkDefinition, summary: BenchmarkSummary): BenchmarkResult {
+async function measureRemove(
+  fixture: Fixture,
+  prefix: string,
+  startServices: boolean
+): Promise<ProfiledBenchmarkSummary> {
+  let runNumber = 0
+  let branch = ''
+  let worktreePath = ''
+
+  return measureProfiled(
+    () => runProfiledPort(fixture, ['rm', branch, '--force', '--keep-branch']),
+    async () => {
+      await run('git', ['branch', '--delete', '--force', branch], fixture.root)
+    },
+    async () => {
+      branch = `${prefix}-${runNumber}`
+      worktreePath = join(fixture.root, '.port', 'trees', branch)
+      runNumber += 1
+      await runPort(fixture, ['enter', branch])
+      if (startServices) {
+        await runPort(fixture, ['up'], worktreePath)
+      }
+    }
+  )
+}
+
+async function measureDown(fixture: Fixture): Promise<ProfiledBenchmarkSummary> {
+  await runPort(fixture, ['up'])
+  await stopDockerProject(fixture)
+
+  return measureProfiled(
+    () => runProfiledPort(fixture, ['down', '--yes']),
+    async () => {},
+    () => runPort(fixture, ['up'])
+  )
+}
+
+async function measurePruneDryRun(fixture: Fixture): Promise<ProfiledBenchmarkSummary> {
+  let runNumber = 0
+  let branch = ''
+  let worktreePath = ''
+
+  return measureProfiled(
+    () =>
+      runProfiledPort(fixture, ['prune', '--dry-run', '--no-fetch', '--force', '--base', 'main']),
+    async () => {
+      await run('git', ['worktree', 'remove', '--force', worktreePath], fixture.root)
+      await run('git', ['branch', '--delete', '--force', branch], fixture.root)
+    },
+    async () => {
+      branch = `prune-dry-run-${runNumber}`
+      worktreePath = join(fixture.root, '.port', 'trees', branch)
+      runNumber += 1
+      await run('git', ['worktree', 'add', '--force', '-b', branch, worktreePath], fixture.root)
+    }
+  )
+}
+
+function result(
+  definition: BenchmarkDefinition,
+  summary: BenchmarkSummary,
+  profiles?: CommandProfile[]
+): BenchmarkResult {
   const budget = evaluateBudget(definition.budget, summary.p95)
 
   return {
@@ -230,6 +351,7 @@ function result(definition: BenchmarkDefinition, summary: BenchmarkSummary): Ben
     name: definition.name,
     budget: definition.budget,
     summary,
+    profiles,
     passed: budget.passed,
   }
 }
@@ -272,6 +394,7 @@ async function main(): Promise<void> {
 
   const smallFixture = await prepareFixture(1)
   const largeFixture = await prepareFixture(LARGE_WORKTREE_COUNT)
+  const pruneFixture = await prepareFixture(0)
 
   try {
     const results: BenchmarkResult[] = []
@@ -319,6 +442,10 @@ async function main(): Promise<void> {
           await measureNewWorktree(largeFixture, 'new-large')
         )
       )
+      const pruneDryRun = await measurePruneDryRun(pruneFixture)
+      results.push(
+        result(BENCHMARK_DEFINITIONS['prune-dry-run'], pruneDryRun.summary, pruneDryRun.profiles)
+      )
     }
 
     if (INCLUDE_DOCKER) {
@@ -335,6 +462,26 @@ async function main(): Promise<void> {
         )
       )
       results.push(result(BENCHMARK_DEFINITIONS['up-warm'], await measureWarmUp(smallFixture)))
+      const down = await measureDown(smallFixture)
+      results.push(result(BENCHMARK_DEFINITIONS.down, down.summary, down.profiles))
+
+      const removeInactive = await measureRemove(smallFixture, 'remove-inactive', false)
+      results.push(
+        result(
+          BENCHMARK_DEFINITIONS['remove-inactive'],
+          removeInactive.summary,
+          removeInactive.profiles
+        )
+      )
+
+      const removeRunning = await measureRemove(smallFixture, 'remove-running', true)
+      results.push(
+        result(
+          BENCHMARK_DEFINITIONS['remove-running'],
+          removeRunning.summary,
+          removeRunning.profiles
+        )
+      )
     }
 
     await writeResults(results)
@@ -346,7 +493,11 @@ async function main(): Promise<void> {
       )
     }
   } finally {
-    await Promise.all([cleanupFixture(smallFixture), cleanupFixture(largeFixture)])
+    await Promise.all([
+      cleanupFixture(smallFixture),
+      cleanupFixture(largeFixture),
+      cleanupFixture(pruneFixture),
+    ])
   }
 }
 
