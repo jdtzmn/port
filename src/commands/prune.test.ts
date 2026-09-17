@@ -157,6 +157,12 @@ describe('prune command', () => {
     )
   })
 
+  test('skips fetch when Commander provides fetch false for --no-fetch', async () => {
+    await prune({ dryRun: true, fetch: false })
+
+    expect(mocks.fetchAndPrune).not.toHaveBeenCalled()
+  })
+
   test('removes candidates with --force using default config values', async () => {
     await prune({ force: true })
 
