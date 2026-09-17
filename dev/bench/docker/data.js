@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789616621362,
+  "lastUpdate": 1789618079062,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port Docker operations": [
@@ -450,6 +450,51 @@ window.BENCHMARK_DATA = {
             "range": "232.94399999999996",
             "unit": "ms",
             "extra": "p95: 852.012 ms\nsamples: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "241fc5493c11c322a4404440e208ddd455399dcc",
+          "message": "Use Docker inventory for status (#169)\n\n* Add Docker Compose service inventory\n\n* Use Docker inventory for worktree status\n\n* Avoid Compose fallback for absent projects\n\n* Harden Docker status inventory",
+          "timestamp": "2026-09-17T00:05:09-04:00",
+          "tree_id": "2318033580383f82c5c39d978eef09e8267e9b41",
+          "url": "https://github.com/jdtzmn/port/commit/241fc5493c11c322a4404440e208ddd455399dcc"
+        },
+        "date": 1789618079030,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Docker operations / status (small)",
+            "value": 261.111,
+            "range": "8.252999999999986",
+            "unit": "ms",
+            "extra": "p95: 269.364 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / status (large)",
+            "value": 1791.531,
+            "range": "23.11500000000001",
+            "unit": "ms",
+            "extra": "p95: 1814.646 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / up (warm)",
+            "value": 612.278,
+            "range": "73.39499999999998",
+            "unit": "ms",
+            "extra": "p95: 685.673 ms\nsamples: 10"
           }
         ]
       }
