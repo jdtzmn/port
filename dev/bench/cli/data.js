@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789611383796,
+  "lastUpdate": 1789614530089,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -315,6 +315,51 @@ window.BENCHMARK_DATA = {
             "range": "7.303000000000004",
             "unit": "ms",
             "extra": "p95: 44.081 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7645b3e7bc4838b2721045c15d79ca588c52dd6e",
+          "message": "Make query commands side-effect free (#167)\n\n* Classify query commands before dispatch\n\n* Keep status and urls side-effect free\n\n* Fix query command integration expectations",
+          "timestamp": "2026-09-16T23:04:45-04:00",
+          "tree_id": "64b449cf0ec940e1600599dece70d5093166d026",
+          "url": "https://github.com/jdtzmn/port/commit/7645b3e7bc4838b2721045c15d79ca588c52dd6e"
+        },
+        "date": 1789614529163,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 53.961,
+            "range": "13.116",
+            "unit": "ms",
+            "extra": "p95: 67.077 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 37.365,
+            "range": "6.640000000000001",
+            "unit": "ms",
+            "extra": "p95: 44.005 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 42.21,
+            "range": "4.055",
+            "unit": "ms",
+            "extra": "p95: 46.265 ms\nsamples: 20"
           }
         ]
       }
