@@ -90,8 +90,16 @@ describe('private remote dispatch', () => {
   test('prepare consumes exactly the separator and preserves argv', async () => {
     await dispatchRemoteInternalCommand('__remote-prepare', ['--', '-p', '22', 'a b', '', '$(x)'])
     expect(mocks.prepareRemoteSession).toHaveBeenCalledWith(['-p', '22', 'a b', '', '$(x)'])
-    expect(stdout).toHaveBeenCalledExactlyOnceWith('/tmp/port-ssh-abc123\n')
+    expect(stdout).toHaveBeenCalledExactlyOnceWith('legacy /tmp/port-ssh-abc123\n')
     expect(stderr).not.toHaveBeenCalled()
+    expect(process.exitCode).toBe(0)
+  })
+
+  test('prepare labels deterministic managed sessions', async () => {
+    const directory = `/tmp/port-ssh-${'a'.repeat(40)}`
+    mocks.prepareRemoteSession.mockResolvedValueOnce(directory)
+    await dispatchRemoteInternalCommand('__remote-prepare', ['--', 'devbox.od'])
+    expect(stdout).toHaveBeenCalledExactlyOnceWith(`managed ${directory}\n`)
     expect(process.exitCode).toBe(0)
   })
 

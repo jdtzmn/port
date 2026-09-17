@@ -6,6 +6,7 @@ import {
   fchmodSync,
   fstatSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   openSync,
   readSync,
@@ -23,7 +24,8 @@ import {
   type SshConnectionIdentity,
 } from './connectionIdentity.ts'
 import { classifySshInvocation, isEligibleSshConfig } from './invocation.ts'
-import { isRemoteSessionDirectory } from './directory.ts'
+import { isManagedRemoteSessionDirectory, isRemoteSessionDirectory } from './directory.ts'
+import { parseManagedSshConfig } from './sshConfig.ts'
 import { parseRemoteSnapshot, type RemoteSnapshot } from './snapshot.ts'
 
 export interface RemoteHandshake {
@@ -257,6 +259,8 @@ function readSession(directory: string): {
   metadata: Stats
   original: Stats
   destination: string
+  lifecycle: 'legacy' | 'openssh-managed'
+  connectionId?: string
   connectionIdentity?: SshConnectionIdentity
 } {
   const original = ownedDirectory(directory)
@@ -283,11 +287,25 @@ function readSession(directory: string): {
     if (size > 8192 || !privateFile(after) || !sameInode(stat, after) || after.size !== size)
       throw new Error('Invalid metadata')
     const value = JSON.parse(buffer.subarray(0, size).toString('utf8'))
+    const managed =
+      value?.version === 3 &&
+      exactData(
+        value,
+        'connectionId,connectionIdentity,destination,lifecycle,version'.split(',')
+      ) &&
+      value.lifecycle === 'openssh-managed' &&
+      typeof value.connectionId === 'string' &&
+      isManagedRemoteSessionDirectory(directory) &&
+      directory === `/tmp/port-ssh-${value.connectionId}` &&
+      isSshConnectionIdentity(value.connectionIdentity)
+    const legacy =
+      value &&
+      (value.version === 1 || value.version === 2) &&
+      (value.version === 2
+        ? isSshConnectionIdentity(value.connectionIdentity)
+        : !Object.hasOwn(value, 'connectionIdentity'))
     if (
-      !value ||
-      (value.version !== 1 && value.version !== 2) ||
-      (value.version === 2 && !isSshConnectionIdentity(value.connectionIdentity)) ||
-      (value.version === 1 && Object.hasOwn(value, 'connectionIdentity')) ||
+      (!managed && !legacy) ||
       typeof value.destination !== 'string' ||
       !classifySshInvocation([value.destination])
     )
@@ -296,7 +314,9 @@ function readSession(directory: string): {
       metadata: after,
       original,
       destination: value.destination,
-      ...(value.version === 2 ? { connectionIdentity: value.connectionIdentity } : {}),
+      lifecycle: managed ? 'openssh-managed' : 'legacy',
+      ...(managed ? { connectionId: value.connectionId as string } : {}),
+      ...(value.version === 2 || managed ? { connectionIdentity: value.connectionIdentity } : {}),
     }
   } finally {
     closeSync(fd)
@@ -864,14 +884,47 @@ export async function openRemoteStream(
 
 export async function prepareRemoteSession(argv: string[]): Promise<string | null> {
   let directory: string | undefined
+  let created = false
   try {
     const invocation = classifySshInvocation(argv)
     if (!invocation) return null
     const config = await ssh(['-G', ...argv], 3000, 65536)
-    if (config === null || !isEligibleSshConfig(config)) return null
+    if (config === null) return null
     const connectionIdentity = parseSshConnectionIdentity(config)
     if (!connectionIdentity) return null
+    const managed = parseManagedSshConfig(config)
+    if (managed) {
+      directory = `/tmp/port-ssh-${managed.connectionId}`
+      try {
+        mkdirSync(directory, { mode: 0o700 })
+        created = true
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      }
+      const original = ownedDirectory(directory)
+      const metadata = {
+        version: 3,
+        lifecycle: 'openssh-managed',
+        connectionId: managed.connectionId,
+        destination: invocation.destination,
+        connectionIdentity,
+      } as const
+      if (created) publish(directory, original, 'metadata.json', metadata)
+      else {
+        const existing = readSession(directory)
+        if (
+          existing.lifecycle !== 'openssh-managed' ||
+          existing.connectionId !== managed.connectionId ||
+          existing.destination !== invocation.destination ||
+          JSON.stringify(existing.connectionIdentity) !== JSON.stringify(connectionIdentity)
+        )
+          throw new Error('Managed session identity mismatch')
+      }
+      return directory
+    }
+    if (!isEligibleSshConfig(config)) return null
     directory = mkdtempSync('/tmp/port-ssh-')
+    created = true
     const original = ownedDirectory(directory)
     publish(directory, original, 'metadata.json', {
       version: 2,
@@ -880,8 +933,8 @@ export async function prepareRemoteSession(argv: string[]): Promise<string | nul
     })
     return directory
   } catch {
-    // An incomplete prepare may leave only our exclusive temporary metadata file.
-    if (directory) {
+    // Only remove a directory created by this attempt; never adopt deterministic state.
+    if (directory && created) {
       try {
         const original = ownedDirectory(directory)
         removeKnownFiles(directory, original)
@@ -970,8 +1023,10 @@ function removeKnownFiles(directory: string, original: Stats): void {
 
 export async function cleanupRemoteSession(directory: string): Promise<void> {
   try {
-    const original = session(directory)
+    const state = readSession(directory)
+    const { original } = state
     const before = socket(directory, original)
+    if (state.lifecycle === 'openssh-managed' && before) return
     if (before) {
       const stopped = await ssh([...companion(directory), '-O', 'exit', 'dummy'], 1000, 8192)
       if (stopped === null) return // Retain the socket so a failed shutdown remains recoverable.

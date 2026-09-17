@@ -46,6 +46,49 @@ export function renderManagedSshConfig(patterns: readonly string[]): string {
   ].join('\n')
 }
 
+export interface ManagedSshConfigSelection {
+  connectionId: string
+}
+
+const managedConfigPolicy: Readonly<Record<string, readonly string[]>> = {
+  controlmaster: ['auto'],
+  controlpersist: ['3'],
+  permitlocalcommand: ['yes'],
+  localcommand: ['port __remote-register %C'],
+  remotecommand: ['none'],
+  sessiontype: ['default'],
+  stdinnull: ['no'],
+  forkafterauthentication: ['no'],
+  requesttty: ['auto', 'yes', 'force'],
+}
+
+// eslint-disable-next-line no-control-regex -- Allow only line and field delimiters.
+const SSH_CONFIG_CONTROL_CHARACTER = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/
+
+export function parseManagedSshConfig(output: string): ManagedSshConfigSelection | null {
+  if (!output || Buffer.byteLength(output) > 65536 || SSH_CONFIG_CONTROL_CHARACTER.test(output))
+    return null
+  const fields = new Map<string, string>()
+  for (const line of output.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n')) {
+    const match = /^([a-z][a-z0-9]*)[ \t]+(\S[^\r\n]*)$/i.exec(line)
+    if (!match) return null
+    const key = match[1]!.toLowerCase()
+    if (key !== 'controlpath' && !Object.hasOwn(managedConfigPolicy, key)) continue
+    if (fields.has(key)) return null
+    fields.set(key, match[2]!)
+  }
+  const controlPath = fields.get('controlpath')
+  const path = /^\/tmp\/port-ssh-([a-f0-9]{40,64})\/s$/.exec(controlPath ?? '')
+  if (!path) return null
+  for (const [key, allowed] of Object.entries(managedConfigPolicy)) {
+    const value = fields.get(key)
+    if (key === 'remotecommand' && !value) continue
+    if (!value || !allowed.includes(key === 'localcommand' ? value : value.toLowerCase()))
+      return null
+  }
+  return { connectionId: path[1]! }
+}
+
 const INCLUDE_START = '# >>> port remote services >>>'
 const INCLUDE_END = '# <<< port remote services <<<'
 const INCLUDE_LINE = 'Include ~/.ssh/port.conf'

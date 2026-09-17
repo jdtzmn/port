@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import {
   installManagedSshConfig,
   removeManagedSshConfig,
+  parseManagedSshConfig,
   normalizeRemoteSshHostPatterns,
   renderManagedSshConfig,
 } from './sshConfig.ts'
@@ -103,6 +104,16 @@ Host *
     expect(effective).toContain('controlpersist 3\n')
     expect(effective).toContain('permitlocalcommand yes\n')
     expect(effective).toContain('localcommand port __remote-register %C\n')
+    const managed = parseManagedSshConfig(effective)
+    expect(managed?.connectionId).toMatch(/^[a-f0-9]{40,64}$/)
+    expect(
+      parseManagedSshConfig(effective.replace('controlpersist 3', 'controlpersist yes'))
+    ).toBeNull()
+    expect(
+      parseManagedSshConfig(
+        effective.replace('localcommand port __remote-register %C', 'localcommand echo unsafe')
+      )
+    ).toBeNull()
   })
 
   test('is idempotent and replaces only the generated fragment patterns', async () => {

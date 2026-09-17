@@ -1,4 +1,7 @@
-import { isRemoteSessionDirectory } from '../lib/remote/session/directory.ts'
+import {
+  isManagedRemoteSessionDirectory,
+  isRemoteSessionDirectory,
+} from '../lib/remote/session/directory.ts'
 import { getRemoteInstanceId } from '../lib/remote/session/identity.ts'
 import { parseRemoteSnapshot } from '../lib/remote/session/snapshot.ts'
 import { collectRemoteSnapshot } from '../lib/remote/session/snapshotCollector.ts'
@@ -66,7 +69,7 @@ async function prepare(args: string[]): Promise<void> {
   if (args[0] !== '--' || args.length < 2) fail()
   const directory = await prepareRemoteSession(args.slice(1))
   if (!isRemoteSessionDirectory(directory)) throw new Error('Unavailable remote session')
-  writeLine(directory)
+  writeLine(`${isManagedRemoteSessionDirectory(directory) ? 'managed' : 'legacy'} ${directory}`)
 }
 
 async function observe(directory: string): Promise<void> {

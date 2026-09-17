@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
@@ -13,9 +14,13 @@ const pretendTty = `function [ () {
 describe('Bash SSH integration', () => {
   let root: string
   let directory: string
+  let managedDirectory: string
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'port-hook-test-'))
     directory = mkdtempSync('/tmp/port-ssh-')
+    const connectionId = createHash('sha256').update(root).digest('hex')
+    managedDirectory = `/tmp/port-ssh-${connectionId}`
+    mkdirSync(managedDirectory, { mode: 0o700 })
     for (const name of ['port', 'ssh']) {
       const file = join(root, name)
       writeFileSync(
@@ -30,7 +35,7 @@ if ('${name}' === 'ssh') {
 }
 if (args[0] === '__remote-prepare') {
   console.error('suppressed prepare diagnostic');
-  console.log(process.env.PREPARE_PATH);
+  console.log(process.env.PREPARE_OUTPUT || ('legacy ' + process.env.PREPARE_PATH));
   process.exit(Number(process.env.PREPARE_STATUS || 0));
 }
 if (args[0] === '__remote-observe' && process.env.OBSERVER_EXITS !== '1') setInterval(() => {}, 1000);
@@ -43,6 +48,7 @@ if (args[0] === '__remote-cleanup') { console.log('suppressed cleanup'); process
   afterEach(() => {
     rmSync(root, { recursive: true, force: true })
     rmSync(directory, { recursive: true, force: true })
+    rmSync(managedDirectory, { recursive: true, force: true })
   })
 
   function run(body: string, env: Record<string, string> = {}, before = pretendTty) {
@@ -112,6 +118,20 @@ printf '%s' "$__port_ssh_dir"`)
     expect(result.status).toBe(0)
     expect(result.stdout).toBe('parentend')
     expect(result.stderr).toBe('')
+  })
+
+  test('leaves managed master lifecycle to OpenSSH and LocalCommand', () => {
+    const result = run('ssh host command', {
+      PREPARE_OUTPUT: `managed ${managedDirectory}`,
+    })
+    expect(result.status).toBe(0)
+    expect(result.calls.map(call => call.name)).toEqual(['port', 'ssh'])
+    expect(result.calls[1]?.args).toEqual(['host', 'command'])
+    expect(
+      result.calls.some(
+        call => call.args[0] === '__remote-observe' || call.args[0] === '__remote-cleanup'
+      )
+    ).toBe(false)
   })
 
   test('does not signal a completed observer absent from the live job table', () => {
