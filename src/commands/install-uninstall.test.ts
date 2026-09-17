@@ -37,6 +37,13 @@ const mocks = vi.hoisted(() => ({
   detectShell: vi.fn(),
   installShellHook: vi.fn(),
   removeShellHook: vi.fn(),
+
+  // managed SSH services
+  enableRemoteRuntime: vi.fn(),
+  disableRemoteRuntime: vi.fn(),
+  normalizeRemoteSshHostPatterns: vi.fn(),
+  installManagedSshConfig: vi.fn(),
+  removeManagedSshConfig: vi.fn(),
 }))
 
 vi.mock('inquirer', () => ({ default: { prompt: mocks.prompt } }))
@@ -56,6 +63,15 @@ vi.mock('../lib/shellProfile.ts', () => ({
   detectShell: mocks.detectShell,
   installShellHook: mocks.installShellHook,
   removeShellHook: mocks.removeShellHook,
+}))
+vi.mock('../lib/remote/coordinator/supervisor.ts', () => ({
+  enableRemoteRuntime: mocks.enableRemoteRuntime,
+  disableRemoteRuntime: mocks.disableRemoteRuntime,
+}))
+vi.mock('../lib/remote/session/sshConfig.ts', () => ({
+  normalizeRemoteSshHostPatterns: mocks.normalizeRemoteSshHostPatterns,
+  installManagedSshConfig: mocks.installManagedSshConfig,
+  removeManagedSshConfig: mocks.removeManagedSshConfig,
 }))
 
 vi.mock('../lib/worktree.ts', () => ({ detectWorktree: mocks.detectWorktree }))
@@ -136,6 +152,13 @@ describe('install + uninstall round-trip', () => {
     mocks.execAsync.mockResolvedValue({ stdout: '' })
     mocks.execPrivileged.mockResolvedValue({ stdout: '' })
     mocks.detectShell.mockReturnValue(null)
+    mocks.enableRemoteRuntime.mockResolvedValue(undefined)
+    mocks.disableRemoteRuntime.mockResolvedValue(true)
+    mocks.normalizeRemoteSshHostPatterns.mockImplementation((patterns: string[]) =>
+      [...new Set(patterns)].sort()
+    )
+    mocks.installManagedSshConfig.mockResolvedValue(undefined)
+    mocks.removeManagedSshConfig.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -237,6 +260,43 @@ describe('install + uninstall round-trip', () => {
       await run(() => uninstall({ yes: true, domain: 'test' }))
 
       expect(vfs).toEqual(snapshot)
+    })
+  })
+
+  describe('managed remote SSH services', () => {
+    beforeEach(() => {
+      mocks.checkDns.mockResolvedValue(true)
+      mocks.detectShell.mockReturnValue('bash')
+      vfs = new Map()
+      mapFileOps = new MapFileOps(vfs)
+    })
+
+    test('installs normalized explicit host patterns after enabling the runtime', async () => {
+      await install({
+        yes: true,
+        remoteServices: true,
+        remoteHosts: ['box.od', '*.od', 'box.od'],
+        shellHook: false,
+      })
+
+      expect(mocks.checkDns.mock.calls.map(([domain]) => domain)).toEqual([
+        'port',
+        'port',
+        'ssh',
+        'ssh',
+      ])
+      expect(mocks.enableRemoteRuntime).toHaveBeenCalledOnce()
+      expect(mocks.installManagedSshConfig).toHaveBeenCalledExactlyOnceWith(['*.od', 'box.od'])
+      expect(mocks.installShellHook).not.toHaveBeenCalled()
+    })
+
+    test('removes managed configuration and runtime opt-in without changing DNS', async () => {
+      await uninstall({ yes: true, remoteServices: true, shellHook: false })
+
+      expect(mocks.removeManagedSshConfig).toHaveBeenCalledOnce()
+      expect(mocks.disableRemoteRuntime).toHaveBeenCalledOnce()
+      expect(mocks.checkDns).not.toHaveBeenCalled()
+      expect(mocks.removeShellHook).not.toHaveBeenCalled()
     })
   })
 })

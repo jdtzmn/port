@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { constants } from 'node:fs'
-import { lstat, mkdir, open } from 'node:fs/promises'
+import { lstat, mkdir, open, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { GLOBAL_PORT_DIR } from '../../registry.ts'
@@ -62,6 +62,18 @@ export async function enableRemoteRuntime(): Promise<void> {
     await file.sync()
   } finally {
     await file.close()
+  }
+}
+
+export async function disableRemoteRuntime(): Promise<boolean> {
+  if (!(await remoteRuntimeEnabled())) return false
+  const { root } = await getRemoteRuntimePaths()
+  try {
+    await unlink(join(root, 'enabled.json'))
+    return true
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw error
   }
 }
 
