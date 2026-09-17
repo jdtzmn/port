@@ -23,6 +23,7 @@ import {
   type SshConnectionIdentity,
 } from './connectionIdentity.ts'
 import { classifySshInvocation, isEligibleSshConfig } from './invocation.ts'
+import { isRemoteSessionDirectory } from './directory.ts'
 import { parseRemoteSnapshot, type RemoteSnapshot } from './snapshot.ts'
 
 export interface RemoteHandshake {
@@ -52,12 +53,8 @@ function ssh(
   })
 }
 
-function validSessionDirectory(directory: unknown): directory is string {
-  return typeof directory === 'string' && /^\/tmp\/port-ssh-[A-Za-z0-9]{6}$/.test(directory)
-}
-
 function ownedDirectory(directory: string): Stats {
-  if (!validSessionDirectory(directory) || !process.getuid) {
+  if (!isRemoteSessionDirectory(directory) || !process.getuid) {
     throw new Error('Invalid session path')
   }
   const stat = lstatSync(directory)
@@ -232,6 +229,7 @@ async function observeSnapshots(
       } catch {
         /* Transport and validation failures retain the last known ownership. */
       }
+      if (signal?.aborted) break
       if (!sameSocket(directory, original, pinned)) break
       if (candidate && last && candidate.instanceId !== last.instanceId) break
       if (candidate) last = candidate
@@ -321,6 +319,16 @@ export function readRemoteSessionIdentity(
   }
 }
 
+/** Admission check for a live, owned private session before coordinator acknowledgement. */
+export function isRemoteSessionObservable(directory: string): boolean {
+  try {
+    const original = session(directory)
+    return socket(directory, original) !== null
+  } catch {
+    return false
+  }
+}
+
 export interface RemoteSessionObservation {
   destination: string
   connectionIdentity: SshConnectionIdentity
@@ -390,10 +398,23 @@ function readObservationFile(path: string, limit: number): { stat: Stats; value:
   }
 }
 
-function validHandshake(value: unknown): boolean {
+function validHandshake(value: unknown): value is RemoteHandshake {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const item = value as Record<string, unknown>
   return item.kind === 'port-handshake' && item.version === 1 && Object.keys(item).length === 2
+}
+
+function ensureHandshake(directory: string, original: Stats): void {
+  const path = `${directory}/handshake.json`
+  unchanged(directory, original)
+  try {
+    const { value } = readObservationFile(path, 8192)
+    unchanged(directory, original)
+    if (!validHandshake(value)) throw new Error('Invalid handshake')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    publish(directory, original, 'handshake.json', remoteHandshake())
+  }
 }
 
 function observationEnvelope(
@@ -470,7 +491,7 @@ export function restoreRemoteSessionObservation(value: unknown): RemoteSessionOb
       throw new Error()
     if (
       value.version !== 1 ||
-      !validSessionDirectory(value.directory) ||
+      !isRemoteSessionDirectory(value.directory) ||
       typeof value.sessionId !== 'string' ||
       !/^[a-f0-9]{64}$/.test(value.sessionId) ||
       typeof value.disconnected !== 'boolean' ||
@@ -890,28 +911,24 @@ export async function observeRemoteSession(
         const ready = await ssh(
           [...companion(directory), '-O', 'check', 'dummy'],
           Math.max(1, Math.min(1000, deadline - Date.now())),
-          8192
+          8192,
+          signal
         )
+        if (signal?.aborted) return
         if (ready !== null) {
           if (!sameSocket(directory, original, pinned)) return
           const output = await ssh(
             [...companion(directory), 'dummy', 'port __remote-handshake'],
             5000,
-            8192
+            8192,
+            signal
           )
+          if (signal?.aborted) return
           if (output === null) return
           const value = JSON.parse(output)
-          if (
-            value === null ||
-            typeof value !== 'object' ||
-            Array.isArray(value) ||
-            value.kind !== 'port-handshake' ||
-            value.version !== 1 ||
-            Object.keys(value).length !== 2
-          )
-            return
+          if (!validHandshake(value)) return
           if (!sameSocket(directory, original, pinned)) return
-          publish(directory, original, 'handshake.json', remoteHandshake())
+          ensureHandshake(directory, original)
           await observeSnapshots(directory, original, pinned, signal, onSnapshot)
           return
         }

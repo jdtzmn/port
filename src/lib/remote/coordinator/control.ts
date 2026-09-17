@@ -3,12 +3,12 @@ import { constants, type Stats } from 'node:fs'
 import { chmod, link, lstat, mkdir, open, realpath, unlink } from 'node:fs/promises'
 import { createConnection, createServer, type Socket } from 'node:net'
 import { isAbsolute, join, normalize } from 'node:path'
+import { isRemoteSessionDirectory } from '../session/directory.ts'
 import { withRemoteMutex } from './mutex.ts'
 
 const LIMIT = 8192
 const DEADLINE = 2000
 const HEX = /^[0-9a-f]{32}$(?![\s\S])/
-const DIRECTORY = /^\/tmp\/port-ssh-[A-Za-z0-9]+$(?![\s\S])/
 const unavailable = (): never => {
   throw new Error('Remote coordinator control unavailable')
 }
@@ -18,7 +18,12 @@ const owned = (s: Stats, mode: number) => s.uid === process.getuid?.() && (s.mod
 
 export type RemoteCoordinatorRequest =
   | { version: 1; action: 'ping' }
-  | { version: 1; action: 'register'; incarnation: string; directory: string }
+  | {
+      version: 1
+      action: 'observe' | 'unobserve'
+      incarnation: string
+      directory: string
+    }
   | { version: 1; action: 'wake' | 'shutdown'; incarnation: string }
 export interface RemoteCoordinatorResponse {
   version: 1
@@ -29,10 +34,12 @@ export interface RemoteCoordinatorResponse {
  * Callbacks must be short, nonblocking and cancellation-cooperative. The signal is
  * aborted on disconnect, deadline or close. Queue long route work elsewhere;
  * a promise timeout cannot undo side effects or interrupt synchronous JavaScript.
- * Registration pin/cache validation belongs in register, not this transport.
+ * Observation validation belongs in handlers, not this transport.
+ * A handler that admits long-lived work must detach its lifetime from this request signal.
  */
 export interface RemoteCoordinatorHandlers {
-  register(directory: string, signal: AbortSignal): void | Promise<void>
+  observe(directory: string, signal: AbortSignal): void | Promise<void>
+  unobserve(directory: string, signal: AbortSignal): void | Promise<void>
   wake(signal: AbortSignal): void | Promise<void>
   shutdown(signal: AbortSignal): void | Promise<void>
 }
@@ -186,10 +193,9 @@ function parseRequest(bytes: Buffer): RemoteCoordinatorRequest | null {
     const keys = Object.keys(value).sort().join(',')
     if (value.action === 'ping') return keys === 'action,version' ? value : null
     if (typeof value.incarnation !== 'string' || !HEX.test(value.incarnation)) return null
-    if (value.action === 'register')
+    if (value.action === 'observe' || value.action === 'unobserve')
       return keys === 'action,directory,incarnation,version' &&
-        typeof value.directory === 'string' &&
-        DIRECTORY.test(value.directory)
+        isRemoteSessionDirectory(value.directory)
         ? value
         : null
     if (value.action === 'wake' || value.action === 'shutdown')
@@ -266,8 +272,8 @@ function serveClient(
     }
     void (async () => {
       try {
-        if (request.action === 'register')
-          await handlers.register(request.directory, controller.signal)
+        if (request.action === 'observe' || request.action === 'unobserve')
+          await handlers[request.action](request.directory, controller.signal)
         else await handlers[request.action](controller.signal)
         respond('ok')
       } catch {

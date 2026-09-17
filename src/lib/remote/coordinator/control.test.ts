@@ -27,7 +27,12 @@ let root: string
 let handles: RemoteCoordinatorControl[]
 let servers: Server[]
 let sockets: Socket[]
-const handlers = () => ({ register: vi.fn(), wake: vi.fn(), shutdown: vi.fn() })
+const handlers = () => ({
+  observe: vi.fn(),
+  unobserve: vi.fn(),
+  wake: vi.fn(),
+  shutdown: vi.fn(),
+})
 const ping = { version: 1, action: 'ping' } as const
 async function start(callbacks = handlers()) {
   const handle = await startRemoteCoordinatorControl(root, callbacks)
@@ -98,26 +103,27 @@ async function bunSmoke(
   let passed = false
   try {
     owner = await start(directory, {
-      register(value) {
+      observe(value) {
         registrations++
         validDirectory = value === '/tmp/port-ssh-Smoke1'
       },
+      unobserve() {},
       wake() {},
       shutdown() {},
     })
     if (!owner) throw new Error('smoke')
     const pingResult = await request(directory, { version: 1, action: 'ping' })
-    const registerResult = await request(directory, {
+    const observationResult = await request(directory, {
       version: 1,
-      action: 'register',
+      action: 'observe',
       incarnation: owner.incarnation,
       directory: '/tmp/port-ssh-Smoke1',
     })
     passed =
       pingResult?.status === 'ok' &&
       pingResult.incarnation === owner.incarnation &&
-      registerResult?.status === 'ok' &&
-      registerResult.incarnation === owner.incarnation &&
+      observationResult?.status === 'ok' &&
+      observationResult.incarnation === owner.incarnation &&
       registrations === 1 &&
       validDirectory
   } catch {
@@ -150,7 +156,7 @@ afterEach(async () => {
 })
 
 describe('private coordinator control', () => {
-  it('runs real ping/register RPC in Bun with fixed smoke output', async () => {
+  it('runs real ping/observe RPC in Bun with fixed smoke output', async () => {
     const moduleUrl = new URL('./control.ts', import.meta.url).href
     const script = [
       `import { startRemoteCoordinatorControl as start, requestRemoteCoordinator as request } from ${JSON.stringify(moduleUrl)};`,
@@ -236,17 +242,22 @@ describe('private coordinator control', () => {
       ).toBe('ok')
       expect(callbacks[action]).toHaveBeenCalledTimes(1)
     }
-    expect(
-      (
-        await requestRemoteCoordinator(root, {
-          version: 1,
-          incarnation,
-          action: 'register',
-          directory: '/tmp/port-ssh-Ab12',
-        })
-      )?.status
-    ).toBe('ok')
-    expect(callbacks.register).toHaveBeenCalledWith('/tmp/port-ssh-Ab12', expect.any(AbortSignal))
+    for (const action of ['observe', 'unobserve'] as const) {
+      expect(
+        (
+          await requestRemoteCoordinator(root, {
+            version: 1,
+            incarnation,
+            action,
+            directory: '/tmp/port-ssh-Ab1234',
+          })
+        )?.status
+      ).toBe('ok')
+      expect(callbacks[action]).toHaveBeenCalledWith(
+        '/tmp/port-ssh-Ab1234',
+        expect.any(AbortSignal)
+      )
+    }
     expect(
       (
         await requestRemoteCoordinator(root, {
@@ -274,21 +285,32 @@ describe('private coordinator control', () => {
       'x'.repeat(8193),
       JSON.stringify({ version: 2, incarnation, action: 'wake' }) + '\n',
       JSON.stringify({ version: 1, incarnation, action: 'exec' }) + '\n',
+      JSON.stringify({
+        version: 1,
+        incarnation,
+        action: 'register',
+        directory: '/tmp/port-ssh-Ab1234',
+      }) + '\n',
     ]
     for (const directory of [
       '/tmp/port-ssh-a/../b',
       '/tmp/port-ssh-a/',
       '/tmp/port-ssh-a-b',
+      '/tmp/port-ssh-a',
+      '/tmp/port-ssh-Ab12345',
+      '/tmp/port-ssh-Ab_12',
       '/tmp/port-ssh-',
       '/private/tmp/port-ssh-a',
       '/tmp/port-ssh-a\n',
     ]) {
-      frames.push(JSON.stringify({ version: 1, incarnation, action: 'register', directory }) + '\n')
+      for (const action of ['observe', 'unobserve'])
+        frames.push(JSON.stringify({ version: 1, incarnation, action, directory }) + '\n')
     }
     for (const frame of frames)
       expect(await raw(frame, !frame.includes('\n') && frame.length < 8192)).toBe('')
     expect(callbacks.wake).not.toHaveBeenCalled()
-    expect(callbacks.register).not.toHaveBeenCalled()
+    expect(callbacks.observe).not.toHaveBeenCalled()
+    expect(callbacks.unobserve).not.toHaveBeenCalled()
     const desc = await descriptor()
     const socket = createConnection(join(root, desc.socket))
     sockets.push(socket)
@@ -435,7 +457,7 @@ describe('private coordinator control', () => {
     const entry = new Promise<void>(resolve => {
       entered = resolve
     })
-    callbacks.register.mockImplementation((_directory: string, value: AbortSignal) => {
+    callbacks.observe.mockImplementation((_directory: string, value: AbortSignal) => {
       signal = value
       entered()
       return new Promise(() => {})
@@ -443,8 +465,8 @@ describe('private coordinator control', () => {
     const pending = requestRemoteCoordinator(root, {
       version: 1,
       incarnation: handle.incarnation,
-      action: 'register',
-      directory: '/tmp/port-ssh-A',
+      action: 'observe',
+      directory: '/tmp/port-ssh-Ab1234',
     })
     await entry
     await handle.close()

@@ -6,11 +6,18 @@ const mocks = vi.hoisted(() => ({
   prepareRemoteSession: vi.fn(),
   observeRemoteSession: vi.fn(),
   cleanupRemoteSession: vi.fn(),
+  maintainRemoteRuntimeObservation: vi.fn(),
+  stopRemoteRuntimeObservation: vi.fn(),
+  runRemoteRuntime: vi.fn(),
+  runRemoteObservationRuntime: vi.fn(),
+  runRemoteSupervisor: vi.fn(),
   remoteHandshake: vi.fn(() => ({ kind: 'port-handshake', version: 1 })),
 }))
 vi.mock('../lib/remote/session/session.ts', () => mocks)
 vi.mock('../lib/remote/session/identity.ts', () => mocks)
 vi.mock('../lib/remote/session/snapshotCollector.ts', () => mocks)
+vi.mock('../lib/remote/coordinator/supervisor.ts', () => mocks)
+vi.mock('../lib/remote/coordinator/runtime.ts', () => mocks)
 import { dispatchRemoteInternalCommand, isRemoteInternalCommand } from './remote-internal.ts'
 
 describe('private remote dispatch', () => {
@@ -24,6 +31,7 @@ describe('private remote dispatch', () => {
     stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
     stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
     mocks.prepareRemoteSession.mockResolvedValue('/tmp/port-ssh-abc123')
+    mocks.stopRemoteRuntimeObservation.mockResolvedValue(true)
     mocks.getRemoteInstanceId.mockResolvedValue('550e8400-e29b-41d4-a716-446655440000')
     mocks.collectRemoteSnapshot.mockImplementation(async (instanceId, revision) => ({
       version: 1,
@@ -59,6 +67,24 @@ describe('private remote dispatch', () => {
     ]) {
       expect(isRemoteInternalCommand(token)).toBe(false)
     }
+  })
+
+  test('runtime dispatch selects full and observation-only modes explicitly', async () => {
+    await dispatchRemoteInternalCommand('__remote-runtime', [])
+    expect(mocks.runRemoteRuntime).toHaveBeenCalledOnce()
+    expect(mocks.runRemoteObservationRuntime).not.toHaveBeenCalled()
+
+    vi.clearAllMocks()
+    await dispatchRemoteInternalCommand('__remote-runtime', ['--observe-only'])
+    expect(mocks.runRemoteObservationRuntime).toHaveBeenCalledOnce()
+    expect(mocks.runRemoteRuntime).not.toHaveBeenCalled()
+  })
+
+  test('runtime dispatch rejects every other mode', async () => {
+    await dispatchRemoteInternalCommand('__remote-runtime', ['--other'])
+    expect(process.exitCode).toBe(1)
+    expect(mocks.runRemoteRuntime).not.toHaveBeenCalled()
+    expect(mocks.runRemoteObservationRuntime).not.toHaveBeenCalled()
   })
 
   test('prepare consumes exactly the separator and preserves argv', async () => {
@@ -144,14 +170,35 @@ describe('private remote dispatch', () => {
     }
   )
 
-  test.each(['__remote-observe', '__remote-cleanup'])('%s has no output', async token => {
-    await dispatchRemoteInternalCommand(token, ['/tmp/port-ssh-abc123'])
-    const handler =
-      token === '__remote-observe' ? mocks.observeRemoteSession : mocks.cleanupRemoteSession
-    expect(handler).toHaveBeenCalledWith(
+  test('observe delegates only admission maintenance and has no output', async () => {
+    await dispatchRemoteInternalCommand('__remote-observe', ['/tmp/port-ssh-abc123'])
+    expect(mocks.maintainRemoteRuntimeObservation).toHaveBeenCalledWith(
       '/tmp/port-ssh-abc123',
-      ...(token === '__remote-observe' ? [undefined, expect.any(Function)] : [])
+      expect.any(AbortSignal)
     )
+    expect(mocks.observeRemoteSession).not.toHaveBeenCalled()
+    expect(stdout).not.toHaveBeenCalled()
+    expect(stderr).not.toHaveBeenCalled()
+  })
+
+  test('cleanup stops coordinator observation before touching the private master', async () => {
+    await dispatchRemoteInternalCommand('__remote-cleanup', ['/tmp/port-ssh-abc123'])
+    expect(mocks.stopRemoteRuntimeObservation).toHaveBeenCalledExactlyOnceWith(
+      '/tmp/port-ssh-abc123'
+    )
+    expect(mocks.cleanupRemoteSession).toHaveBeenCalledExactlyOnceWith('/tmp/port-ssh-abc123')
+    expect(mocks.stopRemoteRuntimeObservation.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.cleanupRemoteSession.mock.invocationCallOrder[0]!
+    )
+    expect(stdout).not.toHaveBeenCalled()
+    expect(stderr).not.toHaveBeenCalled()
+  })
+
+  test('cleanup retains the master when observation cancellation is ambiguous', async () => {
+    mocks.stopRemoteRuntimeObservation.mockResolvedValueOnce(false)
+    await dispatchRemoteInternalCommand('__remote-cleanup', ['/tmp/port-ssh-abc123'])
+    expect(process.exitCode).toBe(1)
+    expect(mocks.cleanupRemoteSession).not.toHaveBeenCalled()
     expect(stdout).not.toHaveBeenCalled()
     expect(stderr).not.toHaveBeenCalled()
   })
@@ -173,6 +220,8 @@ describe('private remote dispatch', () => {
     expect(stderr).not.toHaveBeenCalled()
     expect(mocks.prepareRemoteSession).not.toHaveBeenCalled()
     expect(mocks.observeRemoteSession).not.toHaveBeenCalled()
+    expect(mocks.maintainRemoteRuntimeObservation).not.toHaveBeenCalled()
+    expect(mocks.stopRemoteRuntimeObservation).not.toHaveBeenCalled()
     expect(mocks.cleanupRemoteSession).not.toHaveBeenCalled()
   })
 

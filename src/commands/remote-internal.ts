@@ -1,9 +1,9 @@
+import { isRemoteSessionDirectory } from '../lib/remote/session/directory.ts'
 import { getRemoteInstanceId } from '../lib/remote/session/identity.ts'
 import { parseRemoteSnapshot } from '../lib/remote/session/snapshot.ts'
 import { collectRemoteSnapshot } from '../lib/remote/session/snapshotCollector.ts'
 import {
   cleanupRemoteSession,
-  observeRemoteSession,
   prepareRemoteSession,
   remoteHandshake,
 } from '../lib/remote/session/session.ts'
@@ -21,7 +21,6 @@ const commands = [
 type RemoteInternalCommand = (typeof commands)[number]
 
 const commandSet = new Set<string>(commands)
-const sessionDirectory = /^\/tmp\/port-ssh-[A-Za-z0-9]{6}$/
 const revision = /^(0|[1-9][0-9]{0,15})$/
 
 const fail = (): never => {
@@ -37,7 +36,7 @@ function requireNoArguments(args: string[]): void {
 }
 
 function requireSessionDirectory(args: string[]): string {
-  if (args.length !== 1 || !sessionDirectory.test(args[0]!)) fail()
+  if (args.length !== 1 || !isRemoteSessionDirectory(args[0])) fail()
   return args[0]!
 }
 
@@ -45,10 +44,15 @@ function writeLine(value: string): void {
   process.stdout.write(value + '\n')
 }
 
-async function runRuntime(kind: '__remote-runtime' | '__remote-supervise'): Promise<void> {
-  if (kind === '__remote-runtime')
-    await (await import('../lib/remote/coordinator/runtime.ts')).runRemoteRuntime()
-  else await (await import('../lib/remote/coordinator/supervisor.ts')).runRemoteSupervisor()
+async function runRuntime(
+  kind: '__remote-runtime' | '__remote-supervise',
+  observeOnly = false
+): Promise<void> {
+  if (kind === '__remote-runtime') {
+    const runtime = await import('../lib/remote/coordinator/runtime.ts')
+    if (observeOnly) await runtime.runRemoteObservationRuntime()
+    else await runtime.runRemoteRuntime()
+  } else await (await import('../lib/remote/coordinator/supervisor.ts')).runRemoteSupervisor()
 }
 
 async function snapshot(args: string[]): Promise<void> {
@@ -61,16 +65,31 @@ async function snapshot(args: string[]): Promise<void> {
 async function prepare(args: string[]): Promise<void> {
   if (args[0] !== '--' || args.length < 2) fail()
   const directory = await prepareRemoteSession(args.slice(1))
-  if (!directory || !sessionDirectory.test(directory)) throw new Error('Unavailable remote session')
+  if (!isRemoteSessionDirectory(directory)) throw new Error('Unavailable remote session')
   writeLine(directory)
 }
 
 async function observe(directory: string): Promise<void> {
-  await observeRemoteSession(directory, undefined, async () => {
+  const controller = new AbortController()
+  const stop = () => controller.abort()
+  process.once('SIGTERM', stop)
+  process.once('SIGINT', stop)
+  try {
     await (
       await import('../lib/remote/coordinator/supervisor.ts')
-    ).registerRemoteRuntimeSession(directory)
-  })
+    ).maintainRemoteRuntimeObservation(directory, controller.signal)
+  } finally {
+    process.removeListener('SIGTERM', stop)
+    process.removeListener('SIGINT', stop)
+  }
+}
+
+async function cleanup(directory: string): Promise<void> {
+  const stopped = await (
+    await import('../lib/remote/coordinator/supervisor.ts')
+  ).stopRemoteRuntimeObservation(directory)
+  if (!stopped) throw new Error('Remote observation is still active')
+  await cleanupRemoteSession(directory)
 }
 
 /** Identifies commands that bypass Commander and speak the private SSH protocol. */
@@ -88,6 +107,10 @@ export async function dispatchRemoteInternalCommand(token: string, args: string[
 
     switch (token) {
       case '__remote-runtime':
+        if (args.length === 0) await runRuntime(token)
+        else if (args.length === 1 && args[0] === '--observe-only') await runRuntime(token, true)
+        else fail()
+        return
       case '__remote-supervise':
         requireNoArguments(args)
         await runRuntime(token)
@@ -106,7 +129,7 @@ export async function dispatchRemoteInternalCommand(token: string, args: string[
         await observe(requireSessionDirectory(args))
         return
       case '__remote-cleanup':
-        await cleanupRemoteSession(requireSessionDirectory(args))
+        await cleanup(requireSessionDirectory(args))
         return
     }
   } catch {

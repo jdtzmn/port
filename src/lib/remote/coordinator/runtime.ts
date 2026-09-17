@@ -2,11 +2,14 @@ import { connect } from 'node:net'
 import { ensureTraefikDynamicDir } from '../../traefik.ts'
 import { getRemoteRuntimePaths } from './paths.ts'
 import { startRemoteCoordinatorControl, requestRemoteCoordinator } from './control.ts'
+import { createRemoteObservationTasks } from './observationTasks.ts'
 import { createRemoteOwnerRegistry } from './ownerRegistry.ts'
 import { allocateRemoteOwners } from './ownerStore.ts'
 import { createRemoteCoordinatorState, restoreRemoteCoordinatorState } from './state.ts'
 import {
   pinRemoteSessionObservation,
+  isRemoteSessionObservable,
+  observeRemoteSession,
   restoreRemoteSessionObservation,
   openRemoteStream,
   type RemoteSessionObservationHandle,
@@ -38,18 +41,39 @@ export async function startRemoteRuntime(options: {
   dynamicDirectory: string
   collectLocal?: (revision: number) => Promise<RemoteSnapshot>
   prepareProxy?: (ports: number[]) => Promise<RemoteRouteProxy>
+  observeSession?: typeof observeRemoteSession
+  validateSession?: typeof isRemoteSessionObservable
 }) {
   const { root, controlRoot, dynamicDirectory } = options
   let stopped = false
   let wake: (() => void) | undefined
   let failure: unknown
-  const control = await startRemoteCoordinatorControl(controlRoot, {
-    async register(directory, signal) {
-      signal.throwIfAborted()
-      const handle = pinRemoteSessionObservation(directory)
-      if (!handle) throw new Error('Session unavailable')
-      await registerRemotePin(root, handle.checkpoint())
+  const observations = createRemoteObservationTasks({
+    async run(directory, signal) {
+      await (options.observeSession ?? observeRemoteSession)(directory, signal, async () => {
+        signal.throwIfAborted()
+        const handle = pinRemoteSessionObservation(directory)
+        if (!handle) return
+        await registerRemotePin(root, handle.checkpoint())
+        signal.throwIfAborted()
+        wake?.()
+      })
+    },
+    onSettled() {
       wake?.()
+    },
+  })
+  const control = await startRemoteCoordinatorControl(controlRoot, {
+    observe(directory, signal) {
+      signal.throwIfAborted()
+      if (!(options.validateSession ?? isRemoteSessionObservable)(directory))
+        throw new Error('Session unavailable')
+      observations.observe(directory)
+    },
+    async unobserve(directory, signal) {
+      signal.throwIfAborted()
+      await observations.unobserve(directory)
+      signal.throwIfAborted()
     },
     async wake() {
       wake?.()
@@ -59,7 +83,10 @@ export async function startRemoteRuntime(options: {
       wake?.()
     },
   })
-  if (!control) return null
+  if (!control) {
+    await observations.close()
+    return null
+  }
   let owners = createRemoteOwnerRegistry().serialize()
   let registry = createRemoteOwnerRegistry(owners)
   const registryView = {
@@ -243,9 +270,14 @@ export async function startRemoteRuntime(options: {
       } finally {
         stopped = true
         try {
-          await reconciler?.close()
+          // Closing admissions first prevents new tasks while the endpoint remains a settlement barrier.
+          await observations.close()
         } finally {
-          await control.close()
+          try {
+            await control.close()
+          } finally {
+            await reconciler?.close()
+          }
         }
       }
       if (failure) throw failure
@@ -261,11 +293,98 @@ export async function startRemoteRuntime(options: {
     }
   } catch (error) {
     try {
-      await reconciler?.close()
+      await observations.close()
     } finally {
-      await control.close()
+      try {
+        await control.close()
+      } finally {
+        await reconciler?.close()
+      }
     }
     throw error
+  }
+}
+
+export async function startRemoteObservationRuntime(options: {
+  controlRoot: string
+  observeSession?: typeof observeRemoteSession
+  validateSession?: typeof isRemoteSessionObservable
+}) {
+  let stopped = false
+  let wake: (() => void) | undefined
+  const observations = createRemoteObservationTasks({
+    async run(directory, signal) {
+      await (options.observeSession ?? observeRemoteSession)(directory, signal)
+    },
+  })
+  const control = await startRemoteCoordinatorControl(options.controlRoot, {
+    observe(directory, signal) {
+      signal.throwIfAborted()
+      if (!(options.validateSession ?? isRemoteSessionObservable)(directory))
+        throw new Error('Session unavailable')
+      observations.observe(directory)
+    },
+    async unobserve(directory, signal) {
+      signal.throwIfAborted()
+      await observations.unobserve(directory)
+      signal.throwIfAborted()
+    },
+    wake() {},
+    shutdown() {
+      stopped = true
+      wake?.()
+    },
+  })
+  if (!control) {
+    await observations.close()
+    return null
+  }
+  const done = (async () => {
+    try {
+      while (!stopped)
+        await new Promise<void>(resolve => {
+          wake = resolve
+        })
+    } finally {
+      try {
+        await observations.close()
+      } finally {
+        await control.close()
+      }
+    }
+  })()
+  return {
+    incarnation: control.incarnation,
+    done,
+    async close() {
+      stopped = true
+      wake?.()
+      await done
+    },
+  }
+}
+
+export async function runRemoteObservationRuntime(): Promise<void> {
+  const { controlRoot } = await getRemoteRuntimePaths()
+  const runtime = await startRemoteObservationRuntime({ controlRoot })
+  if (!runtime) {
+    process.exitCode = 75
+    return
+  }
+  const stop = () => {
+    void runtime.close().catch(() => {})
+  }
+  process.once('SIGTERM', stop)
+  process.once('SIGINT', stop)
+  process.stdin.once('end', stop)
+  process.stdin.resume()
+  try {
+    await runtime.done
+  } finally {
+    process.removeListener('SIGTERM', stop)
+    process.removeListener('SIGINT', stop)
+    process.stdin.removeListener('end', stop)
+    process.stdin.pause()
   }
 }
 
@@ -273,7 +392,10 @@ export async function runRemoteRuntime() {
   const paths = await getRemoteRuntimePaths()
   await ensureTraefikDynamicDir()
   const runtime = await startRemoteRuntime(paths)
-  if (!runtime) return
+  if (!runtime) {
+    process.exitCode = 75
+    return
+  }
   const stop = () => {
     void runtime.close().catch(() => {})
   }

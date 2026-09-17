@@ -66,37 +66,142 @@ export async function enableRemoteRuntime(): Promise<void> {
 }
 
 let launchedAt = -Infinity
-let registeredIncarnation: string | undefined
+const LAUNCH_INTERVAL = 10_000
+const WATCH_INTERVAL = 2_000
+const RETRY_INTERVAL = 250
+const STOP_DEADLINE = 10_000
 
-/** Called by the existing SSH observer, never by the foreground login process. */
-export async function registerRemoteRuntimeSession(directory: string): Promise<void> {
+function launchRemoteSupervisor(): void {
+  if (performance.now() - launchedAt < LAUNCH_INTERVAL) return
+  launchedAt = performance.now()
+  const child = spawn(process.execPath, [process.argv[1]!, '__remote-supervise'], {
+    detached: true,
+    stdio: 'ignore',
+  })
+  child.on('error', () => {})
+  child.unref()
+}
+
+/** Explicit shell-hook mode owns a runtime only while this admission watchdog is alive. */
+let ephemeralRuntime: ChildProcess | undefined
+
+function launchEphemeralRemoteRuntime(): void {
+  if (ephemeralRuntime) return
+  const child = spawn(process.execPath, [process.argv[1]!, '__remote-runtime', '--observe-only'], {
+    stdio: ['pipe', 'ignore', 'ignore'],
+  })
+  ephemeralRuntime = child
+  child.stdin?.on('error', () => {})
+  const settled = () => {
+    if (ephemeralRuntime === child) ephemeralRuntime = undefined
+  }
+  child.once('error', settled)
+  child.once('close', settled)
+}
+
+async function launchRemoteCoordinator(): Promise<void> {
+  if (await remoteRuntimeEnabled()) launchRemoteSupervisor()
+  else launchEphemeralRemoteRuntime()
+}
+
+function stopEphemeralRemoteRuntime(): void {
+  ephemeralRuntime?.stdin?.end()
+}
+
+async function pause(milliseconds: number, signal?: AbortSignal): Promise<void> {
   try {
-    if (!(await remoteRuntimeEnabled())) return
-    const { controlRoot } = await getRemoteRuntimePaths()
-    const ping = await requestRemoteCoordinator(controlRoot, { version: 1, action: 'ping' })
-    if (!ping || ping.status !== 'ok') {
-      if (performance.now() - launchedAt >= 10_000) {
-        launchedAt = performance.now()
-        const child = spawn(process.execPath, [process.argv[1]!, '__remote-supervise'], {
-          detached: true,
-          stdio: 'ignore',
-        })
-        child.on('error', () => {})
-        child.unref()
+    await delay(milliseconds, undefined, signal ? { signal } : undefined)
+  } catch {
+    /* Cancellation and timer failures end or retry through the caller's bounded loop. */
+  }
+}
+
+async function coordinatorEndpointExists(controlRoot: string): Promise<boolean> {
+  try {
+    await lstat(join(controlRoot, 'endpoint.json'))
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== 'ENOENT'
+  }
+}
+
+interface RemoteObservationOperations {
+  paths(): ReturnType<typeof getRemoteRuntimePaths>
+  request: typeof requestRemoteCoordinator
+  launch(): void | Promise<void>
+  endpointExists(controlRoot: string): Promise<boolean>
+  pause(milliseconds: number, signal?: AbortSignal): Promise<void>
+  now(): number
+}
+
+const observationOperations: RemoteObservationOperations = {
+  paths: getRemoteRuntimePaths,
+  request: requestRemoteCoordinator,
+  launch: launchRemoteCoordinator,
+  endpointExists: coordinatorEndpointExists,
+  pause,
+  now: () => performance.now(),
+}
+
+/** Session-lived watchdog that re-admits observation after coordinator replacement. */
+export async function maintainRemoteRuntimeObservation(
+  directory: string,
+  signal?: AbortSignal,
+  overrides: Partial<RemoteObservationOperations> = {}
+): Promise<void> {
+  const operations = { ...observationOperations, ...overrides }
+  try {
+    const { controlRoot } = await operations.paths()
+    while (!signal?.aborted) {
+      const ping = await operations.request(controlRoot, { version: 1, action: 'ping' })
+      if (!ping || ping.status !== 'ok') {
+        await operations.launch()
+        await operations.pause(RETRY_INTERVAL, signal)
+        continue
       }
-      return
+      const result = await operations.request(controlRoot, {
+        version: 1,
+        action: 'observe',
+        incarnation: ping.incarnation,
+        directory,
+      })
+      await operations.pause(result?.status === 'ok' ? WATCH_INTERVAL : RETRY_INTERVAL, signal)
     }
-    if (registeredIncarnation === ping.incarnation) return
-    const result = await requestRemoteCoordinator(controlRoot, {
-      version: 1,
-      action: 'register',
-      incarnation: ping.incarnation,
-      directory,
-    })
-    if (result?.status === 'ok') registeredIncarnation = ping.incarnation
   } catch {
     /* Integration failure never changes login, authentication or remote output. */
+  } finally {
+    stopEphemeralRemoteRuntime()
   }
+}
+
+/** Stops coordinator observation without launching or terminating any SSH master. */
+export async function stopRemoteRuntimeObservation(
+  directory: string,
+  overrides: Partial<RemoteObservationOperations> = {}
+): Promise<boolean> {
+  const operations = { ...observationOperations, ...overrides }
+  try {
+    const { controlRoot } = await operations.paths()
+    const deadline = operations.now() + STOP_DEADLINE
+    while (operations.now() < deadline) {
+      const ping = await operations.request(controlRoot, { version: 1, action: 'ping' })
+      if (ping?.status === 'ok') {
+        const result = await operations.request(controlRoot, {
+          version: 1,
+          action: 'unobserve',
+          incarnation: ping.incarnation,
+          directory,
+        })
+        if (result?.status === 'ok') return true
+      } else if (!(await operations.endpointExists(controlRoot))) {
+        return true
+      }
+      await operations.pause(RETRY_INTERVAL)
+    }
+  } catch {
+    /* Ambiguous live-control failures retain the private master for recovery. */
+  }
+  return false
 }
 
 /** Kernel-held singleton supervisor. A worker's parent pipe closes when this process dies. */
