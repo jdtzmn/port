@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789659097972,
+  "lastUpdate": 1789662564353,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -675,6 +675,51 @@ window.BENCHMARK_DATA = {
             "range": "2.5549999999999997",
             "unit": "ms",
             "extra": "p95: 35.045 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f237bc6c64ef025be851cc60c845e4c982db78a9",
+          "message": "Skip inactive Compose teardown during remove (#176)\n\n* Skip inactive Compose teardown during remove\n\n* Preserve active services during remove",
+          "timestamp": "2026-09-17T12:21:51-04:00",
+          "tree_id": "e2c64a06b4ee7ab2e79a57026a79b4f5d8e8da3a",
+          "url": "https://github.com/jdtzmn/port/commit/f237bc6c64ef025be851cc60c845e4c982db78a9"
+        },
+        "date": 1789662563313,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 49.006,
+            "range": "5.021000000000001",
+            "unit": "ms",
+            "extra": "p95: 54.027 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 33.782,
+            "range": "4.07",
+            "unit": "ms",
+            "extra": "p95: 37.852 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 36.91,
+            "range": "7.878",
+            "unit": "ms",
+            "extra": "p95: 44.788 ms\nsamples: 20"
           }
         ]
       }
