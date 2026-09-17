@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789616618933,
+  "lastUpdate": 1789618076147,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -450,6 +450,51 @@ window.BENCHMARK_DATA = {
             "range": "9.203000000000003",
             "unit": "ms",
             "extra": "p95: 40.654 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "241fc5493c11c322a4404440e208ddd455399dcc",
+          "message": "Use Docker inventory for status (#169)\n\n* Add Docker Compose service inventory\n\n* Use Docker inventory for worktree status\n\n* Avoid Compose fallback for absent projects\n\n* Harden Docker status inventory",
+          "timestamp": "2026-09-17T00:05:09-04:00",
+          "tree_id": "2318033580383f82c5c39d978eef09e8267e9b41",
+          "url": "https://github.com/jdtzmn/port/commit/241fc5493c11c322a4404440e208ddd455399dcc"
+        },
+        "date": 1789618075222,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 49.123,
+            "range": "6.911000000000001",
+            "unit": "ms",
+            "extra": "p95: 56.034 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 34.011,
+            "range": "7.827999999999996",
+            "unit": "ms",
+            "extra": "p95: 41.839 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 36.157,
+            "range": "4.722000000000001",
+            "unit": "ms",
+            "extra": "p95: 40.879 ms\nsamples: 20"
           }
         ]
       }
