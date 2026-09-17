@@ -5,6 +5,7 @@ import { rewriteRegistryForRename, rewriteHostServicesForRename } from '../lib/r
 import { branchHasRunningServices } from '../lib/serviceStatus.ts'
 import { parseComposeFile, writeOverrideFile } from '../lib/compose.ts'
 import { buildProjectName as getProjectName } from '../lib/projectName.ts'
+import { invalidateStaleWorktreeCache } from '../lib/staleWorktrees.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
 import { failWithError } from '../lib/cli.ts'
@@ -58,6 +59,7 @@ export async function rename(newBranch: string): Promise<void> {
   }
 
   const newWorktreePath = await renameWorktree(repoRoot, oldBranch, newBranch)
+  await invalidateStaleWorktreeCache(repoRoot)
 
   await rewriteRegistryForRename(repoRoot, oldWorktreeName, sanitizedNewBranch)
   await rewriteHostServicesForRename(repoRoot, oldWorktreeName, sanitizedNewBranch)

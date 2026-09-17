@@ -90,6 +90,7 @@ vi.mock('../lib/commands.ts', () => ({
 
 vi.mock('../lib/staleWorktrees.ts', () => ({
   getStaleWorktreeCandidates: mocks.getStaleWorktreeCandidates,
+  invalidateStaleWorktreeCache: vi.fn(),
   STALE_WORKTREE_EXTREME_THRESHOLD: mocks.STALE_WORKTREE_EXTREME_THRESHOLD,
   formatStaleWorktreeWarning: mocks.formatStaleWorktreeWarning,
 }))

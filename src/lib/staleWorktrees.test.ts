@@ -21,11 +21,12 @@ vi.mock('./github.ts', () => ({
   getMergedPrBranches: mocks.getMergedPrBranches,
 }))
 
-import { getStaleWorktreeCandidates } from './staleWorktrees.ts'
+import { getStaleWorktreeCandidates, invalidateStaleWorktreeCache } from './staleWorktrees.ts'
 
 describe('getStaleWorktreeCandidates', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    await invalidateStaleWorktreeCache('/repo')
 
     mocks.getDefaultBranch.mockResolvedValue('main')
     mocks.getMergedBranches.mockResolvedValue([])
@@ -56,7 +57,7 @@ describe('getStaleWorktreeCandidates', () => {
       ])
     )
 
-    const candidates = await getStaleWorktreeCandidates('/repo')
+    const candidates = await getStaleWorktreeCandidates('/repo', { fresh: true })
 
     expect(candidates.map(candidate => candidate.branch)).toEqual([
       'feature-a',
@@ -69,7 +70,7 @@ describe('getStaleWorktreeCandidates', () => {
   test('ignores stale branches that do not have Port worktrees', async () => {
     mocks.getMergedBranches.mockResolvedValue(['feature-a', 'missing-branch'])
 
-    const candidates = await getStaleWorktreeCandidates('/repo')
+    const candidates = await getStaleWorktreeCandidates('/repo', { fresh: true })
 
     expect(candidates.map(candidate => candidate.branch)).toEqual(['feature-a'])
   })
@@ -78,7 +79,7 @@ describe('getStaleWorktreeCandidates', () => {
     mocks.getMergedBranches.mockResolvedValue(['feature-a'])
     mocks.getGoneBranches.mockResolvedValue(['feature-a'])
 
-    const candidates = await getStaleWorktreeCandidates('/repo')
+    const candidates = await getStaleWorktreeCandidates('/repo', { fresh: true })
 
     expect(candidates.map(candidate => candidate.branch)).toEqual(['feature-a'])
   })
@@ -87,9 +88,45 @@ describe('getStaleWorktreeCandidates', () => {
     mocks.getMergedBranches.mockResolvedValue(['feature-a'])
     mocks.isGhAvailable.mockResolvedValue(false)
 
-    const candidates = await getStaleWorktreeCandidates('/repo')
+    const candidates = await getStaleWorktreeCandidates('/repo', { fresh: true })
 
     expect(candidates.map(candidate => candidate.branch)).toEqual(['feature-a'])
     expect(mocks.getMergedPrBranches).not.toHaveBeenCalled()
+  })
+
+  test('reuses a recent snapshot without rerunning stale-worktree checks', async () => {
+    mocks.getMergedBranches.mockResolvedValue(['feature-a'])
+
+    const initial = await getStaleWorktreeCandidates('/repo')
+    mocks.getMergedBranches.mockResolvedValue(['feature-b'])
+    const cached = await getStaleWorktreeCandidates('/repo')
+
+    expect(initial.map(candidate => candidate.branch)).toEqual(['feature-a'])
+    expect(cached.map(candidate => candidate.branch)).toEqual(['feature-a'])
+    expect(mocks.getMergedBranches).toHaveBeenCalledTimes(1)
+    expect(mocks.getMergedPrBranches).toHaveBeenCalledTimes(1)
+  })
+
+  test('bypasses the snapshot when a fresh result is required', async () => {
+    mocks.getMergedBranches.mockResolvedValue(['feature-a'])
+    await getStaleWorktreeCandidates('/repo')
+
+    mocks.getMergedBranches.mockResolvedValue(['feature-b'])
+    const fresh = await getStaleWorktreeCandidates('/repo', { fresh: true })
+
+    expect(fresh.map(candidate => candidate.branch)).toEqual(['feature-b'])
+    expect(mocks.getMergedBranches).toHaveBeenCalledTimes(2)
+  })
+
+  test('invalidates the snapshot after a worktree mutation', async () => {
+    mocks.getMergedBranches.mockResolvedValue(['feature-a'])
+    await getStaleWorktreeCandidates('/repo')
+
+    await invalidateStaleWorktreeCache('/repo')
+    mocks.getMergedBranches.mockResolvedValue(['feature-b'])
+    const refreshed = await getStaleWorktreeCandidates('/repo')
+
+    expect(refreshed.map(candidate => candidate.branch)).toEqual(['feature-b'])
+    expect(mocks.getMergedBranches).toHaveBeenCalledTimes(2)
   })
 })

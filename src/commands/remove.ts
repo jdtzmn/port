@@ -6,6 +6,7 @@ import { findWorktreeByBranch } from '../lib/git.ts'
 import { hasRegisteredProjects } from '../lib/registry.ts'
 import { stopTraefik, isTraefikRunning } from '../lib/compose.ts'
 import { buildProjectName as getProjectName } from '../lib/projectName.ts'
+import { invalidateStaleWorktreeCache } from '../lib/staleWorktrees.ts'
 import { removeWorktreeAndCleanup } from '../lib/removal.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
@@ -129,6 +130,7 @@ export async function remove(
   if (!result.success) {
     failWithError(result.error ?? 'Failed to remove worktree')
   }
+  await invalidateStaleWorktreeCache(repoRoot)
 
   if (result.archivedBranch) {
     output.info(`Archived local branch as ${output.branch(result.archivedBranch)}`)

@@ -61,6 +61,10 @@ vi.mock('../lib/projectName.ts', () => ({
   buildProjectName: mocks.buildProjectName,
 }))
 
+vi.mock('../lib/staleWorktrees.ts', () => ({
+  invalidateStaleWorktreeCache: vi.fn(),
+}))
+
 vi.mock('../lib/output.ts', () => ({
   success: mocks.success,
   warn: mocks.warn,
