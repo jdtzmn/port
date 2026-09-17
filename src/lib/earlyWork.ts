@@ -12,7 +12,11 @@ interface CommandPolicy {
   skipEarlyWork?: boolean
 }
 
-const QUERY_COMMAND: CommandPolicy = { executionClass: 'query', skipEarlyWork: true }
+const QUERY_COMMAND: CommandPolicy = { executionClass: 'query' }
+const EARLY_WORK_SKIP_QUERY_COMMAND: CommandPolicy = {
+  executionClass: 'query',
+  skipEarlyWork: true,
+}
 const MUTATING_GLOBAL_COMMAND: CommandPolicy = { executionClass: 'mutating', autoRegister: false }
 const INTERACTIVE_COMMAND: CommandPolicy = { executionClass: 'interactive', skipEarlyWork: true }
 const MUTATING_WORKTREE_COMMAND: CommandPolicy = { executionClass: 'mutating' }
@@ -23,14 +27,14 @@ const MUTATING_WORKTREE_COMMAND: CommandPolicy = { executionClass: 'mutating' }
  */
 const COMMAND_POLICIES: Readonly<Record<string, CommandPolicy>> = {
   help: QUERY_COMMAND,
-  list: QUERY_COMMAND,
-  ls: QUERY_COMMAND,
+  list: EARLY_WORK_SKIP_QUERY_COMMAND,
+  ls: EARLY_WORK_SKIP_QUERY_COMMAND,
   status: QUERY_COMMAND,
-  doctor: QUERY_COMMAND,
+  doctor: EARLY_WORK_SKIP_QUERY_COMMAND,
   exit: QUERY_COMMAND,
-  'shell-hook': QUERY_COMMAND,
+  'shell-hook': EARLY_WORK_SKIP_QUERY_COMMAND,
   urls: QUERY_COMMAND,
-  completion: QUERY_COMMAND,
+  completion: EARLY_WORK_SKIP_QUERY_COMMAND,
   onboard: QUERY_COMMAND,
 
   init: MUTATING_GLOBAL_COMMAND,

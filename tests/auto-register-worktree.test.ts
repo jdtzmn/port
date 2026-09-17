@@ -69,7 +69,7 @@ describe('auto-register current worktree', () => {
         // Sanity check: not registered before we invoke port
         expect(findProject(isolated.getDir(), repoRoot, 'auto-register-happy')).toBeUndefined()
 
-        await execPortAsync(['status'], worktreePath)
+        await execPortAsync(['hook', '--list'], worktreePath)
 
         const project = findProject(isolated.getDir(), repoRoot, 'auto-register-happy')
         expect(project).toBeDefined()
@@ -145,7 +145,7 @@ describe('auto-register current worktree', () => {
 
         const worktreePath = await createUnmanagedWorktree(sample.dir, 'auto-register-hook-fail')
 
-        await expect(execPortAsync(['status'], worktreePath)).rejects.toMatchObject({
+        await expect(execPortAsync(['hook', '--list'], worktreePath)).rejects.toMatchObject({
           code: 7,
         })
 

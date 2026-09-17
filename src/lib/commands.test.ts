@@ -218,15 +218,15 @@ describe('shouldAutoRegisterWorktree', () => {
 })
 
 describe('shouldSkipEarlyWork', () => {
-  test('skips pre-parse work for queries and enter', () => {
+  test('skips branch collision checks only for commands that opt out', () => {
     expect(shouldSkipEarlyWork('enter')).toBe(true)
     expect(shouldSkipEarlyWork('completion')).toBe(true)
     expect(shouldSkipEarlyWork('shell-hook')).toBe(true)
     expect(shouldSkipEarlyWork('doctor')).toBe(true)
     expect(shouldSkipEarlyWork('list')).toBe(true)
-    expect(shouldSkipEarlyWork('status')).toBe(true)
-    expect(shouldSkipEarlyWork('urls')).toBe(true)
-    expect(shouldSkipEarlyWork('exit')).toBe(true)
+    expect(shouldSkipEarlyWork('status')).toBe(false)
+    expect(shouldSkipEarlyWork('urls')).toBe(false)
+    expect(shouldSkipEarlyWork('exit')).toBe(false)
     expect(shouldSkipEarlyWork(undefined)).toBe(false)
   })
 })
