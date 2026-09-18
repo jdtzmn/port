@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789697699448,
+  "lastUpdate": 1789768126355,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -810,6 +810,51 @@ window.BENCHMARK_DATA = {
             "range": "5.817999999999998",
             "unit": "ms",
             "extra": "p95: 34.601 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "431e236a808015942fec58741f76b224a66fafff",
+          "message": "Overlap remote lookup with worktree creation (#179)\n\n* Add speculative worktree helpers\n\n* Overlap enter remote lookup with worktree creation\n\n* Guard speculative enter conversion\n\n* Recover interrupted speculative worktrees\n\n* Ignore empty speculative markers\n\n* Test empty speculative marker recovery\n\n* Store speculative markers in git directories",
+          "timestamp": "2026-09-18T17:41:26-04:00",
+          "tree_id": "e8d04d65ccaee9276017dddc2c7bdf71e5e31446",
+          "url": "https://github.com/jdtzmn/port/commit/431e236a808015942fec58741f76b224a66fafff"
+        },
+        "date": 1789768125429,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 50.404,
+            "range": "5.101999999999997",
+            "unit": "ms",
+            "extra": "p95: 55.506 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 35.693,
+            "range": "5.944000000000003",
+            "unit": "ms",
+            "extra": "p95: 41.637 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 37.692,
+            "range": "4.982999999999997",
+            "unit": "ms",
+            "extra": "p95: 42.675 ms\nsamples: 20"
           }
         ]
       }
