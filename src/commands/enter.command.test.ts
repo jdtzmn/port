@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   createWorktree: vi.fn(),
   attemptSpeculativeWorktree: vi.fn(),
   convertSpeculativeWorktree: vi.fn(),
+  finalizeSpeculativeWorktree: vi.fn(),
+  recoverSpeculativeWorktree: vi.fn(),
   remoteBranchExists: vi.fn(),
   removeWorktree: vi.fn(),
   parseDuplicateWorktreeError: vi.fn(),
@@ -58,6 +60,8 @@ vi.mock('../lib/git.ts', () => ({
   createWorktree: mocks.createWorktree,
   attemptSpeculativeWorktree: mocks.attemptSpeculativeWorktree,
   convertSpeculativeWorktree: mocks.convertSpeculativeWorktree,
+  finalizeSpeculativeWorktree: mocks.finalizeSpeculativeWorktree,
+  recoverSpeculativeWorktree: mocks.recoverSpeculativeWorktree,
   remoteBranchExists: mocks.remoteBranchExists,
   removeWorktree: mocks.removeWorktree,
   parseDuplicateWorktreeError: mocks.parseDuplicateWorktreeError,
@@ -148,6 +152,10 @@ describe('enter typo confirmation', () => {
     mocks.branchExists.mockResolvedValue(false)
     mocks.remoteBranchExists.mockResolvedValue(false)
     mocks.attemptSpeculativeWorktree.mockRejectedValue(new Error('speculative creation failed'))
+    mocks.finalizeSpeculativeWorktree.mockImplementation(
+      async (_repoRoot, worktree) => worktree.path
+    )
+    mocks.recoverSpeculativeWorktree.mockResolvedValue(null)
     mocks.resolveBranchRef.mockImplementation(async (_repoRoot: string, branch: string) => branch)
     mocks.findSimilarCommand.mockReturnValue({ command: 'install', distance: 1, similarity: 0.86 })
     mocks.createWorktree.mockResolvedValue('/repo/.port/trees/instal')
@@ -477,6 +485,7 @@ describe('enter with shell hook eval file', () => {
     mocks.getTreesDir.mockReturnValue('/tmp')
     mocks.getComposeFile.mockReturnValue('docker-compose.yml')
     mocks.configExists.mockReturnValue(true)
+    mocks.recoverSpeculativeWorktree.mockResolvedValue(null)
     mocks.worktreeExists.mockReturnValue(true)
     mocks.getWorktreePath.mockReturnValue('/repo/.port/trees/feature-1')
     mocks.hookExists.mockResolvedValue(false)

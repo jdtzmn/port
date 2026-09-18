@@ -11,6 +11,8 @@ import {
   branchExists,
   attemptSpeculativeWorktree,
   convertSpeculativeWorktree,
+  finalizeSpeculativeWorktree,
+  recoverSpeculativeWorktree,
   createWorktree,
   parseDuplicateWorktreeError,
   remoteBranchExists,
@@ -92,7 +94,13 @@ async function enterInRepo(repoRoot: string, branch: string): Promise<void> {
   // Directory name of a reused worktree that Port did not create for this branch
   let reusedWorktreeDir: string | null = null
 
-  if (worktreeExists(repoRoot, branch)) {
+  const recoveredWorktree = worktreeExists(repoRoot, branch)
+    ? await recoverSpeculativeWorktree(repoRoot, branch)
+    : null
+  if (recoveredWorktree) {
+    worktreePath = recoveredWorktree.path
+    isNewWorktree = true
+  } else if (worktreeExists(repoRoot, branch)) {
     worktreePath = getWorktreePath(repoRoot, branch)
     output.dim(`Using existing worktree: ${sanitized}`)
   } else {
@@ -183,7 +191,7 @@ async function enterInRepo(repoRoot: string, branch: string): Promise<void> {
           ? await measureCommandPhase('enter.speculative-worktree-convert', () =>
               convertSpeculativeWorktree(repoRoot, speculativeWorktree)
             )
-          : speculativeWorktree.path
+          : await finalizeSpeculativeWorktree(repoRoot, speculativeWorktree)
         : await measureCommandPhase('enter.create-worktree', () =>
             createWorktree(repoRoot, branch, preflight)
           )
