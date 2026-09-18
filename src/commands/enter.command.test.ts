@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => ({
   spawn: vi.fn(),
   findSimilarCommand: vi.fn(),
   writeEvalFile: vi.fn(),
-  getStaleWorktreeCandidates: vi.fn(),
+  getCachedStaleWorktreeCandidates: vi.fn(),
   STALE_WORKTREE_EXTREME_THRESHOLD: 25,
   formatStaleWorktreeWarning: vi.fn(),
   success: vi.fn(),
@@ -89,7 +89,7 @@ vi.mock('../lib/commands.ts', () => ({
 }))
 
 vi.mock('../lib/staleWorktrees.ts', () => ({
-  getStaleWorktreeCandidates: mocks.getStaleWorktreeCandidates,
+  getCachedStaleWorktreeCandidates: mocks.getCachedStaleWorktreeCandidates,
   invalidateStaleWorktreeCache: vi.fn(),
   STALE_WORKTREE_EXTREME_THRESHOLD: mocks.STALE_WORKTREE_EXTREME_THRESHOLD,
   formatStaleWorktreeWarning: mocks.formatStaleWorktreeWarning,
@@ -146,7 +146,7 @@ describe('enter typo confirmation', () => {
     mocks.hookExists.mockResolvedValue(false)
     mocks.parseComposeFile.mockRejectedValue(new Error('compose missing'))
     mocks.buildProjectName.mockReturnValue('repo-instal')
-    mocks.getStaleWorktreeCandidates.mockResolvedValue([])
+    mocks.getCachedStaleWorktreeCandidates.mockResolvedValue(null)
     mocks.formatStaleWorktreeWarning.mockImplementation(
       (count: number) => `You have ${count} stale port worktrees. Consider running port prune.`
     )
@@ -362,8 +362,16 @@ describe('enter typo confirmation', () => {
     )
   })
 
+  test('skips the informational stale warning when no snapshot is cached', async () => {
+    mocks.findSimilarCommand.mockReturnValue(null)
+
+    await enter('new-feature')
+
+    expect(mocks.getCachedStaleWorktreeCandidates).toHaveBeenCalledWith('/repo')
+    expect(mocks.formatStaleWorktreeWarning).not.toHaveBeenCalled()
+  })
   test('warns when creating a new worktree and the stale count is extreme', async () => {
-    mocks.getStaleWorktreeCandidates.mockResolvedValue([
+    mocks.getCachedStaleWorktreeCandidates.mockResolvedValue([
       { branch: 'feature-a', sanitized: 'feature-a', reason: 'merged' },
       { branch: 'feature-b', sanitized: 'feature-b', reason: 'gone' },
       { branch: 'feature-c', sanitized: 'feature-c', reason: 'pr-merged' },

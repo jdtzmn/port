@@ -21,7 +21,11 @@ vi.mock('./github.ts', () => ({
   getMergedPrBranches: mocks.getMergedPrBranches,
 }))
 
-import { getStaleWorktreeCandidates, invalidateStaleWorktreeCache } from './staleWorktrees.ts'
+import {
+  getCachedStaleWorktreeCandidates,
+  getStaleWorktreeCandidates,
+  invalidateStaleWorktreeCache,
+} from './staleWorktrees.ts'
 
 describe('getStaleWorktreeCandidates', () => {
   beforeEach(async () => {
@@ -105,6 +109,19 @@ describe('getStaleWorktreeCandidates', () => {
     expect(cached.map(candidate => candidate.branch)).toEqual(['feature-a'])
     expect(mocks.getMergedBranches).toHaveBeenCalledTimes(1)
     expect(mocks.getMergedPrBranches).toHaveBeenCalledTimes(1)
+  })
+
+  test('reads a snapshot without discovering stale worktrees on a cache miss', async () => {
+    await expect(getCachedStaleWorktreeCandidates('/repo')).resolves.toBeNull()
+    expect(mocks.getMergedBranches).not.toHaveBeenCalled()
+    expect(mocks.getMergedPrBranches).not.toHaveBeenCalled()
+
+    mocks.getMergedBranches.mockResolvedValue(['feature-a'])
+    await getStaleWorktreeCandidates('/repo')
+
+    await expect(getCachedStaleWorktreeCandidates('/repo')).resolves.toMatchObject([
+      { branch: 'feature-a' },
+    ])
   })
 
   test('bypasses the snapshot when a fresh result is required', async () => {

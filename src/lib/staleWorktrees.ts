@@ -75,6 +75,13 @@ async function readSnapshot(repoRoot: string): Promise<StaleWorktreeCandidate[] 
   }
 }
 
+/** Return a valid stale-worktree snapshot without running Git or GitHub discovery. */
+export function getCachedStaleWorktreeCandidates(
+  repoRoot: string
+): Promise<StaleWorktreeCandidate[] | null> {
+  return readSnapshot(repoRoot)
+}
+
 async function writeSnapshot(
   repoRoot: string,
   candidates: StaleWorktreeCandidate[]

@@ -28,7 +28,7 @@ import * as output from '../lib/output.ts'
 import { findSimilarCommand } from '../lib/commands.ts'
 import { buildEnterCommands, getEvalContext, writeEvalFile } from '../lib/shell.ts'
 import {
-  getStaleWorktreeCandidates,
+  getCachedStaleWorktreeCandidates,
   invalidateStaleWorktreeCache,
   STALE_WORKTREE_EXTREME_THRESHOLD,
   formatStaleWorktreeWarning,
@@ -137,10 +137,10 @@ export async function enter(branch: string): Promise<void> {
     }
 
     try {
-      const staleWorktrees = await measureCommandPhase('enter.stale-warning', () =>
-        getStaleWorktreeCandidates(repoRoot)
+      const staleWorktrees = await measureCommandPhase('enter.stale-warning-cache', () =>
+        getCachedStaleWorktreeCandidates(repoRoot)
       )
-      if (staleWorktrees.length >= STALE_WORKTREE_EXTREME_THRESHOLD) {
+      if (staleWorktrees && staleWorktrees.length >= STALE_WORKTREE_EXTREME_THRESHOLD) {
         output.warn(formatStaleWorktreeWarning(staleWorktrees.length))
       }
     } catch {
