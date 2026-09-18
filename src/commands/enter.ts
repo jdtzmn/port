@@ -9,6 +9,10 @@ import {
 } from '../lib/config.ts'
 import {
   branchExists,
+  attemptSpeculativeWorktree,
+  convertSpeculativeWorktree,
+  finalizeSpeculativeWorktree,
+  recoverSpeculativeWorktree,
   createWorktree,
   parseDuplicateWorktreeError,
   remoteBranchExists,
@@ -22,7 +26,7 @@ import { hookExists, runPostCreateHook } from '../lib/hooks.ts'
 import { markWorktreeRegistered } from '../lib/worktreeRegistration.ts'
 import { mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
-import { basename } from 'path'
+import { basename, join } from 'path'
 import inquirer from 'inquirer'
 import * as output from '../lib/output.ts'
 import { findSimilarCommand } from '../lib/commands.ts'
@@ -34,6 +38,7 @@ import {
   formatStaleWorktreeWarning,
 } from '../lib/staleWorktrees.ts'
 import { measureCommandPhase } from '../lib/commandProfile.ts'
+import { withFileLock } from '../lib/state.ts'
 
 /**
  * Enter a worktree (create if needed).
@@ -53,6 +58,13 @@ export async function enter(branch: string): Promise<void> {
     process.exit(1)
   }
 
+  await ensurePortRuntimeDir(repoRoot)
+  return withFileLock(join(repoRoot, '.port', `enter-${sanitizeBranchName(branch)}.lock`), () =>
+    enterInRepo(repoRoot, branch)
+  )
+}
+
+async function enterInRepo(repoRoot: string, branch: string): Promise<void> {
   await ensurePortRuntimeDir(repoRoot)
 
   // Load config (defaults when config file is absent)
@@ -82,18 +94,43 @@ export async function enter(branch: string): Promise<void> {
   // Directory name of a reused worktree that Port did not create for this branch
   let reusedWorktreeDir: string | null = null
 
-  if (worktreeExists(repoRoot, branch)) {
+  const recoveredWorktree = worktreeExists(repoRoot, branch)
+    ? await recoverSpeculativeWorktree(repoRoot, branch)
+    : null
+  if (recoveredWorktree) {
+    worktreePath = recoveredWorktree.path
+    isNewWorktree = true
+  } else if (worktreeExists(repoRoot, branch)) {
     worktreePath = getWorktreePath(repoRoot, branch)
     output.dim(`Using existing worktree: ${sanitized}`)
   } else {
     // Git refs cannot contain spaces, so existence checks must use the resolved
     // ref (e.g. "my feature" → "my-feature") rather than the raw input.
-    const preflight = await measureCommandPhase('enter.branch-preflight', async () => {
-      const ref = await resolveBranchRef(repoRoot, branch)
-      const localExists = await branchExists(repoRoot, ref)
-      const remoteExists = localExists ? false : await remoteBranchExists(repoRoot, ref)
-      return { ref, localExists, remoteExists }
-    })
+    const ref = await resolveBranchRef(repoRoot, branch)
+    const localExists = await branchExists(repoRoot, ref)
+    const similarCommand = localExists ? null : findSimilarCommand(branch)
+    let remoteExists = false
+    let speculativeWorktree: Awaited<ReturnType<typeof attemptSpeculativeWorktree>> | undefined
+
+    if (!localExists && !similarCommand) {
+      const [remoteResult, speculativeResult] = await Promise.allSettled([
+        measureCommandPhase('enter.remote-branch-check', () => remoteBranchExists(repoRoot, ref)),
+        measureCommandPhase('enter.speculative-worktree-add', () =>
+          attemptSpeculativeWorktree(repoRoot, branch, ref)
+        ),
+      ])
+      if (remoteResult.status === 'rejected') throw remoteResult.reason
+      remoteExists = remoteResult.value
+      if (speculativeResult.status === 'fulfilled') {
+        speculativeWorktree = speculativeResult.value
+      }
+    } else if (!localExists) {
+      remoteExists = await measureCommandPhase('enter.remote-branch-check', () =>
+        remoteBranchExists(repoRoot, ref)
+      )
+    }
+
+    const preflight = { ref, localExists, remoteExists }
 
     if (!preflight.localExists && !preflight.remoteExists) {
       const similarCommand = findSimilarCommand(branch)
@@ -149,9 +186,15 @@ export async function enter(branch: string): Promise<void> {
 
     output.info(`Creating worktree for branch: ${sanitized}`)
     try {
-      worktreePath = await measureCommandPhase('enter.create-worktree', () =>
-        createWorktree(repoRoot, branch, preflight)
-      )
+      worktreePath = speculativeWorktree
+        ? preflight.remoteExists
+          ? await measureCommandPhase('enter.speculative-worktree-convert', () =>
+              convertSpeculativeWorktree(repoRoot, speculativeWorktree)
+            )
+          : await finalizeSpeculativeWorktree(repoRoot, speculativeWorktree)
+        : await measureCommandPhase('enter.create-worktree', () =>
+            createWorktree(repoRoot, branch, preflight)
+          )
       isNewWorktree = true
       await invalidateStaleWorktreeCache(repoRoot)
       output.success(`Created worktree: ${sanitized}`)

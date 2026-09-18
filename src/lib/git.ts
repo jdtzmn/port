@@ -1,5 +1,7 @@
 import simpleGit, { type SimpleGit } from 'simple-git'
 import { existsSync } from 'fs'
+import { readFile, unlink, writeFile } from 'fs/promises'
+import { join } from 'path'
 import { getWorktreePath } from './worktree.ts'
 import { sanitizeBranchName } from './sanitize.ts'
 
@@ -241,6 +243,146 @@ export async function createBranch(repoRoot: string, branch: string): Promise<vo
   } catch (error) {
     throw new GitError(`Failed to create branch '${branch}': ${error}`)
   }
+}
+
+export interface SpeculativeWorktree {
+  path: string
+  ref: string
+  expectedHead: string
+  gitDir: string
+}
+
+function speculativeMarkerPath(gitDir: string): string {
+  return join(gitDir, 'port-speculative.json')
+}
+
+async function clearSpeculativeMarker(gitDir: string): Promise<void> {
+  try {
+    await unlink(speculativeMarkerPath(gitDir))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+}
+
+/** Create a local worktree whose ownership can be verified before conversion. */
+export async function attemptSpeculativeWorktree(
+  repoRoot: string,
+  branch: string,
+  ref: string
+): Promise<SpeculativeWorktree> {
+  const git = getGit(repoRoot)
+  const path = getWorktreePath(repoRoot, branch)
+
+  if (existsSync(path)) {
+    throw new GitError(`Worktree already exists at ${path}`)
+  }
+
+  try {
+    await git.raw(['worktree', 'add', '-b', ref, path])
+    const [expectedHead, gitDir] = await Promise.all([
+      git.raw(['-C', path, 'rev-parse', 'HEAD']),
+      git.raw(['-C', path, 'rev-parse', '--absolute-git-dir']),
+    ])
+
+    const worktree = {
+      path,
+      ref,
+      expectedHead: expectedHead.trim(),
+      gitDir: gitDir.trim(),
+    }
+    await writeFile(speculativeMarkerPath(worktree.gitDir), JSON.stringify(worktree))
+    return worktree
+  } catch (error) {
+    throw new GitError(`Failed to create speculative worktree for '${ref}': ${error}`)
+  }
+}
+
+/** Convert an owned, clean speculative worktree to track its remote branch. */
+export async function convertSpeculativeWorktree(
+  repoRoot: string,
+  worktree: SpeculativeWorktree,
+  remote: string = 'origin'
+): Promise<string> {
+  const git = getGit(repoRoot)
+
+  // A just-completed ls-remote check is authoritative; refresh this exact ref
+  // even when a stale remote-tracking ref already exists locally.
+  await fetchRemoteBranch(repoRoot, worktree.ref, remote)
+
+  try {
+    const [head, gitDir, branch, status] = await Promise.all([
+      git.raw(['-C', worktree.path, 'rev-parse', 'HEAD']),
+      git.raw(['-C', worktree.path, 'rev-parse', '--absolute-git-dir']),
+      git.raw(['-C', worktree.path, 'rev-parse', '--abbrev-ref', 'HEAD']),
+      git.raw(['-C', worktree.path, 'status', '--porcelain']),
+    ])
+
+    if (head.trim() !== worktree.expectedHead) {
+      throw new GitError('Speculative worktree HEAD changed before remote conversion')
+    }
+    if (gitDir.trim() !== worktree.gitDir) {
+      throw new GitError('Speculative worktree identity changed before remote conversion')
+    }
+    if (branch.trim() !== worktree.ref) {
+      throw new GitError('Speculative worktree branch changed before remote conversion')
+    }
+    if (status.trim()) {
+      throw new GitError('Speculative worktree is no longer clean')
+    }
+
+    await git.raw(['-C', worktree.path, 'reset', '--keep', `${remote}/${worktree.ref}`])
+    await git.raw(['branch', `--set-upstream-to=${remote}/${worktree.ref}`, worktree.ref])
+    await clearSpeculativeMarker(worktree.gitDir)
+    return worktree.path
+  } catch (error) {
+    throw new GitError(`Failed to convert speculative worktree '${worktree.ref}': ${error}`)
+  }
+}
+
+/** Mark a retained speculative worktree as ready for Port lifecycle work. */
+export async function finalizeSpeculativeWorktree(
+  _repoRoot: string,
+  worktree: SpeculativeWorktree
+): Promise<string> {
+  await clearSpeculativeMarker(worktree.gitDir)
+  return worktree.path
+}
+
+/** Resume a previous speculative creation instead of treating it as ready. */
+export async function recoverSpeculativeWorktree(
+  repoRoot: string,
+  branch: string
+): Promise<SpeculativeWorktree | null> {
+  const git = getGit(repoRoot)
+  const path = getWorktreePath(repoRoot, branch)
+  let marker: string
+  try {
+    const gitDir = await git.raw(['-C', path, 'rev-parse', '--absolute-git-dir'])
+    marker = await readFile(speculativeMarkerPath(gitDir.trim()), 'utf-8')
+  } catch {
+    return null
+  }
+
+  if (!marker.trim()) {
+    return null
+  }
+
+  let worktree: SpeculativeWorktree
+  try {
+    worktree = JSON.parse(marker) as SpeculativeWorktree
+  } catch {
+    throw new GitError(`Invalid speculative worktree marker for '${branch}'`)
+  }
+  if (worktree.path !== path || worktree.ref !== branch) {
+    throw new GitError(`Speculative worktree marker does not match '${branch}'`)
+  }
+
+  if (await remoteBranchExists(repoRoot, branch)) {
+    await convertSpeculativeWorktree(repoRoot, worktree)
+  } else {
+    await finalizeSpeculativeWorktree(repoRoot, worktree)
+  }
+  return worktree
 }
 
 export interface WorktreeBranchPreflight {

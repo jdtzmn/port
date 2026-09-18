@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 const rawMock = vi.hoisted(() => vi.fn())
 const branchLocalMock = vi.hoisted(() => vi.fn())
 
+const writeFileMock = vi.hoisted(() => vi.fn())
+const readFileMock = vi.hoisted(() => vi.fn())
+const unlinkMock = vi.hoisted(() => vi.fn())
 vi.mock('simple-git', () => ({
   default: vi.fn(() => ({
     raw: rawMock,
@@ -10,20 +13,32 @@ vi.mock('simple-git', () => ({
   })),
 }))
 
+vi.mock('fs/promises', () => ({
+  readFile: readFileMock,
+  unlink: unlinkMock,
+  writeFile: writeFileMock,
+}))
+
 vi.mock('./worktree.ts', () => ({
   getWorktreePath: vi.fn((repoRoot: string, branch: string) => `${repoRoot}/.port/trees/${branch}`),
 }))
 
 import {
+  attemptSpeculativeWorktree,
+  convertSpeculativeWorktree,
+  recoverSpeculativeWorktree,
+  createWorktree,
   isValidBranchRef,
   parseDuplicateWorktreeError,
-  createWorktree,
   renameWorktree,
   resolveBranchRef,
 } from './git.ts'
 
 beforeEach(() => {
   rawMock.mockReset()
+  writeFileMock.mockReset().mockResolvedValue(undefined)
+  readFileMock.mockReset().mockRejectedValue(new Error('missing'))
+  unlinkMock.mockReset().mockResolvedValue(undefined)
   branchLocalMock.mockReset()
 })
 
@@ -93,6 +108,91 @@ describe('resolveBranchRef', () => {
   })
 })
 
+describe('speculative worktrees', () => {
+  const token = {
+    path: '/repo/.port/trees/feature',
+    ref: 'feature',
+    expectedHead: 'speculative-head',
+    gitDir: '/repo/.git/worktrees/feature',
+  }
+
+  test('captures ownership metadata after creating a speculative worktree', async () => {
+    rawMock
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce('speculative-head\n')
+      .mockResolvedValueOnce('/repo/.git/worktrees/feature\n')
+
+    await expect(attemptSpeculativeWorktree('/repo', 'feature', 'feature')).resolves.toEqual(token)
+
+    expect(rawMock).toHaveBeenNthCalledWith(1, [
+      'worktree',
+      'add',
+      '-b',
+      'feature',
+      '/repo/.port/trees/feature',
+    ])
+  })
+
+  test('converts an owned clean worktree to track the remote branch in place', async () => {
+    rawMock
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce('speculative-head\n')
+      .mockResolvedValueOnce('/repo/.git/worktrees/feature\n')
+      .mockResolvedValueOnce('feature\n')
+      .mockResolvedValueOnce('')
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+
+    await expect(convertSpeculativeWorktree('/repo', token)).resolves.toBe(token.path)
+
+    expect(rawMock).toHaveBeenNthCalledWith(6, [
+      '-C',
+      token.path,
+      'reset',
+      '--keep',
+      'origin/feature',
+    ])
+    expect(rawMock).toHaveBeenNthCalledWith(7, [
+      'branch',
+      '--set-upstream-to=origin/feature',
+      'feature',
+    ])
+  })
+
+  test('refuses to convert a dirty speculative worktree', async () => {
+    rawMock
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce('speculative-head\n')
+      .mockResolvedValueOnce('/repo/.git/worktrees/feature\n')
+      .mockResolvedValueOnce('feature\n')
+      .mockResolvedValueOnce('?? changed.txt\n')
+
+    await expect(convertSpeculativeWorktree('/repo', token)).rejects.toThrow(
+      'Speculative worktree is no longer clean'
+    )
+    expect(rawMock).toHaveBeenCalledTimes(5)
+  })
+
+  test('refuses to convert a worktree whose HEAD changed after speculation', async () => {
+    rawMock
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce('different-head\n')
+      .mockResolvedValueOnce('/repo/.git/worktrees/feature\n')
+      .mockResolvedValueOnce('feature\n')
+      .mockResolvedValueOnce('')
+
+    await expect(convertSpeculativeWorktree('/repo', token)).rejects.toThrow(
+      'Speculative worktree HEAD changed before remote conversion'
+    )
+    expect(rawMock).toHaveBeenCalledTimes(5)
+  })
+
+  test('ignores an empty speculative marker after successful cleanup', async () => {
+    rawMock.mockResolvedValueOnce('')
+
+    await expect(recoverSpeculativeWorktree('/repo', 'feature')).resolves.toBeNull()
+  })
+})
 describe('createWorktree', () => {
   test('uses a caller-provided preflight without repeating branch checks', async () => {
     rawMock.mockResolvedValue(undefined)

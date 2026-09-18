@@ -11,6 +11,10 @@ const mocks = vi.hoisted(() => ({
   configExists: vi.fn(),
   branchExists: vi.fn(),
   createWorktree: vi.fn(),
+  attemptSpeculativeWorktree: vi.fn(),
+  convertSpeculativeWorktree: vi.fn(),
+  finalizeSpeculativeWorktree: vi.fn(),
+  recoverSpeculativeWorktree: vi.fn(),
   remoteBranchExists: vi.fn(),
   removeWorktree: vi.fn(),
   parseDuplicateWorktreeError: vi.fn(),
@@ -54,6 +58,10 @@ vi.mock('../lib/config.ts', () => ({
 vi.mock('../lib/git.ts', () => ({
   branchExists: mocks.branchExists,
   createWorktree: mocks.createWorktree,
+  attemptSpeculativeWorktree: mocks.attemptSpeculativeWorktree,
+  convertSpeculativeWorktree: mocks.convertSpeculativeWorktree,
+  finalizeSpeculativeWorktree: mocks.finalizeSpeculativeWorktree,
+  recoverSpeculativeWorktree: mocks.recoverSpeculativeWorktree,
   remoteBranchExists: mocks.remoteBranchExists,
   removeWorktree: mocks.removeWorktree,
   parseDuplicateWorktreeError: mocks.parseDuplicateWorktreeError,
@@ -93,6 +101,10 @@ vi.mock('../lib/staleWorktrees.ts', () => ({
   invalidateStaleWorktreeCache: vi.fn(),
   STALE_WORKTREE_EXTREME_THRESHOLD: mocks.STALE_WORKTREE_EXTREME_THRESHOLD,
   formatStaleWorktreeWarning: mocks.formatStaleWorktreeWarning,
+}))
+
+vi.mock('../lib/state.ts', () => ({
+  withFileLock: async <T>(_path: string, callback: () => Promise<T>): Promise<T> => callback(),
 }))
 
 vi.mock('../lib/output.ts', () => ({
@@ -139,6 +151,11 @@ describe('enter typo confirmation', () => {
     mocks.worktreeExists.mockReturnValue(false)
     mocks.branchExists.mockResolvedValue(false)
     mocks.remoteBranchExists.mockResolvedValue(false)
+    mocks.attemptSpeculativeWorktree.mockRejectedValue(new Error('speculative creation failed'))
+    mocks.finalizeSpeculativeWorktree.mockImplementation(
+      async (_repoRoot, worktree) => worktree.path
+    )
+    mocks.recoverSpeculativeWorktree.mockResolvedValue(null)
     mocks.resolveBranchRef.mockImplementation(async (_repoRoot: string, branch: string) => branch)
     mocks.findSimilarCommand.mockReturnValue({ command: 'install', distance: 1, similarity: 0.86 })
     mocks.createWorktree.mockResolvedValue('/repo/.port/trees/instal')
@@ -362,6 +379,44 @@ describe('enter typo confirmation', () => {
     )
   })
 
+  test('retains an owned speculative worktree when the remote branch is absent', async () => {
+    mocks.findSimilarCommand.mockReturnValue(null)
+    mocks.attemptSpeculativeWorktree.mockResolvedValue({
+      path: '/repo/.port/trees/new-feature',
+      ref: 'new-feature',
+      expectedHead: 'head',
+      gitDir: '/repo/.git/worktrees/new-feature',
+    })
+
+    await enter('new-feature')
+
+    expect(mocks.remoteBranchExists).toHaveBeenCalledWith('/repo', 'new-feature')
+    expect(mocks.attemptSpeculativeWorktree).toHaveBeenCalledWith(
+      '/repo',
+      'new-feature',
+      'new-feature'
+    )
+    expect(mocks.convertSpeculativeWorktree).not.toHaveBeenCalled()
+    expect(mocks.createWorktree).not.toHaveBeenCalled()
+  })
+
+  test('converts an owned speculative worktree when the remote branch exists', async () => {
+    const speculativeWorktree = {
+      path: '/repo/.port/trees/remote-feature',
+      ref: 'remote-feature',
+      expectedHead: 'head',
+      gitDir: '/repo/.git/worktrees/remote-feature',
+    }
+    mocks.findSimilarCommand.mockReturnValue(null)
+    mocks.remoteBranchExists.mockResolvedValue(true)
+    mocks.attemptSpeculativeWorktree.mockResolvedValue(speculativeWorktree)
+    mocks.convertSpeculativeWorktree.mockResolvedValue(speculativeWorktree.path)
+
+    await enter('remote-feature')
+
+    expect(mocks.convertSpeculativeWorktree).toHaveBeenCalledWith('/repo', speculativeWorktree)
+    expect(mocks.createWorktree).not.toHaveBeenCalled()
+  })
   test('skips the informational stale warning when no snapshot is cached', async () => {
     mocks.findSimilarCommand.mockReturnValue(null)
 
@@ -430,6 +485,7 @@ describe('enter with shell hook eval file', () => {
     mocks.getTreesDir.mockReturnValue('/tmp')
     mocks.getComposeFile.mockReturnValue('docker-compose.yml')
     mocks.configExists.mockReturnValue(true)
+    mocks.recoverSpeculativeWorktree.mockResolvedValue(null)
     mocks.worktreeExists.mockReturnValue(true)
     mocks.getWorktreePath.mockReturnValue('/repo/.port/trees/feature-1')
     mocks.hookExists.mockResolvedValue(false)
