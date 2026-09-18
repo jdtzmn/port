@@ -99,6 +99,10 @@ vi.mock('../lib/staleWorktrees.ts', () => ({
   formatStaleWorktreeWarning: mocks.formatStaleWorktreeWarning,
 }))
 
+vi.mock('../lib/state.ts', () => ({
+  withFileLock: async <T>(_path: string, callback: () => Promise<T>): Promise<T> => callback(),
+}))
+
 vi.mock('../lib/output.ts', () => ({
   success: mocks.success,
   warn: mocks.warn,

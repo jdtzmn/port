@@ -122,7 +122,7 @@ describe('speculative worktrees', () => {
 
   test('converts an owned clean worktree to track the remote branch in place', async () => {
     rawMock
-      .mockResolvedValueOnce('remote-head\n')
+      .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce('speculative-head\n')
       .mockResolvedValueOnce('/repo/.git/worktrees/feature\n')
       .mockResolvedValueOnce('feature\n')
@@ -136,7 +136,7 @@ describe('speculative worktrees', () => {
       '-C',
       token.path,
       'reset',
-      '--hard',
+      '--keep',
       'origin/feature',
     ])
     expect(rawMock).toHaveBeenNthCalledWith(7, [
@@ -148,7 +148,7 @@ describe('speculative worktrees', () => {
 
   test('refuses to convert a dirty speculative worktree', async () => {
     rawMock
-      .mockResolvedValueOnce('remote-head\n')
+      .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce('speculative-head\n')
       .mockResolvedValueOnce('/repo/.git/worktrees/feature\n')
       .mockResolvedValueOnce('feature\n')
@@ -162,7 +162,7 @@ describe('speculative worktrees', () => {
 
   test('refuses to convert a worktree whose HEAD changed after speculation', async () => {
     rawMock
-      .mockResolvedValueOnce('remote-head\n')
+      .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce('different-head\n')
       .mockResolvedValueOnce('/repo/.git/worktrees/feature\n')
       .mockResolvedValueOnce('feature\n')

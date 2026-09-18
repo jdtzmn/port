@@ -24,7 +24,7 @@ import { hookExists, runPostCreateHook } from '../lib/hooks.ts'
 import { markWorktreeRegistered } from '../lib/worktreeRegistration.ts'
 import { mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
-import { basename } from 'path'
+import { basename, join } from 'path'
 import inquirer from 'inquirer'
 import * as output from '../lib/output.ts'
 import { findSimilarCommand } from '../lib/commands.ts'
@@ -36,6 +36,7 @@ import {
   formatStaleWorktreeWarning,
 } from '../lib/staleWorktrees.ts'
 import { measureCommandPhase } from '../lib/commandProfile.ts'
+import { withFileLock } from '../lib/state.ts'
 
 /**
  * Enter a worktree (create if needed).
@@ -55,6 +56,13 @@ export async function enter(branch: string): Promise<void> {
     process.exit(1)
   }
 
+  await ensurePortRuntimeDir(repoRoot)
+  return withFileLock(join(repoRoot, '.port', `enter-${sanitizeBranchName(branch)}.lock`), () =>
+    enterInRepo(repoRoot, branch)
+  )
+}
+
+async function enterInRepo(repoRoot: string, branch: string): Promise<void> {
   await ensurePortRuntimeDir(repoRoot)
 
   // Load config (defaults when config file is absent)

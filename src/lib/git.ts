@@ -289,9 +289,9 @@ export async function convertSpeculativeWorktree(
 ): Promise<string> {
   const git = getGit(repoRoot)
 
-  if (!(await remoteTrackingRefExists(repoRoot, worktree.ref, remote))) {
-    await fetchRemoteBranch(repoRoot, worktree.ref, remote)
-  }
+  // A just-completed ls-remote check is authoritative; refresh this exact ref
+  // even when a stale remote-tracking ref already exists locally.
+  await fetchRemoteBranch(repoRoot, worktree.ref, remote)
 
   try {
     const [head, gitDir, branch, status] = await Promise.all([
@@ -314,7 +314,7 @@ export async function convertSpeculativeWorktree(
       throw new GitError('Speculative worktree is no longer clean')
     }
 
-    await git.raw(['-C', worktree.path, 'reset', '--hard', `${remote}/${worktree.ref}`])
+    await git.raw(['-C', worktree.path, 'reset', '--keep', `${remote}/${worktree.ref}`])
     await git.raw(['branch', `--set-upstream-to=${remote}/${worktree.ref}`, worktree.ref])
     return worktree.path
   } catch (error) {
