@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789697701263,
+  "lastUpdate": 1789768127827,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port worktree operations": [
@@ -964,6 +964,65 @@ window.BENCHMARK_DATA = {
             "range": "7.0330000000000155",
             "unit": "ms",
             "extra": "p95: 275.12 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "431e236a808015942fec58741f76b224a66fafff",
+          "message": "Overlap remote lookup with worktree creation (#179)\n\n* Add speculative worktree helpers\n\n* Overlap enter remote lookup with worktree creation\n\n* Guard speculative enter conversion\n\n* Recover interrupted speculative worktrees\n\n* Ignore empty speculative markers\n\n* Test empty speculative marker recovery\n\n* Store speculative markers in git directories",
+          "timestamp": "2026-09-18T17:41:26-04:00",
+          "tree_id": "e8d04d65ccaee9276017dddc2c7bdf71e5e31446",
+          "url": "https://github.com/jdtzmn/port/commit/431e236a808015942fec58741f76b224a66fafff"
+        },
+        "date": 1789768127792,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Worktree operations / enter existing (small)",
+            "value": 342.809,
+            "range": "16.95999999999998",
+            "unit": "ms",
+            "extra": "p95: 359.769 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter existing (large)",
+            "value": 343.343,
+            "range": "10.329000000000008",
+            "unit": "ms",
+            "extra": "p95: 353.672 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (small)",
+            "value": 358.877,
+            "range": "8.700999999999965",
+            "unit": "ms",
+            "extra": "p95: 367.578 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (large)",
+            "value": 367.917,
+            "range": "7.115000000000009",
+            "unit": "ms",
+            "extra": "p95: 375.032 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / prune dry run",
+            "value": 268.115,
+            "range": "8.834000000000003",
+            "unit": "ms",
+            "extra": "p95: 276.949 ms\nsamples: 20"
           }
         ]
       }
