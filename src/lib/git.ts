@@ -1,5 +1,7 @@
 import simpleGit, { type SimpleGit } from 'simple-git'
 import { existsSync } from 'fs'
+import { readFile, unlink, writeFile } from 'fs/promises'
+import { join } from 'path'
 import { getWorktreePath } from './worktree.ts'
 import { sanitizeBranchName } from './sanitize.ts'
 
@@ -250,8 +252,16 @@ export interface SpeculativeWorktree {
   gitDir: string
 }
 
-function speculativeMarkerKey(ref: string): string {
-  return `branch.${ref}.portSpeculative`
+function speculativeMarkerPath(gitDir: string): string {
+  return join(gitDir, 'port-speculative.json')
+}
+
+async function clearSpeculativeMarker(gitDir: string): Promise<void> {
+  try {
+    await unlink(speculativeMarkerPath(gitDir))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
 }
 
 /** Create a local worktree whose ownership can be verified before conversion. */
@@ -280,7 +290,7 @@ export async function attemptSpeculativeWorktree(
       expectedHead: expectedHead.trim(),
       gitDir: gitDir.trim(),
     }
-    await git.raw(['config', speculativeMarkerKey(ref), JSON.stringify(worktree)])
+    await writeFile(speculativeMarkerPath(worktree.gitDir), JSON.stringify(worktree))
     return worktree
   } catch (error) {
     throw new GitError(`Failed to create speculative worktree for '${ref}': ${error}`)
@@ -322,7 +332,7 @@ export async function convertSpeculativeWorktree(
 
     await git.raw(['-C', worktree.path, 'reset', '--keep', `${remote}/${worktree.ref}`])
     await git.raw(['branch', `--set-upstream-to=${remote}/${worktree.ref}`, worktree.ref])
-    await git.raw(['config', '--unset', speculativeMarkerKey(worktree.ref)])
+    await clearSpeculativeMarker(worktree.gitDir)
     return worktree.path
   } catch (error) {
     throw new GitError(`Failed to convert speculative worktree '${worktree.ref}': ${error}`)
@@ -331,11 +341,10 @@ export async function convertSpeculativeWorktree(
 
 /** Mark a retained speculative worktree as ready for Port lifecycle work. */
 export async function finalizeSpeculativeWorktree(
-  repoRoot: string,
+  _repoRoot: string,
   worktree: SpeculativeWorktree
 ): Promise<string> {
-  const git = getGit(repoRoot)
-  await git.raw(['config', '--unset', speculativeMarkerKey(worktree.ref)])
+  await clearSpeculativeMarker(worktree.gitDir)
   return worktree.path
 }
 
@@ -348,7 +357,8 @@ export async function recoverSpeculativeWorktree(
   const path = getWorktreePath(repoRoot, branch)
   let marker: string
   try {
-    marker = await git.raw(['config', '--get', speculativeMarkerKey(branch)])
+    const gitDir = await git.raw(['-C', path, 'rev-parse', '--absolute-git-dir'])
+    marker = await readFile(speculativeMarkerPath(gitDir.trim()), 'utf-8')
   } catch {
     return null
   }

@@ -3,11 +3,20 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 const rawMock = vi.hoisted(() => vi.fn())
 const branchLocalMock = vi.hoisted(() => vi.fn())
 
+const writeFileMock = vi.hoisted(() => vi.fn())
+const readFileMock = vi.hoisted(() => vi.fn())
+const unlinkMock = vi.hoisted(() => vi.fn())
 vi.mock('simple-git', () => ({
   default: vi.fn(() => ({
     raw: rawMock,
     branchLocal: branchLocalMock,
   })),
+}))
+
+vi.mock('fs/promises', () => ({
+  readFile: readFileMock,
+  unlink: unlinkMock,
+  writeFile: writeFileMock,
 }))
 
 vi.mock('./worktree.ts', () => ({
@@ -27,6 +36,9 @@ import {
 
 beforeEach(() => {
   rawMock.mockReset()
+  writeFileMock.mockReset().mockResolvedValue(undefined)
+  readFileMock.mockReset().mockRejectedValue(new Error('missing'))
+  unlinkMock.mockReset().mockResolvedValue(undefined)
   branchLocalMock.mockReset()
 })
 
