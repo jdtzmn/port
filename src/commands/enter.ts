@@ -9,6 +9,8 @@ import {
 } from '../lib/config.ts'
 import {
   branchExists,
+  attemptSpeculativeWorktree,
+  convertSpeculativeWorktree,
   createWorktree,
   parseDuplicateWorktreeError,
   remoteBranchExists,
@@ -88,12 +90,31 @@ export async function enter(branch: string): Promise<void> {
   } else {
     // Git refs cannot contain spaces, so existence checks must use the resolved
     // ref (e.g. "my feature" → "my-feature") rather than the raw input.
-    const preflight = await measureCommandPhase('enter.branch-preflight', async () => {
-      const ref = await resolveBranchRef(repoRoot, branch)
-      const localExists = await branchExists(repoRoot, ref)
-      const remoteExists = localExists ? false : await remoteBranchExists(repoRoot, ref)
-      return { ref, localExists, remoteExists }
-    })
+    const ref = await resolveBranchRef(repoRoot, branch)
+    const localExists = await branchExists(repoRoot, ref)
+    const similarCommand = localExists ? null : findSimilarCommand(branch)
+    let remoteExists = false
+    let speculativeWorktree: Awaited<ReturnType<typeof attemptSpeculativeWorktree>> | undefined
+
+    if (!localExists && !similarCommand) {
+      const [remoteResult, speculativeResult] = await Promise.allSettled([
+        measureCommandPhase('enter.remote-branch-check', () => remoteBranchExists(repoRoot, ref)),
+        measureCommandPhase('enter.speculative-worktree-add', () =>
+          attemptSpeculativeWorktree(repoRoot, branch, ref)
+        ),
+      ])
+      if (remoteResult.status === 'rejected') throw remoteResult.reason
+      remoteExists = remoteResult.value
+      if (speculativeResult.status === 'fulfilled') {
+        speculativeWorktree = speculativeResult.value
+      }
+    } else if (!localExists) {
+      remoteExists = await measureCommandPhase('enter.remote-branch-check', () =>
+        remoteBranchExists(repoRoot, ref)
+      )
+    }
+
+    const preflight = { ref, localExists, remoteExists }
 
     if (!preflight.localExists && !preflight.remoteExists) {
       const similarCommand = findSimilarCommand(branch)
@@ -149,9 +170,15 @@ export async function enter(branch: string): Promise<void> {
 
     output.info(`Creating worktree for branch: ${sanitized}`)
     try {
-      worktreePath = await measureCommandPhase('enter.create-worktree', () =>
-        createWorktree(repoRoot, branch, preflight)
-      )
+      worktreePath = speculativeWorktree
+        ? preflight.remoteExists
+          ? await measureCommandPhase('enter.speculative-worktree-convert', () =>
+              convertSpeculativeWorktree(repoRoot, speculativeWorktree)
+            )
+          : speculativeWorktree.path
+        : await measureCommandPhase('enter.create-worktree', () =>
+            createWorktree(repoRoot, branch, preflight)
+          )
       isNewWorktree = true
       await invalidateStaleWorktreeCache(repoRoot)
       output.success(`Created worktree: ${sanitized}`)

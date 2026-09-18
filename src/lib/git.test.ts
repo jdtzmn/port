@@ -159,6 +159,20 @@ describe('speculative worktrees', () => {
     )
     expect(rawMock).toHaveBeenCalledTimes(5)
   })
+
+  test('refuses to convert a worktree whose HEAD changed after speculation', async () => {
+    rawMock
+      .mockResolvedValueOnce('remote-head\n')
+      .mockResolvedValueOnce('different-head\n')
+      .mockResolvedValueOnce('/repo/.git/worktrees/feature\n')
+      .mockResolvedValueOnce('feature\n')
+      .mockResolvedValueOnce('')
+
+    await expect(convertSpeculativeWorktree('/repo', token)).rejects.toThrow(
+      'Speculative worktree HEAD changed before remote conversion'
+    )
+    expect(rawMock).toHaveBeenCalledTimes(5)
+  })
 })
 describe('createWorktree', () => {
   test('uses a caller-provided preflight without repeating branch checks', async () => {
