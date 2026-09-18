@@ -17,6 +17,7 @@ vi.mock('./worktree.ts', () => ({
 import {
   attemptSpeculativeWorktree,
   convertSpeculativeWorktree,
+  recoverSpeculativeWorktree,
   createWorktree,
   isValidBranchRef,
   parseDuplicateWorktreeError,
@@ -172,6 +173,12 @@ describe('speculative worktrees', () => {
       'Speculative worktree HEAD changed before remote conversion'
     )
     expect(rawMock).toHaveBeenCalledTimes(5)
+  })
+
+  test('ignores an empty speculative marker after successful cleanup', async () => {
+    rawMock.mockResolvedValueOnce('')
+
+    await expect(recoverSpeculativeWorktree('/repo', 'feature')).resolves.toBeNull()
   })
 })
 describe('createWorktree', () => {
