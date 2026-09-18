@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789662564353,
+  "lastUpdate": 1789696115321,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -720,6 +720,51 @@ window.BENCHMARK_DATA = {
             "range": "7.878",
             "unit": "ms",
             "extra": "p95: 44.788 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "68df271261062af482c8ea16fb776808c51e2039",
+          "message": "Reuse enter branch preflight (#177)\n\n* Reuse enter branch preflight\n\n* Refresh stale enter preflight\n\n* Limit enter preflight retries\n\n* Format enter preflight tests",
+          "timestamp": "2026-09-17T21:41:11-04:00",
+          "tree_id": "9e5a682218e45da903a4a558d35460c12fb06fba",
+          "url": "https://github.com/jdtzmn/port/commit/68df271261062af482c8ea16fb776808c51e2039"
+        },
+        "date": 1789696113918,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 51.436,
+            "range": "4.570999999999998",
+            "unit": "ms",
+            "extra": "p95: 56.007 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 35.855,
+            "range": "4.770000000000003",
+            "unit": "ms",
+            "extra": "p95: 40.625 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 39.206,
+            "range": "3.7349999999999994",
+            "unit": "ms",
+            "extra": "p95: 42.941 ms\nsamples: 20"
           }
         ]
       }
