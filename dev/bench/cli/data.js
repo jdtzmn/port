@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789696115321,
+  "lastUpdate": 1789697699448,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -765,6 +765,51 @@ window.BENCHMARK_DATA = {
             "range": "3.7349999999999994",
             "unit": "ms",
             "extra": "p95: 42.941 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7c1893baaa6fc09c7ef376001dc9c8df45869089",
+          "message": "Use cached stale warning during enter (#178)",
+          "timestamp": "2026-09-17T22:06:38-04:00",
+          "tree_id": "2b4c0fc3740b643a46d706167f3ad9dcb47520fd",
+          "url": "https://github.com/jdtzmn/port/commit/7c1893baaa6fc09c7ef376001dc9c8df45869089"
+        },
+        "date": 1789697698285,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 39.012,
+            "range": "4.673000000000002",
+            "unit": "ms",
+            "extra": "p95: 43.685 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 28.611,
+            "range": "4.0710000000000015",
+            "unit": "ms",
+            "extra": "p95: 32.682 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 28.783,
+            "range": "5.817999999999998",
+            "unit": "ms",
+            "extra": "p95: 34.601 ms\nsamples: 20"
           }
         ]
       }
