@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789662566036,
+  "lastUpdate": 1789696116882,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port worktree operations": [
@@ -846,6 +846,65 @@ window.BENCHMARK_DATA = {
             "range": "6.564999999999998",
             "unit": "ms",
             "extra": "p95: 274.788 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "68df271261062af482c8ea16fb776808c51e2039",
+          "message": "Reuse enter branch preflight (#177)\n\n* Reuse enter branch preflight\n\n* Refresh stale enter preflight\n\n* Limit enter preflight retries\n\n* Format enter preflight tests",
+          "timestamp": "2026-09-17T21:41:11-04:00",
+          "tree_id": "9e5a682218e45da903a4a558d35460c12fb06fba",
+          "url": "https://github.com/jdtzmn/port/commit/68df271261062af482c8ea16fb776808c51e2039"
+        },
+        "date": 1789696116862,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Worktree operations / enter existing (small)",
+            "value": 235.29,
+            "range": "9.206000000000017",
+            "unit": "ms",
+            "extra": "p95: 244.496 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter existing (large)",
+            "value": 233.53,
+            "range": "5.99199999999999",
+            "unit": "ms",
+            "extra": "p95: 239.522 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (small)",
+            "value": 285.992,
+            "range": "12.83299999999997",
+            "unit": "ms",
+            "extra": "p95: 298.825 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (large)",
+            "value": 280.764,
+            "range": "24.539999999999964",
+            "unit": "ms",
+            "extra": "p95: 305.304 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / prune dry run",
+            "value": 170.996,
+            "range": "4.405000000000001",
+            "unit": "ms",
+            "extra": "p95: 175.401 ms\nsamples: 20"
           }
         ]
       }
