@@ -88,17 +88,14 @@ export async function enter(branch: string): Promise<void> {
   } else {
     // Git refs cannot contain spaces, so existence checks must use the resolved
     // ref (e.g. "my feature" → "my-feature") rather than the raw input.
-    const { localBranch, remoteBranch } = await measureCommandPhase(
-      'enter.branch-preflight',
-      async () => {
-        const ref = await resolveBranchRef(repoRoot, branch)
-        const localBranch = await branchExists(repoRoot, ref)
-        const remoteBranch = localBranch ? false : await remoteBranchExists(repoRoot, ref)
-        return { localBranch, remoteBranch }
-      }
-    )
+    const preflight = await measureCommandPhase('enter.branch-preflight', async () => {
+      const ref = await resolveBranchRef(repoRoot, branch)
+      const localExists = await branchExists(repoRoot, ref)
+      const remoteExists = localExists ? false : await remoteBranchExists(repoRoot, ref)
+      return { ref, localExists, remoteExists }
+    })
 
-    if (!localBranch && !remoteBranch) {
+    if (!preflight.localExists && !preflight.remoteExists) {
       const similarCommand = findSimilarCommand(branch)
 
       if (similarCommand) {
@@ -153,7 +150,7 @@ export async function enter(branch: string): Promise<void> {
     output.info(`Creating worktree for branch: ${sanitized}`)
     try {
       worktreePath = await measureCommandPhase('enter.create-worktree', () =>
-        createWorktree(repoRoot, branch)
+        createWorktree(repoRoot, branch, preflight)
       )
       isNewWorktree = true
       await invalidateStaleWorktreeCache(repoRoot)

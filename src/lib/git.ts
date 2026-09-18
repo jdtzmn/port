@@ -243,8 +243,14 @@ export async function createBranch(repoRoot: string, branch: string): Promise<vo
   }
 }
 
+export interface WorktreeBranchPreflight {
+  ref: string
+  localExists: boolean
+  remoteExists: boolean
+}
+
 /**
- * Create a worktree for a branch
+ * Create a worktree for a branch.
  *
  * If the branch doesn't exist locally:
  * - Check if it exists on remote, if so track it
@@ -252,9 +258,14 @@ export async function createBranch(repoRoot: string, branch: string): Promise<vo
  *
  * @param repoRoot - The repository root path
  * @param branch - The branch name
+ * @param preflight - Existing branch checks from the caller, when available
  * @returns The path to the created worktree
  */
-export async function createWorktree(repoRoot: string, branch: string): Promise<string> {
+export async function createWorktree(
+  repoRoot: string,
+  branch: string,
+  preflight?: WorktreeBranchPreflight
+): Promise<string> {
   const git = getGit(repoRoot)
   const worktreePath = getWorktreePath(repoRoot, branch)
 
@@ -265,17 +276,19 @@ export async function createWorktree(repoRoot: string, branch: string): Promise<
   // Git refs cannot contain spaces (and other characters), so derive a valid
   // ref name. The on-disk worktree path is independently sanitized via
   // getWorktreePath, so the directory name is unaffected by this resolution.
-  const ref = await resolveBranchRef(repoRoot, branch)
+  const ref = preflight?.ref ?? (await resolveBranchRef(repoRoot, branch))
 
+  let attemptedWorktreeAdd = false
   try {
-    const localExists = await branchExists(repoRoot, ref)
+    const localExists = preflight?.localExists ?? (await branchExists(repoRoot, ref))
 
     if (localExists) {
       // Branch exists locally, create worktree for it
+      attemptedWorktreeAdd = true
       await git.raw(['worktree', 'add', worktreePath, ref])
     } else {
       // Check if branch exists on remote
-      const remoteExists = await remoteBranchExists(repoRoot, ref)
+      const remoteExists = preflight?.remoteExists ?? (await remoteBranchExists(repoRoot, ref))
 
       if (remoteExists) {
         // remoteBranchExists queries the remote directly, so the branch may not
@@ -285,15 +298,20 @@ export async function createWorktree(repoRoot: string, branch: string): Promise<
         }
 
         // Track the remote branch
+        attemptedWorktreeAdd = true
         await git.raw(['worktree', 'add', '--track', '-b', ref, worktreePath, `origin/${ref}`])
       } else {
         // Create new branch from HEAD
+        attemptedWorktreeAdd = true
         await git.raw(['worktree', 'add', '-b', ref, worktreePath])
       }
     }
 
     return worktreePath
   } catch (error) {
+    if (preflight && attemptedWorktreeAdd) {
+      return createWorktree(repoRoot, branch)
+    }
     throw new GitError(`Failed to create worktree for '${branch}': ${error}`)
   }
 }

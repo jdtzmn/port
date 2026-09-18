@@ -211,7 +211,11 @@ describe('enter typo confirmation', () => {
     await enter('instal')
 
     expect(mocks.prompt).toHaveBeenCalledTimes(1)
-    expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'instal')
+    expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'instal', {
+      ref: 'instal',
+      localExists: false,
+      remoteExists: false,
+    })
   })
 
   test('runs suggested command with forwarded flags when the user confirms', async () => {
@@ -247,7 +251,11 @@ describe('enter typo confirmation', () => {
     await enter('status')
 
     expect(mocks.prompt).not.toHaveBeenCalled()
-    expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'status')
+    expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'status', {
+      ref: 'status',
+      localExists: true,
+      remoteExists: false,
+    })
   })
 
   test('resolves spaced branch names to a valid ref for existence checks', async () => {
@@ -262,9 +270,12 @@ describe('enter typo confirmation', () => {
     expect(mocks.resolveBranchRef).toHaveBeenCalledWith('/repo', 'my feature')
     // ...and existence checks use the resolved ref, not the raw spaced name.
     expect(mocks.branchExists).toHaveBeenCalledWith('/repo', 'my-feature')
-    // createWorktree receives the raw branch (it sanitizes the dir + resolves
-    // the ref internally).
-    expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'my feature')
+    // The raw name remains the path input while the preflight avoids repeated Git lookups.
+    expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'my feature', {
+      ref: 'my-feature',
+      localExists: false,
+      remoteExists: false,
+    })
     expect(mocks.prompt).not.toHaveBeenCalled()
   })
 
@@ -308,7 +319,11 @@ describe('enter typo confirmation', () => {
       'port',
       'repo-shared'
     )
-    expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'shared')
+    expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'shared', {
+      ref: 'shared',
+      localExists: true,
+      remoteExists: false,
+    })
     // The summary names the reused directory, which differs from the branch.
     expect(mocks.success).toHaveBeenCalledWith(
       'Using existing worktree: shared-external (branch shared)'
@@ -381,7 +396,11 @@ describe('enter typo confirmation', () => {
     expect(mocks.warn).toHaveBeenCalledWith(
       'You have 25 stale port worktrees. Consider running port prune.'
     )
-    expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'new-feature')
+    expect(mocks.createWorktree).toHaveBeenCalledWith('/repo', 'new-feature', {
+      ref: 'new-feature',
+      localExists: false,
+      remoteExists: false,
+    })
   })
 })
 

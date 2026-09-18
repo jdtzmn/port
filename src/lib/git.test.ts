@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 const rawMock = vi.hoisted(() => vi.fn())
+const branchLocalMock = vi.hoisted(() => vi.fn())
 
 vi.mock('simple-git', () => ({
   default: vi.fn(() => ({
     raw: rawMock,
+    branchLocal: branchLocalMock,
   })),
 }))
 
@@ -15,12 +17,14 @@ vi.mock('./worktree.ts', () => ({
 import {
   isValidBranchRef,
   parseDuplicateWorktreeError,
+  createWorktree,
   renameWorktree,
   resolveBranchRef,
 } from './git.ts'
 
 beforeEach(() => {
   rawMock.mockReset()
+  branchLocalMock.mockReset()
 })
 
 describe('parseDuplicateWorktreeError', () => {
@@ -86,5 +90,83 @@ describe('resolveBranchRef', () => {
     rawMock.mockResolvedValueOnce('simple\n')
 
     await expect(resolveBranchRef('/repo', 'simple')).resolves.toBe('simple')
+  })
+})
+
+describe('createWorktree', () => {
+  test('uses a caller-provided preflight without repeating branch checks', async () => {
+    rawMock.mockResolvedValue(undefined)
+
+    await expect(
+      createWorktree('/repo', 'my feature', {
+        ref: 'my-feature',
+        localExists: true,
+        remoteExists: false,
+      })
+    ).resolves.toBe('/repo/.port/trees/my feature')
+
+    expect(rawMock).toHaveBeenCalledTimes(1)
+    expect(rawMock).toHaveBeenCalledWith([
+      'worktree',
+      'add',
+      '/repo/.port/trees/my feature',
+      'my-feature',
+    ])
+  })
+
+  test('refreshes a stale caller preflight after worktree creation fails', async () => {
+    rawMock
+      .mockRejectedValueOnce(new Error('stale preflight'))
+      .mockRejectedValueOnce(new Error('invalid ref'))
+      .mockResolvedValueOnce(undefined)
+    branchLocalMock.mockResolvedValue({ all: ['my-feature'] })
+
+    await expect(
+      createWorktree('/repo', 'my feature', {
+        ref: 'my-feature',
+        localExists: true,
+        remoteExists: false,
+      })
+    ).resolves.toBe('/repo/.port/trees/my feature')
+
+    expect(rawMock).toHaveBeenNthCalledWith(1, [
+      'worktree',
+      'add',
+      '/repo/.port/trees/my feature',
+      'my-feature',
+    ])
+    expect(rawMock).toHaveBeenNthCalledWith(3, [
+      'worktree',
+      'add',
+      '/repo/.port/trees/my feature',
+      'my-feature',
+    ])
+  })
+
+  test('does not retry discovery when remote branch fetching fails', async () => {
+    rawMock.mockResolvedValueOnce('').mockRejectedValueOnce(new Error('authentication failed'))
+
+    await expect(
+      createWorktree('/repo', 'feature', {
+        ref: 'feature',
+        localExists: false,
+        remoteExists: true,
+      })
+    ).rejects.toThrow(
+      "Failed to create worktree for 'feature': GitError: Failed to fetch 'feature'"
+    )
+
+    expect(rawMock).toHaveBeenCalledTimes(2)
+    expect(rawMock).toHaveBeenNthCalledWith(1, [
+      'rev-parse',
+      '--verify',
+      '--quiet',
+      'refs/remotes/origin/feature',
+    ])
+    expect(rawMock).toHaveBeenNthCalledWith(2, [
+      'fetch',
+      'origin',
+      '+refs/heads/feature:refs/remotes/origin/feature',
+    ])
   })
 })
