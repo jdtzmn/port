@@ -15,9 +15,11 @@ vi.mock('./worktree.ts', () => ({
 }))
 
 import {
+  attemptSpeculativeWorktree,
+  convertSpeculativeWorktree,
+  createWorktree,
   isValidBranchRef,
   parseDuplicateWorktreeError,
-  createWorktree,
   renameWorktree,
   resolveBranchRef,
 } from './git.ts'
@@ -93,6 +95,71 @@ describe('resolveBranchRef', () => {
   })
 })
 
+describe('speculative worktrees', () => {
+  const token = {
+    path: '/repo/.port/trees/feature',
+    ref: 'feature',
+    expectedHead: 'speculative-head',
+    gitDir: '/repo/.git/worktrees/feature',
+  }
+
+  test('captures ownership metadata after creating a speculative worktree', async () => {
+    rawMock
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce('speculative-head\n')
+      .mockResolvedValueOnce('/repo/.git/worktrees/feature\n')
+
+    await expect(attemptSpeculativeWorktree('/repo', 'feature', 'feature')).resolves.toEqual(token)
+
+    expect(rawMock).toHaveBeenNthCalledWith(1, [
+      'worktree',
+      'add',
+      '-b',
+      'feature',
+      '/repo/.port/trees/feature',
+    ])
+  })
+
+  test('converts an owned clean worktree to track the remote branch in place', async () => {
+    rawMock
+      .mockResolvedValueOnce('remote-head\n')
+      .mockResolvedValueOnce('speculative-head\n')
+      .mockResolvedValueOnce('/repo/.git/worktrees/feature\n')
+      .mockResolvedValueOnce('feature\n')
+      .mockResolvedValueOnce('')
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+
+    await expect(convertSpeculativeWorktree('/repo', token)).resolves.toBe(token.path)
+
+    expect(rawMock).toHaveBeenNthCalledWith(6, [
+      '-C',
+      token.path,
+      'reset',
+      '--hard',
+      'origin/feature',
+    ])
+    expect(rawMock).toHaveBeenNthCalledWith(7, [
+      'branch',
+      '--set-upstream-to=origin/feature',
+      'feature',
+    ])
+  })
+
+  test('refuses to convert a dirty speculative worktree', async () => {
+    rawMock
+      .mockResolvedValueOnce('remote-head\n')
+      .mockResolvedValueOnce('speculative-head\n')
+      .mockResolvedValueOnce('/repo/.git/worktrees/feature\n')
+      .mockResolvedValueOnce('feature\n')
+      .mockResolvedValueOnce('?? changed.txt\n')
+
+    await expect(convertSpeculativeWorktree('/repo', token)).rejects.toThrow(
+      'Speculative worktree is no longer clean'
+    )
+    expect(rawMock).toHaveBeenCalledTimes(5)
+  })
+})
 describe('createWorktree', () => {
   test('uses a caller-provided preflight without repeating branch checks', async () => {
     rawMock.mockResolvedValue(undefined)

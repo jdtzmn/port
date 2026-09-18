@@ -243,6 +243,85 @@ export async function createBranch(repoRoot: string, branch: string): Promise<vo
   }
 }
 
+export interface SpeculativeWorktree {
+  path: string
+  ref: string
+  expectedHead: string
+  gitDir: string
+}
+
+/** Create a local worktree whose ownership can be verified before conversion. */
+export async function attemptSpeculativeWorktree(
+  repoRoot: string,
+  branch: string,
+  ref: string
+): Promise<SpeculativeWorktree> {
+  const git = getGit(repoRoot)
+  const path = getWorktreePath(repoRoot, branch)
+
+  if (existsSync(path)) {
+    throw new GitError(`Worktree already exists at ${path}`)
+  }
+
+  try {
+    await git.raw(['worktree', 'add', '-b', ref, path])
+    const [expectedHead, gitDir] = await Promise.all([
+      git.raw(['-C', path, 'rev-parse', 'HEAD']),
+      git.raw(['-C', path, 'rev-parse', '--absolute-git-dir']),
+    ])
+
+    return {
+      path,
+      ref,
+      expectedHead: expectedHead.trim(),
+      gitDir: gitDir.trim(),
+    }
+  } catch (error) {
+    throw new GitError(`Failed to create speculative worktree for '${ref}': ${error}`)
+  }
+}
+
+/** Convert an owned, clean speculative worktree to track its remote branch. */
+export async function convertSpeculativeWorktree(
+  repoRoot: string,
+  worktree: SpeculativeWorktree,
+  remote: string = 'origin'
+): Promise<string> {
+  const git = getGit(repoRoot)
+
+  if (!(await remoteTrackingRefExists(repoRoot, worktree.ref, remote))) {
+    await fetchRemoteBranch(repoRoot, worktree.ref, remote)
+  }
+
+  try {
+    const [head, gitDir, branch, status] = await Promise.all([
+      git.raw(['-C', worktree.path, 'rev-parse', 'HEAD']),
+      git.raw(['-C', worktree.path, 'rev-parse', '--absolute-git-dir']),
+      git.raw(['-C', worktree.path, 'rev-parse', '--abbrev-ref', 'HEAD']),
+      git.raw(['-C', worktree.path, 'status', '--porcelain']),
+    ])
+
+    if (head.trim() !== worktree.expectedHead) {
+      throw new GitError('Speculative worktree HEAD changed before remote conversion')
+    }
+    if (gitDir.trim() !== worktree.gitDir) {
+      throw new GitError('Speculative worktree identity changed before remote conversion')
+    }
+    if (branch.trim() !== worktree.ref) {
+      throw new GitError('Speculative worktree branch changed before remote conversion')
+    }
+    if (status.trim()) {
+      throw new GitError('Speculative worktree is no longer clean')
+    }
+
+    await git.raw(['-C', worktree.path, 'reset', '--hard', `${remote}/${worktree.ref}`])
+    await git.raw(['branch', `--set-upstream-to=${remote}/${worktree.ref}`, worktree.ref])
+    return worktree.path
+  } catch (error) {
+    throw new GitError(`Failed to convert speculative worktree '${worktree.ref}': ${error}`)
+  }
+}
+
 export interface WorktreeBranchPreflight {
   ref: string
   localExists: boolean
