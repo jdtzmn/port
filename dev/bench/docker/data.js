@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789697703134,
+  "lastUpdate": 1789768129303,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port Docker operations": [
@@ -894,6 +894,72 @@ window.BENCHMARK_DATA = {
             "range": "14.215000000000146",
             "unit": "ms",
             "extra": "p95: 10833.617 ms\nsamples: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "431e236a808015942fec58741f76b224a66fafff",
+          "message": "Overlap remote lookup with worktree creation (#179)\n\n* Add speculative worktree helpers\n\n* Overlap enter remote lookup with worktree creation\n\n* Guard speculative enter conversion\n\n* Recover interrupted speculative worktrees\n\n* Ignore empty speculative markers\n\n* Test empty speculative marker recovery\n\n* Store speculative markers in git directories",
+          "timestamp": "2026-09-18T17:41:26-04:00",
+          "tree_id": "e8d04d65ccaee9276017dddc2c7bdf71e5e31446",
+          "url": "https://github.com/jdtzmn/port/commit/431e236a808015942fec58741f76b224a66fafff"
+        },
+        "date": 1789768129271,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Docker operations / status (small)",
+            "value": 324.231,
+            "range": "10.16500000000002",
+            "unit": "ms",
+            "extra": "p95: 334.396 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / status (large)",
+            "value": 2436.869,
+            "range": "70.73399999999992",
+            "unit": "ms",
+            "extra": "p95: 2507.603 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / up (warm)",
+            "value": 767.922,
+            "range": "5.673999999999978",
+            "unit": "ms",
+            "extra": "p95: 773.596 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / down",
+            "value": 10622.885,
+            "range": "24.050999999999476",
+            "unit": "ms",
+            "extra": "p95: 10646.936 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / remove (inactive services)",
+            "value": 435.055,
+            "range": "18.76400000000001",
+            "unit": "ms",
+            "extra": "p95: 453.819 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / remove (running services)",
+            "value": 10829.219,
+            "range": "3.894000000000233",
+            "unit": "ms",
+            "extra": "p95: 10833.113 ms\nsamples: 10"
           }
         ]
       }
