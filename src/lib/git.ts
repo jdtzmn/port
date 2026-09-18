@@ -353,6 +353,10 @@ export async function recoverSpeculativeWorktree(
     return null
   }
 
+  if (!marker.trim()) {
+    return null
+  }
+
   let worktree: SpeculativeWorktree
   try {
     worktree = JSON.parse(marker) as SpeculativeWorktree
