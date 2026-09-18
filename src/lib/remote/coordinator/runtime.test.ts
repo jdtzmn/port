@@ -16,6 +16,7 @@ let broken: boolean
 let snapshot: RemoteSnapshot
 type ObserveSession = NonNullable<Parameters<typeof startRemoteRuntime>[0]['observeSession']>
 let observeSession: ObserveSession | undefined
+let cleanupSession: ((directory: string) => Promise<void>) | undefined
 beforeEach(async () => {
   root = await realpath(await mkdtemp('/tmp/port-runtime-'))
   dynamicDirectory = join(root, 'dynamic')
@@ -48,6 +49,7 @@ beforeEach(async () => {
   }
   broken = false
   observeSession = undefined
+  cleanupSession = undefined
 })
 afterEach(async () => {
   await runtime?.close()
@@ -69,6 +71,7 @@ async function start(validateSession: (directory: string) => boolean = () => tru
       targetAddress: '127.0.0.1',
     }),
     observeSession,
+    cleanupSession,
     validateSession,
   })
   if (!runtime) throw new Error('runtime missing')
@@ -200,6 +203,21 @@ describe('connected coordinator runtime', () => {
     release()
     await closing
     expect(closed).toBe(true)
+  })
+
+  it('cleans managed state after natural observation settlement', async () => {
+    observeSession = vi.fn().mockResolvedValue(undefined)
+    cleanupSession = vi.fn().mockResolvedValue(undefined)
+    await start()
+    const directory = `/tmp/port-ssh-${'a'.repeat(40)}`
+    const result = await requestRemoteCoordinator(join(root, 'control'), {
+      version: 1,
+      action: 'observe',
+      incarnation: runtime!.incarnation,
+      directory,
+    })
+    expect(result?.status).toBe('ok')
+    await vi.waitFor(() => expect(cleanupSession).toHaveBeenCalledExactlyOnceWith(directory))
   })
   it('owns deduplicated observations beyond the admitting control request', async () => {
     let release!: () => void

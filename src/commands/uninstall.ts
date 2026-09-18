@@ -310,7 +310,21 @@ export async function uninstall(options?: {
   yes?: boolean
   domain?: string
   shellHook?: boolean
+  remoteServices?: boolean
 }): Promise<void> {
+  if (options?.remoteServices) {
+    try {
+      await (await import('../lib/remote/session/sshConfig.ts')).removeManagedSshConfig()
+      await (await import('../lib/remote/coordinator/supervisor.ts')).disableRemoteRuntime()
+    } catch (error) {
+      output.error(`Could not remove managed remote SSH configuration: ${error}`)
+      process.exitCode = 1
+      return
+    }
+    if (options.shellHook !== false) await removeShellHookFromProfile(options)
+    output.success('Remote SSH services disabled.')
+    return
+  }
   const domain = await resolveUninstallDomain(options?.domain)
 
   // First check if DNS is configured

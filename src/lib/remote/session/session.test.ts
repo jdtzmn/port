@@ -34,6 +34,16 @@ const execute = vi.mocked(execFile)
 const safeConfig =
   'hostname example.com\nport 22\nuser Alice\ncontrolmaster false\ncontrolpersist no\nsessiontype default\nstdinnull no\nforkafterauthentication no\nrequesttty auto\n'
 const directories: string[] = []
+const managedConnectionId = 'a'.repeat(40)
+const managedConfig = `${safeConfig
+  .replace('controlmaster false', 'controlmaster auto')
+  .replace(
+    'controlpersist no',
+    'controlpersist 3'
+  )}controlpath /tmp/port-control-${managedConnectionId}
+permitlocalcommand yes
+localcommand port __remote-register %C
+`
 const servers: Server[] = []
 
 function respond(output: string, error: Error | null = null): void {
@@ -322,6 +332,17 @@ describe('remote session preflight', () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
+  test('managed-only preflight never creates legacy wrapper state', async () => {
+    respond(safeConfig)
+    expect(await prepareRemoteSession(['host'], true)).toBeNull()
+    expect(execute).toHaveBeenCalledOnce()
+  })
+
+  test('default preflight leaves legacy remote commands untouched', async () => {
+    expect(await prepareRemoteSession(['host', 'printf ready'])).toBeNull()
+    expect(execute).not.toHaveBeenCalled()
+  })
+
   test.each([
     '',
     'garbage',
@@ -366,6 +387,28 @@ describe('remote session preflight', () => {
         user: 'Alice',
       }),
     })
+  })
+
+  test('prepares deterministic metadata for the exact managed ControlPath', async () => {
+    respond(managedConfig)
+    const directory = await prepareRemoteSession(['devbox.od', 'printf ready'], true)
+    expect(directory).toBe(`/tmp/port-ssh-${managedConnectionId}`)
+    directories.push(directory!)
+    expect(lstatSync(directory!).mode & 0o777).toBe(0o700)
+    expect(JSON.parse(readFileSync(`${directory}/metadata.json`, 'utf8'))).toEqual({
+      version: 3,
+      lifecycle: 'openssh-managed',
+      connectionId: managedConnectionId,
+      destination: 'devbox.od',
+      connectionIdentity: expect.objectContaining({
+        hostname: 'example.com',
+        port: 22,
+        user: 'Alice',
+      }),
+    })
+
+    respond(managedConfig)
+    expect(await prepareRemoteSession(['devbox.od', 'printf ready'], true)).toBe(directory)
   })
 })
 
@@ -555,6 +598,32 @@ async function startObserver(directory: string) {
 }
 
 describe('live private snapshot cache', () => {
+  test('leaves managed masters an idle gap longer than finite persistence', async () => {
+    respond(managedConfig)
+    const directory = (await prepareRemoteSession(['devbox.od']))!
+    directories.push(directory)
+    const server = createServer()
+    servers.push(server)
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(`/tmp/port-control-${managedConnectionId}`, resolve)
+    })
+    execute.mockClear()
+    vi.useFakeTimers()
+    respond('')
+    respond(JSON.stringify(remoteHandshake()))
+    respond(JSON.stringify(snapshot(0)))
+    const controller = new AbortController()
+    const pending = observeRemoteSession(directory, controller.signal)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(execute).toHaveBeenCalledTimes(3)
+    expect(execute.mock.calls[0]?.[1]).toContain(`/tmp/port-control-${managedConnectionId}`)
+    await vi.advanceTimersByTimeAsync(4_999)
+    expect(execute).toHaveBeenCalledTimes(3)
+    controller.abort()
+    await pending
+  })
+
   test('re-observes a live session with an existing valid handshake', async () => {
     const directory = await withSocket()
     const first = await startObserver(directory)
@@ -808,6 +877,29 @@ describe('local state and cleanup safety', () => {
     expect(execute).toHaveBeenCalledTimes(1)
     expect(execute.mock.calls[0]![1]!.slice(-3)).toEqual(['-O', 'exit', 'dummy'])
     expect(execute.mock.calls[0]![1]).toContain('ProxyCommand=false')
+    expect(existsSync(directory)).toBe(false)
+  })
+
+  test('never terminates a managed master and removes state only after its socket disappears', async () => {
+    respond(managedConfig)
+    const directory = (await prepareRemoteSession(['devbox.od']))!
+    directories.push(directory)
+    const server = createServer()
+    servers.push(server)
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(`/tmp/port-control-${managedConnectionId}`, resolve)
+    })
+
+    execute.mockClear()
+    respond('')
+    await cleanupRemoteSession(directory)
+    expect(execute).not.toHaveBeenCalled()
+    expect(existsSync(directory)).toBe(true)
+
+    await new Promise<void>(resolve => server.close(() => resolve()))
+    await cleanupRemoteSession(directory)
+    expect(execute).not.toHaveBeenCalled()
     expect(existsSync(directory)).toBe(false)
   })
 

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { constants } from 'node:fs'
-import { lstat, mkdir, open } from 'node:fs/promises'
+import { lstat, mkdir, open, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { GLOBAL_PORT_DIR } from '../../registry.ts'
@@ -65,11 +65,35 @@ export async function enableRemoteRuntime(): Promise<void> {
   }
 }
 
+export async function disableRemoteRuntime(): Promise<boolean> {
+  if (!(await remoteRuntimeEnabled())) return false
+  const { root, controlRoot } = await getRemoteRuntimePaths()
+  try {
+    await unlink(join(root, 'enabled.json'))
+    try {
+      const ping = await requestRemoteCoordinator(controlRoot, { version: 1, action: 'ping' })
+      if (ping?.status === 'ok')
+        await requestRemoteCoordinator(controlRoot, {
+          version: 1,
+          action: 'shutdown',
+          incarnation: ping.incarnation,
+        })
+    } catch {
+      /* The marker is authoritative; an unavailable worker has nothing left to stop. */
+    }
+    return true
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw error
+  }
+}
+
 let launchedAt = -Infinity
 const LAUNCH_INTERVAL = 10_000
 const WATCH_INTERVAL = 2_000
 const RETRY_INTERVAL = 250
 const STOP_DEADLINE = 10_000
+const REGISTER_DEADLINE = 5_000
 
 function launchRemoteSupervisor(): void {
   if (performance.now() - launchedAt < LAUNCH_INTERVAL) return
@@ -141,6 +165,37 @@ const observationOperations: RemoteObservationOperations = {
   endpointExists: coordinatorEndpointExists,
   pause,
   now: () => performance.now(),
+}
+
+/** Bounded one-shot admission used by OpenSSH LocalCommand. */
+export async function registerRemoteRuntimeObservation(
+  directory: string,
+  overrides: Partial<RemoteObservationOperations> = {}
+): Promise<boolean> {
+  const operations = { ...observationOperations, ...overrides }
+  try {
+    const { controlRoot } = await operations.paths()
+    const deadline = operations.now() + REGISTER_DEADLINE
+    while (operations.now() < deadline) {
+      const ping = await operations.request(controlRoot, { version: 1, action: 'ping' })
+      if (!ping || ping.status !== 'ok') {
+        await operations.launch()
+        await operations.pause(RETRY_INTERVAL)
+        continue
+      }
+      const result = await operations.request(controlRoot, {
+        version: 1,
+        action: 'observe',
+        incarnation: ping.incarnation,
+        directory,
+      })
+      if (result?.status === 'ok') return true
+      await operations.pause(RETRY_INTERVAL)
+    }
+  } catch {
+    /* Optional integration failure never changes SSH behavior. */
+  }
+  return false
 }
 
 /** Session-lived watchdog that re-admits observation after coordinator replacement. */
