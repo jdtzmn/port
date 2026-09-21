@@ -29,6 +29,7 @@ import { existsSync } from 'fs'
 import { basename, join } from 'path'
 import inquirer from 'inquirer'
 import * as output from '../lib/output.ts'
+import { withProgress } from '../lib/progress.ts'
 import { findSimilarCommand } from '../lib/commands.ts'
 import { buildEnterCommands, getEvalContext, writeEvalFile } from '../lib/shell.ts'
 import {
@@ -184,20 +185,25 @@ async function enterInRepo(repoRoot: string, branch: string): Promise<void> {
       // Opportunistic warning only; never block worktree creation.
     }
 
-    output.info(`Creating worktree for branch: ${sanitized}`)
     try {
-      worktreePath = speculativeWorktree
-        ? preflight.remoteExists
-          ? await measureCommandPhase('enter.speculative-worktree-convert', () =>
-              convertSpeculativeWorktree(repoRoot, speculativeWorktree)
-            )
-          : await finalizeSpeculativeWorktree(repoRoot, speculativeWorktree)
-        : await measureCommandPhase('enter.create-worktree', () =>
-            createWorktree(repoRoot, branch, preflight)
-          )
+      worktreePath = await withProgress(
+        {
+          text: `Creating worktree for branch: ${sanitized}`,
+          successText: `Created worktree: ${sanitized}`,
+        },
+        async () =>
+          speculativeWorktree
+            ? preflight.remoteExists
+              ? measureCommandPhase('enter.speculative-worktree-convert', () =>
+                  convertSpeculativeWorktree(repoRoot, speculativeWorktree)
+                )
+              : finalizeSpeculativeWorktree(repoRoot, speculativeWorktree)
+            : measureCommandPhase('enter.create-worktree', () =>
+                createWorktree(repoRoot, branch, preflight)
+              )
+      )
       isNewWorktree = true
       await invalidateStaleWorktreeCache(repoRoot)
-      output.success(`Created worktree: ${sanitized}`)
     } catch (error) {
       const duplicateWorktree = parseDuplicateWorktreeError(error)
 

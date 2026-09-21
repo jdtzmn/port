@@ -1,18 +1,19 @@
 import inquirer from 'inquirer'
 import { detectWorktree } from '../lib/worktree.ts'
 import { loadConfigOrDefault, getComposeFile, ensurePortRuntimeDir } from '../lib/config.ts'
-import { getDefaultBranch, fetchAndPrune } from '../lib/git.ts'
+import { fetchAndPrune } from '../lib/git.ts'
 import { removeWorktreeAndCleanup, stopWorktreeServices } from '../lib/removal.ts'
 import { failWithError } from '../lib/cli.ts'
 import { buildProjectName as getProjectName } from '../lib/projectName.ts'
 import { cleanupDockerResources, scanDockerResourcesForProject } from '../lib/docker-cleanup.ts'
 import {
-  getStaleWorktreeCandidates,
+  getStaleWorktreeCandidatesWithStatus,
   invalidateStaleWorktreeCache,
   type StaleWorktreeCandidate,
 } from '../lib/staleWorktrees.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
+import { withProgress } from '../lib/progress.ts'
 import { exit } from './exit.ts'
 import { measureCommandPhase } from '../lib/commandProfile.ts'
 
@@ -113,19 +114,39 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
 
   // 1. Fetch and prune remote refs
   if (!options.noFetch) {
-    output.info('Fetching remote state...')
-    await measureCommandPhase('prune.fetch', () => fetchAndPrune(repoRoot))
+    const fetched = await withProgress(
+      {
+        text: 'Fetching remote state...',
+        successText: 'Fetched remote state',
+        failureText: 'Unable to fetch remote state',
+        isSuccess: result => result,
+      },
+      () => measureCommandPhase('prune.fetch', () => fetchAndPrune(repoRoot))
+    )
+    if (!fetched) output.warn('Remote fetch failed; using local refs.')
   }
 
-  output.info('Detecting merged worktrees...')
-
-  // 2. Determine the base branch
-  const baseBranch =
-    options.base ??
-    (await measureCommandPhase('prune.base-branch', () => getDefaultBranch(repoRoot)))
-  const candidates = await measureCommandPhase('prune.candidate-discovery', () =>
-    getStaleWorktreeCandidates(repoRoot, { baseBranch, fresh: true })
+  // 2. Determine the base branch and find candidates.
+  const discovery = await withProgress(
+    {
+      text: 'Detecting merged worktrees...',
+      successText: 'Finished detecting merged worktrees',
+      failureText: 'Could not determine merged worktrees',
+      isSuccess: result => !result.degraded,
+    },
+    () =>
+      measureCommandPhase('prune.candidate-discovery', () =>
+        getStaleWorktreeCandidatesWithStatus(repoRoot, {
+          baseBranch: options.base,
+          fresh: true,
+        })
+      )
   )
+  if (discovery.degraded) {
+    output.warn('Could not determine stale worktrees; no changes made.')
+    return
+  }
+  const candidates = discovery.candidates
 
   if (candidates.length === 0) {
     output.success('No merged worktrees found. Everything is clean.')
