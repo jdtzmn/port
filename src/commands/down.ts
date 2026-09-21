@@ -61,9 +61,8 @@ async function stopTraefikGlobally(options?: { yes?: boolean }): Promise<void> {
 
   if (shouldStopTraefik) {
     try {
-      await withProgress(
-        { text: 'Stopping Traefik...', successText: 'Traefik stopped' },
-        () => stopTraefik()
+      await withProgress({ text: 'Stopping Traefik...', successText: 'Traefik stopped' }, () =>
+        stopTraefik()
       )
     } catch (error) {
       output.warn(`Failed to stop Traefik: ${error}`)

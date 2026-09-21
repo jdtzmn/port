@@ -31,9 +31,9 @@ describe('withProgress', () => {
   })
 
   test('shows and completes a spinner on stderr for TTY output', async () => {
-    await expect(withProgress({ text: 'Starting', successText: 'Started' }, async () => 'done')).resolves.toBe(
-      'done'
-    )
+    await expect(
+      withProgress({ text: 'Starting', successText: 'Started' }, async () => 'done')
+    ).resolves.toBe('done')
 
     expect(mocks.ora).toHaveBeenCalledWith({
       text: 'Starting',
@@ -72,9 +72,9 @@ describe('withProgress', () => {
   test('stops the spinner and preserves the original error', async () => {
     const failure = new Error('unable to start')
 
-    await expect(withProgress({ text: 'Starting' }, async () => Promise.reject(failure))).rejects.toBe(
-      failure
-    )
+    await expect(
+      withProgress({ text: 'Starting' }, async () => Promise.reject(failure))
+    ).rejects.toBe(failure)
 
     expect(mocks.spinner.start).toHaveBeenCalledOnce()
     expect(mocks.spinner.stop).toHaveBeenCalledOnce()

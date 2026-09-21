@@ -77,9 +77,8 @@ export async function compose(args: string[]): Promise<void> {
   try {
     if (!(await composeLib.isTraefikRunning())) {
       await traefikLib.ensureTraefikPorts(composeLib.getAllPorts(parsedCompose))
-      await withProgress(
-        { text: 'Starting Traefik...', successText: 'Traefik started' },
-        () => composeLib.startTraefik()
+      await withProgress({ text: 'Starting Traefik...', successText: 'Traefik started' }, () =>
+        composeLib.startTraefik()
       )
     }
   } catch (error) {

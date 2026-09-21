@@ -138,9 +138,8 @@ export async function up(requestedServices: string[] = []): Promise<void> {
 
   if (!traefikRunning) {
     try {
-      await withProgress(
-        { text: 'Starting Traefik...', successText: 'Traefik started' },
-        () => measureCommandPhase('up.traefik-start', () => startTraefik())
+      await withProgress({ text: 'Starting Traefik...', successText: 'Traefik started' }, () =>
+        measureCommandPhase('up.traefik-start', () => startTraefik())
       )
     } catch (error) {
       output.error(`Failed to start Traefik: ${error}`)

@@ -155,9 +155,8 @@ export async function run(
   const traefikRunning = await isTraefikRunning()
   if (!traefikRunning) {
     try {
-      await withProgress(
-        { text: 'Starting Traefik...', successText: 'Traefik started' },
-        () => startTraefik()
+      await withProgress({ text: 'Starting Traefik...', successText: 'Traefik started' }, () =>
+        startTraefik()
       )
     } catch (error) {
       output.error(`Failed to start Traefik: ${error}`)
