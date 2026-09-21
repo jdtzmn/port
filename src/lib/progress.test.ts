@@ -57,6 +57,18 @@ describe('withProgress', () => {
     })
   })
 
+  test('disables animation in CI', async () => {
+    process.env.CI = 'true'
+
+    await withProgress({ text: 'Starting' }, async () => undefined)
+
+    expect(mocks.ora).toHaveBeenCalledWith({
+      text: 'Starting',
+      stream: process.stderr,
+      isEnabled: false,
+    })
+  })
+
   test('stops the spinner and preserves the original error', async () => {
     const failure = new Error('unable to start')
 

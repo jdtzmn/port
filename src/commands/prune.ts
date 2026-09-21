@@ -13,6 +13,7 @@ import {
 } from '../lib/staleWorktrees.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
+import { withProgress } from '../lib/progress.ts'
 import { exit } from './exit.ts'
 import { measureCommandPhase } from '../lib/commandProfile.ts'
 
@@ -113,18 +114,23 @@ export async function prune(options: PruneOptions = {}): Promise<void> {
 
   // 1. Fetch and prune remote refs
   if (!options.noFetch) {
-    output.info('Fetching remote state...')
-    await measureCommandPhase('prune.fetch', () => fetchAndPrune(repoRoot))
+    await withProgress(
+      { text: 'Fetching remote state...', successText: 'Fetched remote state' },
+      () => measureCommandPhase('prune.fetch', () => fetchAndPrune(repoRoot))
+    )
   }
 
-  output.info('Detecting merged worktrees...')
-
-  // 2. Determine the base branch
-  const baseBranch =
-    options.base ??
-    (await measureCommandPhase('prune.base-branch', () => getDefaultBranch(repoRoot)))
-  const candidates = await measureCommandPhase('prune.candidate-discovery', () =>
-    getStaleWorktreeCandidates(repoRoot, { baseBranch, fresh: true })
+  // 2. Determine the base branch and find candidates.
+  const candidates = await withProgress(
+    { text: 'Detecting merged worktrees...', successText: 'Finished detecting merged worktrees' },
+    async () => {
+      const baseBranch =
+        options.base ??
+        (await measureCommandPhase('prune.base-branch', () => getDefaultBranch(repoRoot)))
+      return measureCommandPhase('prune.candidate-discovery', () =>
+        getStaleWorktreeCandidates(repoRoot, { baseBranch, fresh: true })
+      )
+    }
   )
 
   if (candidates.length === 0) {
