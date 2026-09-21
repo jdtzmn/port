@@ -106,7 +106,7 @@ describe('prune command', () => {
     mocks.loadConfigOrDefault.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
     mocks.getComposeFile.mockReturnValue('docker-compose.yml')
 
-    mocks.fetchAndPrune.mockResolvedValue(undefined)
+    mocks.fetchAndPrune.mockResolvedValue(true)
     mocks.getDefaultBranch.mockResolvedValue('main')
     mocks.listWorktrees.mockResolvedValue([
       { path: '/repo', branch: 'main', isMain: true },
@@ -219,6 +219,25 @@ describe('prune command', () => {
     expect(mocks.removeWorktreeAndCleanup).not.toHaveBeenCalled()
   })
 
+  test('warns and continues with local refs when fetching fails', async () => {
+    mocks.fetchAndPrune.mockResolvedValue(false)
+
+    await prune({ dryRun: true })
+
+    expect(mocks.warn).toHaveBeenCalledWith('Remote fetch failed; using local refs.')
+  })
+
+  test('warns without claiming a clean state when candidate discovery fails', async () => {
+    mocks.getDefaultBranch.mockRejectedValue(new Error('git unavailable'))
+
+    await prune({ force: true, noFetch: true })
+
+    expect(mocks.warn).toHaveBeenCalledWith('Could not determine stale worktrees; no changes made.')
+    expect(mocks.success).not.toHaveBeenCalledWith(
+      'No merged worktrees found. Everything is clean.'
+    )
+    expect(mocks.removeWorktreeAndCleanup).not.toHaveBeenCalled()
+  })
   describe('docker cleanup integration', () => {
     test('runs low-risk cleanup by default for each pruned worktree', async () => {
       mocks.cleanupDockerResources.mockResolvedValue({

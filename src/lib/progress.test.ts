@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   spinner: {
     start: vi.fn(),
     succeed: vi.fn(),
+    warn: vi.fn(),
     stop: vi.fn(),
   },
 }))
@@ -15,6 +16,7 @@ import { withProgress } from './progress.ts'
 
 describe('withProgress', () => {
   const originalIsTTY = process.stderr.isTTY
+  const originalColumns = process.stderr.columns
   const originalCI = process.env.CI
 
   beforeEach(() => {
@@ -22,15 +24,17 @@ describe('withProgress', () => {
     mocks.ora.mockReturnValue(mocks.spinner)
     delete process.env.CI
     Object.defineProperty(process.stderr, 'isTTY', { value: true, configurable: true })
+    Object.defineProperty(process.stderr, 'columns', { value: 80, configurable: true })
   })
 
   afterEach(() => {
     if (originalCI === undefined) delete process.env.CI
     else process.env.CI = originalCI
     Object.defineProperty(process.stderr, 'isTTY', { value: originalIsTTY, configurable: true })
+    Object.defineProperty(process.stderr, 'columns', { value: originalColumns, configurable: true })
   })
 
-  test('shows and completes a spinner on stderr for TTY output', async () => {
+  test('shows and completes a spinner on stderr for usable TTY output', async () => {
     await expect(
       withProgress({ text: 'Starting', successText: 'Started' }, async () => 'done')
     ).resolves.toBe('done')
@@ -57,6 +61,18 @@ describe('withProgress', () => {
     })
   })
 
+  test('disables animation for a zero-width pseudo-TTY', async () => {
+    Object.defineProperty(process.stderr, 'columns', { value: 0, configurable: true })
+
+    await withProgress({ text: 'Starting' }, async () => undefined)
+
+    expect(mocks.ora).toHaveBeenCalledWith({
+      text: 'Starting',
+      stream: process.stderr,
+      isEnabled: false,
+    })
+  })
+
   test('disables animation in CI', async () => {
     process.env.CI = 'true'
 
@@ -67,6 +83,20 @@ describe('withProgress', () => {
       stream: process.stderr,
       isEnabled: false,
     })
+  })
+
+  test('uses a warning result for a degraded operation', async () => {
+    await withProgress(
+      {
+        text: 'Fetching',
+        failureText: 'Fetch unavailable',
+        isSuccess: result => result,
+      },
+      async () => false
+    )
+
+    expect(mocks.spinner.warn).toHaveBeenCalledWith('Fetch unavailable')
+    expect(mocks.spinner.succeed).not.toHaveBeenCalled()
   })
 
   test('stops the spinner and preserves the original error', async () => {

@@ -10,6 +10,7 @@ import { invalidateStaleWorktreeCache } from '../lib/staleWorktrees.ts'
 import { removeWorktreeAndCleanup } from '../lib/removal.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
 import * as output from '../lib/output.ts'
+import { withProgress } from '../lib/progress.ts'
 import { failWithError } from '../lib/cli.ts'
 import { exit } from './exit.ts'
 import { cleanupDockerResources, scanDockerResourcesForProject } from '../lib/docker-cleanup.ts'
@@ -232,10 +233,10 @@ export async function remove(
     ])
 
     if (stopTraefikConfirm) {
-      output.info('Stopping Traefik...')
       try {
-        await stopTraefik()
-        output.success('Traefik stopped')
+        await withProgress({ text: 'Stopping Traefik...', successText: 'Traefik stopped' }, () =>
+          stopTraefik()
+        )
       } catch (error) {
         output.warn(`Failed to stop Traefik: ${error}`)
       }

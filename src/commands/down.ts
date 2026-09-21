@@ -217,6 +217,7 @@ export async function down(
     }
 
     if (shouldStopHostServices) {
+      let stoppedHostServiceCount = 0
       for (const svc of hostServices) {
         try {
           await withProgress(
@@ -226,11 +227,14 @@ export async function down(
             },
             () => stopHostService(svc)
           )
+          stoppedHostServiceCount += 1
         } catch (error) {
           output.warn(`Failed to stop host service on port ${svc.logicalPort}: ${error}`)
         }
       }
-      output.success(`Stopped ${hostServices.length} host service(s)`)
+      if (stoppedHostServiceCount > 0) {
+        output.success(`Stopped ${stoppedHostServiceCount} host service(s)`)
+      }
     }
   }
 
@@ -255,10 +259,10 @@ export async function down(
     }
 
     if (shouldStopTraefik) {
-      output.info('Stopping Traefik...')
       try {
-        await stopTraefik()
-        output.success('Traefik stopped')
+        await withProgress({ text: 'Stopping Traefik...', successText: 'Traefik stopped' }, () =>
+          stopTraefik()
+        )
       } catch (error) {
         output.warn(`Failed to stop Traefik: ${error}`)
       }

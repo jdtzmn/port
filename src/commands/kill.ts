@@ -46,12 +46,13 @@ export async function kill(portArg?: string): Promise<void> {
         {
           text: `Stopping host service on port ${service.logicalPort}...`,
           successText: `Stopped host service on port ${service.logicalPort}`,
+          failureText: `Force killed host service on port ${service.logicalPort}`,
+          isSuccess: result => result !== 'sigkill',
         },
         () => stopHostService(service)
       )
       if (result === 'sigkill') {
         forcedCount += 1
-        output.warn(`Force killed host service on port ${service.logicalPort}`)
       }
     } catch (error) {
       failedCount += 1
