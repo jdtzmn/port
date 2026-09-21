@@ -31,6 +31,7 @@ import { checkDns } from '../lib/dns.ts'
 import { hookExists, runPostUpHook } from '../lib/hooks.ts'
 import * as output from '../lib/output.ts'
 import { measureCommandPhase } from '../lib/commandProfile.ts'
+import { withProgress } from '../lib/progress.ts'
 
 /**
  * Start docker-compose services in the current worktree
@@ -136,10 +137,11 @@ export async function up(requestedServices: string[] = []): Promise<void> {
   const traefikRunning = await measureCommandPhase('up.traefik-status', () => isTraefikRunning())
 
   if (!traefikRunning) {
-    output.info('Starting Traefik...')
     try {
-      await measureCommandPhase('up.traefik-start', () => startTraefik())
-      output.success('Traefik started')
+      await withProgress(
+        { text: 'Starting Traefik...', successText: 'Traefik started' },
+        () => measureCommandPhase('up.traefik-start', () => startTraefik())
+      )
     } catch (error) {
       output.error(`Failed to start Traefik: ${error}`)
       process.exit(1)
@@ -148,10 +150,14 @@ export async function up(requestedServices: string[] = []): Promise<void> {
     // Restart Traefik if config was updated or the running container
     // is missing required port bindings (can happen when a parallel
     // process recreated the container from a stale compose file).
-    output.info('Restarting Traefik with new configuration...')
     try {
-      await measureCommandPhase('up.traefik-restart', () => restartTraefik())
-      output.success('Traefik restarted')
+      await withProgress(
+        {
+          text: 'Restarting Traefik with new configuration...',
+          successText: 'Traefik restarted',
+        },
+        () => measureCommandPhase('up.traefik-restart', () => restartTraefik())
+      )
     } catch (error) {
       output.warn(`Failed to restart Traefik: ${error}`)
     }
