@@ -69,6 +69,7 @@
     "fastest-levenshtein": "^1.0.16",
     "inquirer": "^9.2.0",
     "jsonc-parser": "^3.2.0",
+    "ora": "^9.4.1",
     "react": "^19.0.0",
     "simple-git": "^3.20.0",
     "yaml": "^2.3.0"
