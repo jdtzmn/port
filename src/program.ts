@@ -7,6 +7,10 @@ import { shouldAutoRegisterWorktree, shouldSkipEarlyWork } from './lib/earlyWork
 import { handleCliError } from './lib/cli.ts'
 import { finishCommandProfile, measureCommandPhase } from './lib/commandProfile.ts'
 
+function collectOption(value: string, previous: string[] = []): string[] {
+  return [...previous, value]
+}
+
 export const program = new Command()
 program.enablePositionalOptions()
 
@@ -100,6 +104,12 @@ program
   .option('--no-shell-hook', 'Skip adding the shell hook to your shell profile')
   .option('--shell-hook-only', 'Only add the shell hook, skipping DNS setup')
   .option('--remote-services', 'Enable local routing for ordinary Bash SSH sessions')
+  .option(
+    '--remote-host <pattern>',
+    'Apply managed SSH activation to an explicit host or wildcard (repeatable)',
+    collectOption,
+    []
+  )
   .action(async (...args) => {
     await (await import('./commands/install.ts')).install(...args)
   })
@@ -215,6 +225,7 @@ program
   .option('-y, --yes', 'Skip confirmation prompt')
   .option('--domain <domain>', 'Domain suffix to remove (default: config domain or port)')
   .option('--no-shell-hook', 'Leave the shell hook in your shell profile')
+  .option('--remote-services', 'Remove managed SSH activation and remote runtime opt-in')
   .action(async (...args) => {
     await (await import('./commands/uninstall.ts')).uninstall(...args)
   })

@@ -28,9 +28,12 @@ function isReviewedConfigOption(value: string): boolean {
 /**
  * Classify argv only; null means ordinary, unchanged SSH fallback, not an error.
  * Never rebuild foreground argv from this result or interpret values as shell text.
- * Eligibility also requires effective-config validation and a real TTY at the caller.
+ * Eligibility also requires effective-config validation by the caller.
  */
-export function classifySshInvocation(args: readonly string[]): { destination: string } | null {
+export function classifySshInvocation(
+  args: readonly string[],
+  allowRemoteCommand = false
+): { destination: string } | null {
   // eslint-disable-next-line no-control-regex -- Intentionally reject control bytes in SSH argv.
   if (args.some(arg => /[\x00-\x08\x0a-\x1f\x7f]/.test(arg))) return null
 
@@ -38,10 +41,14 @@ export function classifySshInvocation(args: readonly string[]): { destination: s
     const arg = args[index]!
     if (arg === '--') {
       const destination = args[index + 1]
-      return index + 2 === args.length && isDestination(destination) ? { destination } : null
+      return (index + 2 === args.length || allowRemoteCommand) && isDestination(destination)
+        ? { destination }
+        : null
     }
     if (!arg.startsWith('-')) {
-      return index === args.length - 1 && isDestination(arg) ? { destination: arg } : null
+      return (index === args.length - 1 || allowRemoteCommand) && isDestination(arg)
+        ? { destination: arg }
+        : null
     }
     // Only repeated verbosity/TTY flags may be clustered; mixed clusters fall back.
     if (/^-(?:[46AaCqxXY]|v+|t+)$/.test(arg)) continue
