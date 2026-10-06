@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789961519175,
+  "lastUpdate": 1791256751635,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port worktree operations": [
@@ -1082,6 +1082,65 @@ window.BENCHMARK_DATA = {
             "range": "6.014999999999986",
             "unit": "ms",
             "extra": "p95: 272.198 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "34f59bc6c0f892d5371442c5181fdd36e12a6769",
+          "message": "Show long-running CLI tasks with Ora (#182)\n\n* Add Ora progress adapter\n\n* Show progress for lifecycle commands\n\n* Show progress for prune discovery\n\n* Format Ora progress changes\n\n* Harden Ora progress reporting",
+          "timestamp": "2026-10-05T23:12:40-04:00",
+          "tree_id": "c1763c391c08b4160bfda9f922a602c2238bb560",
+          "url": "https://github.com/jdtzmn/port/commit/34f59bc6c0f892d5371442c5181fdd36e12a6769"
+        },
+        "date": 1791256751604,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Worktree operations / enter existing (small)",
+            "value": 346.005,
+            "range": "4.406999999999982",
+            "unit": "ms",
+            "extra": "p95: 350.412 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter existing (large)",
+            "value": 345.949,
+            "range": "6.055000000000007",
+            "unit": "ms",
+            "extra": "p95: 352.004 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (small)",
+            "value": 364.638,
+            "range": "8.487000000000023",
+            "unit": "ms",
+            "extra": "p95: 373.125 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (large)",
+            "value": 370.596,
+            "range": "7.692999999999984",
+            "unit": "ms",
+            "extra": "p95: 378.289 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / prune dry run",
+            "value": 270.377,
+            "range": "9.392999999999972",
+            "unit": "ms",
+            "extra": "p95: 279.77 ms\nsamples: 20"
           }
         ]
       }
