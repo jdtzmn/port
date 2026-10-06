@@ -92,11 +92,11 @@ export const COMMAND_GUIDE: CommandGuideEntry[] = [
   {
     command: 'port enter <branch>',
     category: 'recommended',
-    description: 'Enter a worktree explicitly (including command names)',
-    how: 'Use explicit enter, especially when branch names match commands or are already checked out elsewhere.',
-    why: 'Creates or enters the branch worktree and changes into it, reusing an existing checked-out worktree when needed.',
+    description: 'Enter a worktree by branch name or GitHub issue/PR URL',
+    how: 'Use explicit enter for GitHub issue/PR URLs or when a branch name collides with a command.',
+    why: 'Creates or enters a branch worktree; GitHub issue URLs use <login>/issue-N, and PR URLs use the head branch.',
     agentGuidance:
-      'Prefer explicit enter when branch names collide with commands such as status, install, or remove.',
+      'Prefer explicit enter for links and for branches that collide with commands such as status or install.',
   },
   {
     command: 'port <branch>',

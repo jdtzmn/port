@@ -135,14 +135,14 @@ program
 // single branch name rather than being truncated to the first word.
 program
   .command('enter <branch...>')
-  .description('Enter a worktree by branch name (works even for command-name branches)')
+  .description('Enter a worktree by branch name or GitHub issue/PR URL')
   .action(async (branchParts: string[]) => {
     const branch = joinBranchArgs(branchParts)
     if (!branch) {
       program.help()
       return
     }
-    await (await import('./commands/enter.ts')).enter(branch)
+    await (await import('./commands/enter.ts')).enter(branch, true)
   })
 
 // port exit
