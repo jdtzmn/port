@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789961517729,
+  "lastUpdate": 1791256750395,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -900,6 +900,51 @@ window.BENCHMARK_DATA = {
             "range": "3.4140000000000015",
             "unit": "ms",
             "extra": "p95: 43.269 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "34f59bc6c0f892d5371442c5181fdd36e12a6769",
+          "message": "Show long-running CLI tasks with Ora (#182)\n\n* Add Ora progress adapter\n\n* Show progress for lifecycle commands\n\n* Show progress for prune discovery\n\n* Format Ora progress changes\n\n* Harden Ora progress reporting",
+          "timestamp": "2026-10-05T23:12:40-04:00",
+          "tree_id": "c1763c391c08b4160bfda9f922a602c2238bb560",
+          "url": "https://github.com/jdtzmn/port/commit/34f59bc6c0f892d5371442c5181fdd36e12a6769"
+        },
+        "date": 1791256750077,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 47.778,
+            "range": "6.1270000000000024",
+            "unit": "ms",
+            "extra": "p95: 53.905 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 33.251,
+            "range": "4.600999999999999",
+            "unit": "ms",
+            "extra": "p95: 37.852 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 35.497,
+            "range": "7.508000000000003",
+            "unit": "ms",
+            "extra": "p95: 43.005 ms\nsamples: 20"
           }
         ]
       }
