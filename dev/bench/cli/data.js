@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791256750395,
+  "lastUpdate": 1791257289656,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -945,6 +945,51 @@ window.BENCHMARK_DATA = {
             "range": "7.508000000000003",
             "unit": "ms",
             "extra": "p95: 43.005 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5cee486c46ec9b5504486eb09d7c2f936f017d27",
+          "message": "Show enter progress during branch preflight (#185)",
+          "timestamp": "2026-10-06T03:20:46Z",
+          "tree_id": "0c8f39030138e48c8b82db11a27c97f7eb3768f6",
+          "url": "https://github.com/jdtzmn/port/commit/5cee486c46ec9b5504486eb09d7c2f936f017d27"
+        },
+        "date": 1791257288806,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 55.141,
+            "range": "6.489000000000004",
+            "unit": "ms",
+            "extra": "p95: 61.63 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 36.064,
+            "range": "3.902000000000001",
+            "unit": "ms",
+            "extra": "p95: 39.966 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 37.451,
+            "range": "6.182000000000002",
+            "unit": "ms",
+            "extra": "p95: 43.633 ms\nsamples: 20"
           }
         ]
       }
