@@ -47,7 +47,8 @@ export function parseEnterUrl(input: string): EnterUrl | null {
       !/^[a-z\d_.-]+$/i.test(repo) ||
       repo === '.' ||
       repo === '..'
-    ) break
+    )
+      break
     const number = Number(numberText)
     if (Number.isSafeInteger(number)) return { kind, owner, repo, number }
   }

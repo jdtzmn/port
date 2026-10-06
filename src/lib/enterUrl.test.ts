@@ -3,11 +3,19 @@ import { parseEnterUrl } from './enterUrl.ts'
 
 describe('enter URL matching', () => {
   test('matches GitHub issue and PR URLs, including browser query and fragment', () => {
-    expect(parseEnterUrl('https://github.com/Acme/api/issues/42/?tab=comments#discussion')).toEqual({
-      kind: 'github-issue', owner: 'Acme', repo: 'api', number: 42,
-    })
+    expect(parseEnterUrl('https://github.com/Acme/api/issues/42/?tab=comments#discussion')).toEqual(
+      {
+        kind: 'github-issue',
+        owner: 'Acme',
+        repo: 'api',
+        number: 42,
+      }
+    )
     expect(parseEnterUrl('https://github.com/acme/api/pull/57')).toEqual({
-      kind: 'github-pr', owner: 'acme', repo: 'api', number: 57,
+      kind: 'github-pr',
+      owner: 'acme',
+      repo: 'api',
+      number: 57,
     })
   })
 

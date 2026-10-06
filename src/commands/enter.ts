@@ -18,10 +18,13 @@ import {
   remoteBranchExists,
   removeWorktree,
   resolveBranchRef,
+  listWorktrees,
 } from '../lib/git.ts'
 import { writeOverrideFile, parseComposeFile } from '../lib/compose.ts'
 import { buildProjectName as getProjectName } from '../lib/projectName.ts'
 import { sanitizeBranchName } from '../lib/sanitize.ts'
+import { parseEnterUrl } from '../lib/enterUrl.ts'
+import { preparePullRequest, resolveGithubEnterUrl } from '../lib/githubEnter.ts'
 import { hookExists, runPostCreateHook } from '../lib/hooks.ts'
 import { markWorktreeRegistered } from '../lib/worktreeRegistration.ts'
 import { mkdir } from 'fs/promises'
@@ -48,9 +51,9 @@ import { withFileLock } from '../lib/state.ts'
  * (cd, export) to the eval file for the hook to pick up.
  * Otherwise, does setup work and prints a human-readable hint.
  *
- * @param branch - The branch name to enter
+ * @param input - Branch name, or (when explicitly allowed) a GitHub URL
  */
-export async function enter(branch: string): Promise<void> {
+export async function enter(input: string, allowUrl = false): Promise<void> {
   let repoRoot: string
   try {
     repoRoot = detectWorktree().repoRoot
@@ -59,9 +62,31 @@ export async function enter(branch: string): Promise<void> {
     process.exit(1)
   }
 
+  const url = parseEnterUrl(input)
+  if (url && !allowUrl) throw new Error('URLs require the explicit form: port enter <url>')
+  const resolved = url ? await resolveGithubEnterUrl(repoRoot, input) : null
+  const branch = resolved?.branch ?? input
+  if (resolved) {
+    output.info(
+      `Resolved ${resolved.url.kind === 'github-issue' ? 'issue' : 'PR'} #${resolved.url.number} → ${branch}`
+    )
+  }
+
   await ensurePortRuntimeDir(repoRoot)
-  return withFileLock(join(repoRoot, '.port', `enter-${sanitizeBranchName(branch)}.lock`), () =>
-    enterInRepo(repoRoot, branch)
+  return withFileLock(
+    join(repoRoot, '.port', `enter-${sanitizeBranchName(branch)}.lock`),
+    async () => {
+      if (resolved) {
+        const path = getWorktreePath(repoRoot, branch)
+        const worktrees = await listWorktrees(repoRoot)
+        const occupant = worktrees.find(worktree => worktree.path === path)
+        if (worktreeExists(repoRoot, branch) && occupant?.branch !== branch) {
+          throw new Error(`Worktree path ${path} is not checked out on branch ${branch}`)
+        }
+        await preparePullRequest(repoRoot, resolved)
+      }
+      return enterInRepo(repoRoot, branch)
+    }
   )
 }
 

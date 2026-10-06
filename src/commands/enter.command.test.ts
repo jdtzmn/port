@@ -19,6 +19,9 @@ const mocks = vi.hoisted(() => ({
   removeWorktree: vi.fn(),
   parseDuplicateWorktreeError: vi.fn(),
   resolveBranchRef: vi.fn(),
+  listWorktrees: vi.fn(),
+  resolveGithubEnterUrl: vi.fn(),
+  preparePullRequest: vi.fn(),
   writeOverrideFile: vi.fn(),
   parseComposeFile: vi.fn(),
   buildProjectName: vi.fn(),
@@ -66,8 +69,13 @@ vi.mock('../lib/git.ts', () => ({
   removeWorktree: mocks.removeWorktree,
   parseDuplicateWorktreeError: mocks.parseDuplicateWorktreeError,
   resolveBranchRef: mocks.resolveBranchRef,
+  listWorktrees: mocks.listWorktrees,
 }))
 
+vi.mock('../lib/githubEnter.ts', () => ({
+  resolveGithubEnterUrl: mocks.resolveGithubEnterUrl,
+  preparePullRequest: mocks.preparePullRequest,
+}))
 vi.mock('../lib/compose.ts', () => ({
   writeOverrideFile: mocks.writeOverrideFile,
   parseComposeFile: mocks.parseComposeFile,
@@ -581,5 +589,62 @@ describe('enter with shell hook eval file', () => {
     expect(mocks.success).not.toHaveBeenCalledWith(
       expect.stringContaining('Using existing worktree')
     )
+  })
+})
+
+describe('enter with URL', () => {
+  const url = 'https://github.com/acme/app/issues/42'
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.detectWorktree.mockReturnValue({ repoRoot: '/repo' })
+    mocks.getWorktreePath.mockReturnValue('/repo/.port/trees/jdtzmn-issue-42')
+    mocks.listWorktrees.mockResolvedValue([])
+    mocks.worktreeExists.mockReturnValue(false)
+    mocks.resolveGithubEnterUrl.mockResolvedValue({
+      branch: 'jdtzmn/issue-42',
+      url: { kind: 'github-issue', owner: 'acme', repo: 'app', number: 42 },
+      canonicalRepo: 'acme/app',
+    })
+    mocks.getTreesDir.mockReturnValue('/tmp')
+    mocks.loadConfigOrDefault.mockResolvedValue({ domain: 'port', compose: 'docker-compose.yml' })
+    mocks.configExists.mockReturnValue(false)
+    mocks.resolveBranchRef.mockResolvedValue('jdtzmn/issue-42')
+    mocks.branchExists.mockResolvedValue(false)
+    mocks.remoteBranchExists.mockResolvedValue(false)
+    mocks.attemptSpeculativeWorktree.mockRejectedValue(new Error('not speculative'))
+    mocks.createWorktree.mockResolvedValue('/repo/.port/trees/jdtzmn-issue-42')
+    mocks.findSimilarCommand.mockReturnValue(null)
+    mocks.hookExists.mockResolvedValue(false)
+    mocks.parseComposeFile.mockRejectedValue(new Error('no compose'))
+    mocks.getCachedStaleWorktreeCandidates.mockResolvedValue(null)
+  })
+
+  test('requires explicit enter and does not mutate on unsupported URLs', async () => {
+    await expect(enter(url)).rejects.toThrow('explicit form')
+    await expect(enter('https://github.com/acme/app/tree/main', true)).rejects.toThrow(
+      'Unsupported URL'
+    )
+    expect(mocks.ensurePortRuntimeDir).not.toHaveBeenCalled()
+    expect(mocks.resolveGithubEnterUrl).not.toHaveBeenCalled()
+  })
+
+  test('resolves the issue branch before creating a worktree', async () => {
+    await enter(url, true)
+    expect(mocks.resolveGithubEnterUrl).toHaveBeenCalledWith('/repo', url)
+    expect(mocks.createWorktree).toHaveBeenCalledWith(
+      '/repo',
+      'jdtzmn/issue-42',
+      expect.any(Object)
+    )
+  })
+
+  test('rejects a sanitized-path collision before preparing the branch', async () => {
+    mocks.worktreeExists.mockReturnValue(true)
+    mocks.listWorktrees.mockResolvedValue([
+      { path: '/repo/.port/trees/jdtzmn-issue-42', branch: 'jdtzmn-issue-42' },
+    ])
+    await expect(enter(url, true)).rejects.toThrow('not checked out on branch')
+    expect(mocks.preparePullRequest).not.toHaveBeenCalled()
+    expect(mocks.createWorktree).not.toHaveBeenCalled()
   })
 })
