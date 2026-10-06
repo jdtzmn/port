@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789961520629,
+  "lastUpdate": 1791256752802,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port Docker operations": [
@@ -1026,6 +1026,72 @@ window.BENCHMARK_DATA = {
             "range": "25.718000000000757",
             "unit": "ms",
             "extra": "p95: 10855.823 ms\nsamples: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "34f59bc6c0f892d5371442c5181fdd36e12a6769",
+          "message": "Show long-running CLI tasks with Ora (#182)\n\n* Add Ora progress adapter\n\n* Show progress for lifecycle commands\n\n* Show progress for prune discovery\n\n* Format Ora progress changes\n\n* Harden Ora progress reporting",
+          "timestamp": "2026-10-05T23:12:40-04:00",
+          "tree_id": "c1763c391c08b4160bfda9f922a602c2238bb560",
+          "url": "https://github.com/jdtzmn/port/commit/34f59bc6c0f892d5371442c5181fdd36e12a6769"
+        },
+        "date": 1791256752772,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Docker operations / status (small)",
+            "value": 221.226,
+            "range": "24.756",
+            "unit": "ms",
+            "extra": "p95: 245.982 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / status (large)",
+            "value": 1638.22,
+            "range": "101.48599999999988",
+            "unit": "ms",
+            "extra": "p95: 1739.706 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / up (warm)",
+            "value": 544.233,
+            "range": "32.360000000000014",
+            "unit": "ms",
+            "extra": "p95: 576.593 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / down",
+            "value": 10472.934,
+            "range": "59.856000000001586",
+            "unit": "ms",
+            "extra": "p95: 10532.79 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / remove (inactive services)",
+            "value": 290.899,
+            "range": "2.930999999999983",
+            "unit": "ms",
+            "extra": "p95: 293.83 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / remove (running services)",
+            "value": 10639.925,
+            "range": "60.39900000000125",
+            "unit": "ms",
+            "extra": "p95: 10700.324 ms\nsamples: 10"
           }
         ]
       }
