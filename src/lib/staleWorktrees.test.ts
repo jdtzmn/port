@@ -24,6 +24,7 @@ vi.mock('./github.ts', () => ({
 import {
   getCachedStaleWorktreeCandidates,
   getStaleWorktreeCandidates,
+  getStaleWorktreeCandidatesWithStatus,
   invalidateStaleWorktreeCache,
 } from './staleWorktrees.ts'
 
@@ -145,5 +146,13 @@ describe('getStaleWorktreeCandidates', () => {
 
     expect(refreshed.map(candidate => candidate.branch)).toEqual(['feature-b'])
     expect(mocks.getMergedBranches).toHaveBeenCalledTimes(2)
+  })
+  test('reports degraded discovery failures', async () => {
+    mocks.getDefaultBranch.mockRejectedValue(new Error('git unavailable'))
+
+    await expect(getStaleWorktreeCandidatesWithStatus('/repo', { fresh: true })).resolves.toEqual({
+      candidates: [],
+      degraded: true,
+    })
   })
 })

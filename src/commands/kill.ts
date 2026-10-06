@@ -2,6 +2,7 @@ import { getAllHostServices } from '../lib/registry.ts'
 import { cleanupStaleHostServices, stopHostService } from '../lib/hostService.ts'
 import type { HostService } from '../types.ts'
 import * as output from '../lib/output.ts'
+import { withProgress } from '../lib/progress.ts'
 
 function parseLogicalPort(portArg: string): number {
   const port = parseInt(portArg, 10)
@@ -41,12 +42,17 @@ export async function kill(portArg?: string): Promise<void> {
 
   for (const service of services) {
     try {
-      const result = await stopHostService(service)
+      const result = await withProgress(
+        {
+          text: `Stopping host service on port ${service.logicalPort}...`,
+          successText: `Stopped host service on port ${service.logicalPort}`,
+          failureText: `Force killed host service on port ${service.logicalPort}`,
+          isSuccess: result => result !== 'sigkill',
+        },
+        () => stopHostService(service)
+      )
       if (result === 'sigkill') {
         forcedCount += 1
-        output.warn(`Force killed host service on port ${service.logicalPort}`)
-      } else {
-        output.success(`Stopped host service on port ${service.logicalPort}`)
       }
     } catch (error) {
       failedCount += 1

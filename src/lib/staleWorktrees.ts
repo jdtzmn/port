@@ -110,14 +110,19 @@ export function formatStaleWorktreeWarning(count: number): string {
   return `You have ${count} stale port worktrees. Consider running port prune.`
 }
 
-export async function getStaleWorktreeCandidates(
+export interface StaleWorktreeCandidatesResult {
+  candidates: StaleWorktreeCandidate[]
+  degraded: boolean
+}
+
+export async function getStaleWorktreeCandidatesWithStatus(
   repoRoot: string,
   options: StaleWorktreeOptions = {}
-): Promise<StaleWorktreeCandidate[]> {
+): Promise<StaleWorktreeCandidatesResult> {
   const useCache = !options.fresh && options.baseBranch === undefined
   if (useCache) {
     const cached = await readSnapshot(repoRoot)
-    if (cached) return cached
+    if (cached) return { candidates: cached, degraded: false }
   }
 
   try {
@@ -178,8 +183,15 @@ export async function getStaleWorktreeCandidates(
 
     const candidates = Array.from(candidateMap.values())
     if (useCache) await writeSnapshot(repoRoot, candidates)
-    return candidates
+    return { candidates, degraded: false }
   } catch {
-    return []
+    return { candidates: [], degraded: true }
   }
+}
+
+export async function getStaleWorktreeCandidates(
+  repoRoot: string,
+  options: StaleWorktreeOptions = {}
+): Promise<StaleWorktreeCandidate[]> {
+  return (await getStaleWorktreeCandidatesWithStatus(repoRoot, options)).candidates
 }

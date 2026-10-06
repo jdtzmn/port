@@ -744,12 +744,13 @@ export async function getGoneBranches(
  *
  * @param repoRoot - The repository root path
  */
-export async function fetchAndPrune(repoRoot: string): Promise<void> {
+export async function fetchAndPrune(repoRoot: string): Promise<boolean> {
   const git = getGit(repoRoot)
   try {
     await git.fetch(['--prune'])
+    return true
   } catch {
-    // Swallow — caller handles degraded results
+    return false
   }
 }
 

@@ -27,6 +27,7 @@ import {
 import { getServiceLogPath, ensureLogsDir } from '../lib/logs.ts'
 import type { HostService } from '../types.ts'
 import * as output from '../lib/output.ts'
+import { withProgress } from '../lib/progress.ts'
 import { hookExists, runPreRunHook } from '../lib/hooks.ts'
 
 function parseEnvOverrides(content: string): NodeJS.ProcessEnv {
@@ -128,9 +129,10 @@ export async function run(
     }
 
     // Stop the existing service
-    output.info('Stopping existing service...')
-    await stopHostService(existingService)
-    output.success('Existing service stopped')
+    await withProgress(
+      { text: 'Stopping existing service...', successText: 'Existing service stopped' },
+      () => stopHostService(existingService)
+    )
   }
 
   // Find an available ephemeral port
@@ -152,19 +154,23 @@ export async function run(
   // Start or restart Traefik if needed
   const traefikRunning = await isTraefikRunning()
   if (!traefikRunning) {
-    output.info('Starting Traefik...')
     try {
-      await startTraefik()
-      output.success('Traefik started')
+      await withProgress({ text: 'Starting Traefik...', successText: 'Traefik started' }, () =>
+        startTraefik()
+      )
     } catch (error) {
       output.error(`Failed to start Traefik: ${error}`)
       process.exit(1)
     }
   } else if (configUpdated) {
-    output.info('Restarting Traefik with new configuration...')
     try {
-      await restartTraefik()
-      output.success('Traefik restarted')
+      await withProgress(
+        {
+          text: 'Restarting Traefik with new configuration...',
+          successText: 'Traefik restarted',
+        },
+        () => restartTraefik()
+      )
     } catch (error) {
       output.warn(`Failed to restart Traefik: ${error}`)
     }

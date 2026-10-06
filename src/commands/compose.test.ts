@@ -6,6 +6,7 @@ import * as composeModule from '../lib/compose.ts'
 import * as projectNameModule from '../lib/projectName.ts'
 import * as traefikModule from '../lib/traefik.ts'
 import * as output from '../lib/output.ts'
+import * as progressModule from '../lib/progress.ts'
 
 /**
  * Regression tests for port compose command pre-sync behavior.
@@ -210,7 +211,7 @@ describe('port compose pre-sync behavior', () => {
         .mockResolvedValue(true)
       const startTraefikSpy = vi.spyOn(composeModule, 'startTraefik').mockResolvedValue()
       const runComposeSpy = vi.spyOn(composeModule, 'runCompose')
-      const infoSpy = vi.spyOn(output, 'info').mockImplementation(() => {})
+      const progressSpy = vi.spyOn(progressModule, 'withProgress')
 
       try {
         await compose(['up', '-d'])
@@ -221,7 +222,10 @@ describe('port compose pre-sync behavior', () => {
       expect(isTraefikRunningSpy).toHaveBeenCalled()
       expect(ensureTraefikPortsSpy).toHaveBeenCalledWith([3000])
       expect(startTraefikSpy).toHaveBeenCalled()
-      expect(infoSpy).toHaveBeenCalledWith('Starting Traefik...')
+      expect(progressSpy).toHaveBeenCalledWith(
+        { text: 'Starting Traefik...', successText: 'Traefik started' },
+        expect.any(Function)
+      )
       expect(runComposeSpy).toHaveBeenCalled()
     })
 

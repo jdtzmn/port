@@ -6,6 +6,7 @@ import * as composeLib from '../lib/compose.ts'
 import { buildProjectName } from '../lib/projectName.ts'
 import * as traefikLib from '../lib/traefik.ts'
 import * as output from '../lib/output.ts'
+import { withProgress } from '../lib/progress.ts'
 
 /**
  * Run an arbitrary docker compose command with automatic -f flags
@@ -76,8 +77,9 @@ export async function compose(args: string[]): Promise<void> {
   try {
     if (!(await composeLib.isTraefikRunning())) {
       await traefikLib.ensureTraefikPorts(composeLib.getAllPorts(parsedCompose))
-      output.info('Starting Traefik...')
-      await composeLib.startTraefik()
+      await withProgress({ text: 'Starting Traefik...', successText: 'Traefik started' }, () =>
+        composeLib.startTraefik()
+      )
     }
   } catch (error) {
     output.error(`Failed to start Traefik: ${error}`)

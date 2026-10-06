@@ -22,6 +22,7 @@ import { execAsync } from '../lib/exec.ts'
 import { stopHostService } from '../lib/hostService.ts'
 import * as output from '../lib/output.ts'
 import { measureCommandPhase } from '../lib/commandProfile.ts'
+import { withProgress } from '../lib/progress.ts'
 
 function uniqueNumbers(values: number[]): number[] {
   return Array.from(new Set(values)).sort((a, b) => a - b)
@@ -59,10 +60,10 @@ async function stopTraefikGlobally(options?: { yes?: boolean }): Promise<void> {
   }
 
   if (shouldStopTraefik) {
-    output.info('Stopping Traefik...')
     try {
-      await stopTraefik()
-      output.success('Traefik stopped')
+      await withProgress({ text: 'Stopping Traefik...', successText: 'Traefik stopped' }, () =>
+        stopTraefik()
+      )
     } catch (error) {
       output.warn(`Failed to stop Traefik: ${error}`)
     }
@@ -216,14 +217,24 @@ export async function down(
     }
 
     if (shouldStopHostServices) {
+      let stoppedHostServiceCount = 0
       for (const svc of hostServices) {
         try {
-          await stopHostService(svc)
+          await withProgress(
+            {
+              text: `Stopping host service on port ${svc.logicalPort}...`,
+              successText: `Stopped host service on port ${svc.logicalPort}`,
+            },
+            () => stopHostService(svc)
+          )
+          stoppedHostServiceCount += 1
         } catch (error) {
           output.warn(`Failed to stop host service on port ${svc.logicalPort}: ${error}`)
         }
       }
-      output.success(`Stopped ${hostServices.length} host service(s)`)
+      if (stoppedHostServiceCount > 0) {
+        output.success(`Stopped ${stoppedHostServiceCount} host service(s)`)
+      }
     }
   }
 
@@ -248,10 +259,10 @@ export async function down(
     }
 
     if (shouldStopTraefik) {
-      output.info('Stopping Traefik...')
       try {
-        await stopTraefik()
-        output.success('Traefik stopped')
+        await withProgress({ text: 'Stopping Traefik...', successText: 'Traefik stopped' }, () =>
+          stopTraefik()
+        )
       } catch (error) {
         output.warn(`Failed to stop Traefik: ${error}`)
       }
