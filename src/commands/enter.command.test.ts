@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   configExists: vi.fn(),
   branchExists: vi.fn(),
   createWorktree: vi.fn(),
+  withProgress: vi.fn(),
   attemptSpeculativeWorktree: vi.fn(),
   convertSpeculativeWorktree: vi.fn(),
   finalizeSpeculativeWorktree: vi.fn(),
@@ -53,6 +54,10 @@ vi.mock('../lib/config.ts', () => ({
   getTreesDir: mocks.getTreesDir,
   getComposeFile: mocks.getComposeFile,
   configExists: mocks.configExists,
+}))
+
+vi.mock('../lib/progress.ts', () => ({
+  withProgress: mocks.withProgress,
 }))
 
 vi.mock('../lib/git.ts', () => ({
@@ -136,6 +141,7 @@ describe('enter typo confirmation', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.withProgress.mockImplementation(async (_options, work) => work())
 
     mocks.detectWorktree.mockReturnValue({
       repoRoot: '/repo',
@@ -220,6 +226,30 @@ describe('enter typo confirmation', () => {
     ])
     expect(mocks.createWorktree).not.toHaveBeenCalled()
     expect(mocks.info).toHaveBeenCalledWith('Cancelled.')
+  })
+
+  test('finishes branch progress before showing typo confirmation', async () => {
+    const events: string[] = []
+    mocks.withProgress.mockImplementation(async (options, work) => {
+      events.push(`start:${options.text}`)
+      const result = await work()
+      events.push(`done:${options.text}`)
+      return result
+    })
+    mocks.prompt.mockImplementation(async () => {
+      events.push('prompt')
+      return { createBranch: true }
+    })
+
+    await enter('instal')
+
+    expect(events).toEqual([
+      'start:Preparing worktree for branch: instal',
+      'done:Preparing worktree for branch: instal',
+      'prompt',
+      'start:Creating worktree for branch: instal',
+      'done:Creating worktree for branch: instal',
+    ])
   })
 
   test('creates worktree when the user confirms typo warning', async () => {
@@ -377,6 +407,36 @@ describe('enter typo confirmation', () => {
     expect(mocks.success).toHaveBeenCalledWith(
       'Using existing worktree: shared-external (branch shared)'
     )
+  })
+
+  test('shows progress while speculative worktree creation is pending', async () => {
+    mocks.findSimilarCommand.mockReturnValue(null)
+    let finishSpeculation = () => {}
+    mocks.attemptSpeculativeWorktree.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          finishSpeculation = () => reject(new Error('speculative creation failed'))
+        })
+    )
+
+    const entering = enter('new-feature')
+    await vi.waitFor(() => expect(mocks.attemptSpeculativeWorktree).toHaveBeenCalledOnce())
+
+    expect(mocks.withProgress).toHaveBeenCalledTimes(1)
+    expect(mocks.withProgress).toHaveBeenCalledWith(
+      {
+        text: 'Preparing worktree for branch: new-feature',
+        successText: 'Branch checked: new-feature',
+      },
+      expect.any(Function)
+    )
+    expect(mocks.withProgress.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.attemptSpeculativeWorktree.mock.invocationCallOrder[0]!
+    )
+
+    finishSpeculation()
+    await entering
+    expect(mocks.withProgress).toHaveBeenCalledTimes(2)
   })
 
   test('retains an owned speculative worktree when the remote branch is absent', async () => {
