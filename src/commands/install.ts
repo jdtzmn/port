@@ -521,8 +521,20 @@ export async function install(options?: {
   shellHook?: boolean
   shellHookOnly?: boolean
   remoteServices?: boolean
+  remoteHost?: string[]
 }): Promise<void> {
   if (options?.remoteServices) {
+    let remoteHosts: string[] = []
+    try {
+      if (options.remoteHost?.length)
+        remoteHosts = (
+          await import('../lib/remote/session/sshConfig.ts')
+        ).normalizeRemoteSshHostPatterns(options.remoteHost)
+    } catch (error) {
+      output.error(`Invalid remote SSH host pattern: ${(error as Error).message}`)
+      process.exitCode = 1
+      return
+    }
     const dnsIp = options.dnsIp ?? DEFAULT_DNS_IP
     if (
       dnsIp !== DEFAULT_DNS_IP ||
@@ -550,8 +562,16 @@ export async function install(options?: {
       }
     }
     await (await import('../lib/remote/coordinator/supervisor.ts')).enableRemoteRuntime()
+    if (remoteHosts.length > 0)
+      await (
+        await import('../lib/remote/session/sshConfig.ts')
+      ).installManagedSshConfig(remoteHosts)
     if (options.shellHook !== false) await setupShellHook(options)
-    output.success('Remote services enabled. Reload Bash to activate ordinary SSH integration.')
+    output.success(
+      remoteHosts.length > 0
+        ? `Remote services enabled for SSH hosts: ${remoteHosts.join(', ')}`
+        : 'Remote services enabled. Reload Bash to activate ordinary SSH integration.'
+    )
     return
   }
   if (options?.shellHookOnly) {

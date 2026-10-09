@@ -1,4 +1,7 @@
-import { isRemoteSessionDirectory } from '../lib/remote/session/directory.ts'
+import {
+  isManagedRemoteSessionDirectory,
+  isRemoteSessionDirectory,
+} from '../lib/remote/session/directory.ts'
 import { getRemoteInstanceId } from '../lib/remote/session/identity.ts'
 import { parseRemoteSnapshot } from '../lib/remote/session/snapshot.ts'
 import { collectRemoteSnapshot } from '../lib/remote/session/snapshotCollector.ts'
@@ -10,6 +13,7 @@ import {
 
 const commands = [
   '__remote-prepare',
+  '__remote-register',
   '__remote-observe',
   '__remote-cleanup',
   '__remote-handshake',
@@ -22,6 +26,7 @@ type RemoteInternalCommand = (typeof commands)[number]
 
 const commandSet = new Set<string>(commands)
 const revision = /^(0|[1-9][0-9]{0,15})$/
+const connectionId = /^[a-f0-9]{40,64}$/
 
 const fail = (): never => {
   throw new Error('Invalid remote internal command')
@@ -63,10 +68,22 @@ async function snapshot(args: string[]): Promise<void> {
 }
 
 async function prepare(args: string[]): Promise<void> {
-  if (args[0] !== '--' || args.length < 2) fail()
-  const directory = await prepareRemoteSession(args.slice(1))
+  const managedOnly = args[0] === '--managed-only'
+  const separator = managedOnly ? 1 : 0
+  if (args[separator] !== '--' || args.length < separator + 2) fail()
+  const argv = args.slice(separator + 1)
+  const directory = managedOnly
+    ? await prepareRemoteSession(argv, true)
+    : await prepareRemoteSession(argv)
   if (!isRemoteSessionDirectory(directory)) throw new Error('Unavailable remote session')
-  writeLine(directory)
+  writeLine(`${isManagedRemoteSessionDirectory(directory) ? 'managed' : 'legacy'} ${directory}`)
+}
+
+async function register(args: string[]): Promise<void> {
+  if (args.length !== 1 || !connectionId.test(args[0]!)) fail()
+  await (
+    await import('../lib/remote/coordinator/supervisor.ts')
+  ).registerRemoteRuntimeObservation(`/tmp/port-ssh-${args[0]}`)
 }
 
 async function observe(directory: string): Promise<void> {
@@ -124,6 +141,9 @@ export async function dispatchRemoteInternalCommand(token: string, args: string[
         return
       case '__remote-prepare':
         await prepare(args)
+        return
+      case '__remote-register':
+        await register(args)
         return
       case '__remote-observe':
         await observe(requireSessionDirectory(args))

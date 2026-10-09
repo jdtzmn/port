@@ -7,6 +7,7 @@ import { createRemoteOwnerRegistry } from './ownerRegistry.ts'
 import { allocateRemoteOwners } from './ownerStore.ts'
 import { createRemoteCoordinatorState, restoreRemoteCoordinatorState } from './state.ts'
 import {
+  cleanupManagedRemoteSession,
   pinRemoteSessionObservation,
   isRemoteSessionObservable,
   observeRemoteSession,
@@ -42,6 +43,7 @@ export async function startRemoteRuntime(options: {
   collectLocal?: (revision: number) => Promise<RemoteSnapshot>
   prepareProxy?: (ports: number[]) => Promise<RemoteRouteProxy>
   observeSession?: typeof observeRemoteSession
+  cleanupSession?: typeof cleanupManagedRemoteSession
   validateSession?: typeof isRemoteSessionObservable
 }) {
   const { root, controlRoot, dynamicDirectory } = options
@@ -50,14 +52,19 @@ export async function startRemoteRuntime(options: {
   let failure: unknown
   const observations = createRemoteObservationTasks({
     async run(directory, signal) {
-      await (options.observeSession ?? observeRemoteSession)(directory, signal, async () => {
-        signal.throwIfAborted()
-        const handle = pinRemoteSessionObservation(directory)
-        if (!handle) return
-        await registerRemotePin(root, handle.checkpoint())
-        signal.throwIfAborted()
-        wake?.()
-      })
+      try {
+        await (options.observeSession ?? observeRemoteSession)(directory, signal, async () => {
+          signal.throwIfAborted()
+          const handle = pinRemoteSessionObservation(directory)
+          if (!handle) return
+          await registerRemotePin(root, handle.checkpoint())
+          signal.throwIfAborted()
+          wake?.()
+        })
+      } finally {
+        if (!signal.aborted)
+          await (options.cleanupSession ?? cleanupManagedRemoteSession)(directory)
+      }
     },
     onSettled() {
       wake?.()
@@ -308,13 +315,19 @@ export async function startRemoteRuntime(options: {
 export async function startRemoteObservationRuntime(options: {
   controlRoot: string
   observeSession?: typeof observeRemoteSession
+  cleanupSession?: typeof cleanupManagedRemoteSession
   validateSession?: typeof isRemoteSessionObservable
 }) {
   let stopped = false
   let wake: (() => void) | undefined
   const observations = createRemoteObservationTasks({
     async run(directory, signal) {
-      await (options.observeSession ?? observeRemoteSession)(directory, signal)
+      try {
+        await (options.observeSession ?? observeRemoteSession)(directory, signal)
+      } finally {
+        if (!signal.aborted)
+          await (options.cleanupSession ?? cleanupManagedRemoteSession)(directory)
+      }
     },
   })
   const control = await startRemoteCoordinatorControl(options.controlRoot, {
