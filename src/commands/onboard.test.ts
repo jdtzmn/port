@@ -60,7 +60,7 @@ describe('onboard command', () => {
     expect(mocks.header).toHaveBeenCalledWith(expect.stringContaining('port exit'))
     expect(mocks.header).toHaveBeenCalledWith(expect.stringContaining('port remove'))
     expect(mocks.dim).toHaveBeenCalledWith(
-      '   How: Use explicit enter for GitHub issue/PR URLs or when a branch name collides with a command.'
+      '   How: Use either port <branch-or-url> or port enter <branch-or-url>; use the explicit form when a branch name collides with a command.'
     )
     expect(mocks.dim).toHaveBeenCalledWith(
       '   Why: Creates or enters a branch worktree; GitHub issue URLs use <login>/issue-N, and PR URLs use the head branch.'

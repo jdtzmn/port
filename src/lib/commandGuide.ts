@@ -93,10 +93,10 @@ export const COMMAND_GUIDE: CommandGuideEntry[] = [
     command: 'port enter <branch>',
     category: 'recommended',
     description: 'Enter a worktree by branch name or GitHub issue/PR URL',
-    how: 'Use explicit enter for GitHub issue/PR URLs or when a branch name collides with a command.',
+    how: 'Use either port <branch-or-url> or port enter <branch-or-url>; use the explicit form when a branch name collides with a command.',
     why: 'Creates or enters a branch worktree; GitHub issue URLs use <login>/issue-N, and PR URLs use the head branch.',
     agentGuidance:
-      'Prefer explicit enter for links and for branches that collide with commands such as status or install.',
+      'GitHub issue/PR URLs work in either form; use explicit enter only for branch names that collide with commands such as status or install.',
   },
   {
     command: 'port <branch>',

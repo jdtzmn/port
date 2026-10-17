@@ -47,7 +47,7 @@ function fixture(): { root: string; env: NodeJS.ProcessEnv; oid: string } {
 }
 
 function enter(root: string, env: NodeJS.ProcessEnv, url: string): string {
-  return execFileSync('bun', ['run', resolve('src/index.ts'), 'enter', url], {
+  return execFileSync('bun', ['run', resolve('src/index.ts'), url], {
     cwd: root,
     env,
     encoding: 'utf8',

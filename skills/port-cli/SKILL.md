@@ -118,9 +118,9 @@ Generate shell completion script for tab completion
 
 Enter a worktree by branch name or GitHub issue/PR URL
 
-- **How**: Use explicit enter for GitHub issue/PR URLs or when a branch name collides with a command.
+- **How**: Use either port <branch-or-url> or port enter <branch-or-url>; use the explicit form when a branch name collides with a command.
 - **Why**: Creates or enters a branch worktree; GitHub issue URLs use <login>/issue-N, and PR URLs use the head branch.
-- **Agent guidance**: Prefer explicit enter for links and for branches that collide with commands such as status or install.
+- **Agent guidance**: GitHub issue/PR URLs work in either form; use explicit enter only for branch names that collide with commands such as status or install.
 
 ### `port <branch>`
 
