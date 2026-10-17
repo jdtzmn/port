@@ -99,6 +99,16 @@ describe('GitHub URL resolution', () => {
     })
     await expect(resolveGithubEnterUrl('/repo', issueUrl)).rejects.toThrow('could not access')
   })
+
+  test('preserves Git failures rather than reporting them as GitHub access errors', async () => {
+    mocks.execFileAsync.mockImplementation(async (program: string) => {
+      if (program === 'git') throw new Error('No origin remote configured')
+      return reply({ node_id: 'repo-id', full_name: 'acme/app' })
+    })
+    await expect(resolveGithubEnterUrl('/repo', issueUrl)).rejects.toThrow(
+      'No origin remote configured'
+    )
+  })
 })
 
 describe('PR branch preparation', () => {

@@ -9,15 +9,15 @@ export interface ResolvedEnterUrl {
   pr?: { headOid: string; fork: boolean; state: string }
 }
 
-async function command(program: string, args: string[], cwd: string): Promise<string> {
+async function gh(args: string[], cwd: string): Promise<string> {
   try {
-    const { stdout } = await execFileAsync(program, args, { cwd, timeout: 15000 })
+    const { stdout } = await execFileAsync('gh', args, { cwd, timeout: 15000 })
     return stdout.trim()
   } catch (error) {
     const reason =
       error instanceof Error && 'code' in error && error.code === 'ENOENT'
-        ? `${program} is not installed`
-        : `${program} could not access the requested GitHub repository (check authentication, access and network)`
+        ? 'gh is not installed'
+        : 'gh could not access the requested GitHub repository (check authentication, access and network)'
     throw new Error(reason, { cause: error })
   }
 }
@@ -43,9 +43,7 @@ function originRepo(remote: string): string | null {
 }
 
 async function repository(repoRoot: string, name: string): Promise<{ id: string; name: string }> {
-  const data = json(
-    await command('gh', ['api', '--hostname', 'github.com', `repos/${name}`], repoRoot)
-  )
+  const data = json(await gh(['api', '--hostname', 'github.com', `repos/${name}`], repoRoot))
   if (typeof data.node_id !== 'string' || typeof data.full_name !== 'string') {
     throw new Error('GitHub returned incomplete repository metadata')
   }
@@ -59,7 +57,11 @@ export async function resolveGithubEnterUrl(
   const url = parseEnterUrl(input)
   if (!url) throw new Error('Expected a GitHub issue or pull request URL')
   const target = await repository(repoRoot, `${url.owner}/${url.repo}`)
-  const remote = originRepo(await command('git', ['remote', 'get-url', 'origin'], repoRoot))
+  const { stdout } = await execFileAsync('git', ['remote', 'get-url', 'origin'], {
+    cwd: repoRoot,
+    timeout: 15000,
+  })
+  const remote = originRepo(stdout.trim())
   if (!remote) throw new Error('The origin remote must point to a github.com repository')
   const local =
     remote.toLowerCase() === target.name.toLowerCase() ? target : await repository(repoRoot, remote)
@@ -69,14 +71,13 @@ export async function resolveGithubEnterUrl(
 
   if (url.kind === 'github-issue') {
     const issue = json(
-      await command(
-        'gh',
+      await gh(
         ['issue', 'view', String(url.number), '-R', target.name, '--json', 'number'],
         repoRoot
       )
     )
     if (issue.number !== url.number) throw new Error('GitHub returned the wrong issue')
-    const user = json(await command('gh', ['api', '--hostname', 'github.com', 'user'], repoRoot))
+    const user = json(await gh(['api', '--hostname', 'github.com', 'user'], repoRoot))
     if (typeof user.login !== 'string' || !/^[a-z\d-]+$/i.test(user.login)) {
       throw new Error('GitHub did not return a valid authenticated login')
     }
@@ -88,8 +89,7 @@ export async function resolveGithubEnterUrl(
   }
 
   const pr = json(
-    await command(
-      'gh',
+    await gh(
       [
         'pr',
         'view',
