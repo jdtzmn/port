@@ -31,8 +31,8 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 
 ### 5. \`port enter <branch>\`
 
-- **How**: Use explicit enter, especially when branch names match commands or are already checked out elsewhere.
-- **Why**: Creates or enters the branch worktree and changes into it, reusing an existing checked-out worktree when needed.
+- **How**: Use explicit enter for GitHub issue/PR URLs or when a branch name collides with a command.
+- **Why**: Creates or enters a branch worktree; GitHub issue URLs use <login>/issue-N, and PR URLs use the head branch.
 
 ### 6. \`port exit\`
 
@@ -127,8 +127,8 @@ Port is a CLI for managing git worktrees that makes it easy to create, enter, an
 
 ### 5. \`port enter <branch>\`
 
-- **How**: Use explicit enter, especially when branch names match commands or are already checked out elsewhere.
-- **Why**: Creates or enters the branch worktree and changes into it, reusing an existing checked-out worktree when needed.
+- **How**: Use explicit enter for GitHub issue/PR URLs or when a branch name collides with a command.
+- **Why**: Creates or enters a branch worktree; GitHub issue URLs use <login>/issue-N, and PR URLs use the head branch.
 
 ### 6. \`port exit\`
 
