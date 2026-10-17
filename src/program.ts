@@ -142,7 +142,7 @@ program
       program.help()
       return
     }
-    await (await import('./commands/enter.ts')).enter(branch, true)
+    await (await import('./commands/enter.ts')).enter(branch)
   })
 
 // port exit

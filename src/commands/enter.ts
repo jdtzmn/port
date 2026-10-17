@@ -51,9 +51,9 @@ import { withFileLock } from '../lib/state.ts'
  * (cd, export) to the eval file for the hook to pick up.
  * Otherwise, does setup work and prints a human-readable hint.
  *
- * @param input - Branch name, or (when explicitly allowed) a GitHub URL
+ * @param input - Branch name or a GitHub issue/PR URL
  */
-export async function enter(input: string, allowUrl = false): Promise<void> {
+export async function enter(input: string): Promise<void> {
   let repoRoot: string
   try {
     repoRoot = detectWorktree().repoRoot
@@ -63,7 +63,6 @@ export async function enter(input: string, allowUrl = false): Promise<void> {
   }
 
   const url = parseEnterUrl(input)
-  if (url && !allowUrl) throw new Error('URLs require the explicit form: port enter <url>')
   const resolved = url ? await resolveGithubEnterUrl(repoRoot, input) : null
   const branch = resolved?.branch ?? input
   if (resolved) {

@@ -679,17 +679,13 @@ describe('enter with URL', () => {
     mocks.getCachedStaleWorktreeCandidates.mockResolvedValue(null)
   })
 
-  test('requires explicit enter and does not mutate on unsupported URLs', async () => {
-    await expect(enter(url)).rejects.toThrow('explicit form')
-    await expect(enter('https://github.com/acme/app/tree/main', true)).rejects.toThrow(
-      'Unsupported URL'
-    )
-    expect(mocks.ensurePortRuntimeDir).not.toHaveBeenCalled()
-    expect(mocks.resolveGithubEnterUrl).not.toHaveBeenCalled()
+  test('accepts GitHub URLs without an explicit command', async () => {
+    await enter(url)
+    expect(mocks.resolveGithubEnterUrl).toHaveBeenCalledWith('/repo', url)
   })
 
   test('resolves the issue branch before creating a worktree', async () => {
-    await enter(url, true)
+    await enter(url)
     expect(mocks.resolveGithubEnterUrl).toHaveBeenCalledWith('/repo', url)
     expect(mocks.createWorktree).toHaveBeenCalledWith(
       '/repo',
@@ -703,7 +699,7 @@ describe('enter with URL', () => {
     mocks.listWorktrees.mockResolvedValue([
       { path: '/repo/.port/trees/jdtzmn-issue-42', branch: 'jdtzmn-issue-42' },
     ])
-    await expect(enter(url, true)).rejects.toThrow('not checked out on branch')
+    await expect(enter(url)).rejects.toThrow('not checked out on branch')
     expect(mocks.preparePullRequest).not.toHaveBeenCalled()
     expect(mocks.createWorktree).not.toHaveBeenCalled()
   })
