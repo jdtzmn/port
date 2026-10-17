@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791257289656,
+  "lastUpdate": 1792205754699,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -990,6 +990,51 @@ window.BENCHMARK_DATA = {
             "range": "6.182000000000002",
             "unit": "ms",
             "extra": "p95: 43.633 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e91332f3c617c79c37449ddfe844762f2468b826",
+          "message": "Enter worktrees from GitHub issue and PR URLs (#186)\n\n* Recognize GitHub issue and PR URLs for enter\n\n* Resolve GitHub issue and PR URLs into safe worktrees\n\n* Document GitHub URL entry behavior\n\n* Regenerate onboarding guide for URL entry\n\n* Update onboarding expectations for URL entry\n\n* Use GitHub-specific command handling for URL entry",
+          "timestamp": "2026-10-16T22:48:34-04:00",
+          "tree_id": "61b86e2850ec5f232a7bb3482ef296e74aa933a2",
+          "url": "https://github.com/jdtzmn/port/commit/e91332f3c617c79c37449ddfe844762f2468b826"
+        },
+        "date": 1792205753829,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 31.632,
+            "range": "3.5779999999999994",
+            "unit": "ms",
+            "extra": "p95: 35.21 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 24.417,
+            "range": "2.378999999999998",
+            "unit": "ms",
+            "extra": "p95: 26.796 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 23.993,
+            "range": "2.9190000000000005",
+            "unit": "ms",
+            "extra": "p95: 26.912 ms\nsamples: 20"
           }
         ]
       }
