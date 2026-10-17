@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1792208363514,
+  "lastUpdate": 1792212113256,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -1125,6 +1125,51 @@ window.BENCHMARK_DATA = {
             "range": "4.259",
             "unit": "ms",
             "extra": "p95: 30.942 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "472fe56dd1cbb3eb3e95e8deefd37609db1f6ba8",
+          "message": "chore: bump version to 0.6.4 (#191)",
+          "timestamp": "2026-10-17T00:34:25-04:00",
+          "tree_id": "d171228058574b7cc8c3aa172613967af1563015",
+          "url": "https://github.com/jdtzmn/port/commit/472fe56dd1cbb3eb3e95e8deefd37609db1f6ba8"
+        },
+        "date": 1792212112942,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 38.771,
+            "range": "5.073999999999998",
+            "unit": "ms",
+            "extra": "p95: 43.845 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 27.637,
+            "range": "5.155000000000001",
+            "unit": "ms",
+            "extra": "p95: 32.792 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 32.441,
+            "range": "2.985999999999997",
+            "unit": "ms",
+            "extra": "p95: 35.427 ms\nsamples: 20"
           }
         ]
       }
