@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791257290901,
+  "lastUpdate": 1792205756058,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port worktree operations": [
@@ -1200,6 +1200,65 @@ window.BENCHMARK_DATA = {
             "range": "7.879000000000019",
             "unit": "ms",
             "extra": "p95: 290.206 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e91332f3c617c79c37449ddfe844762f2468b826",
+          "message": "Enter worktrees from GitHub issue and PR URLs (#186)\n\n* Recognize GitHub issue and PR URLs for enter\n\n* Resolve GitHub issue and PR URLs into safe worktrees\n\n* Document GitHub URL entry behavior\n\n* Regenerate onboarding guide for URL entry\n\n* Update onboarding expectations for URL entry\n\n* Use GitHub-specific command handling for URL entry",
+          "timestamp": "2026-10-16T22:48:34-04:00",
+          "tree_id": "61b86e2850ec5f232a7bb3482ef296e74aa933a2",
+          "url": "https://github.com/jdtzmn/port/commit/e91332f3c617c79c37449ddfe844762f2468b826"
+        },
+        "date": 1792205756026,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Worktree operations / enter existing (small)",
+            "value": 347.972,
+            "range": "5.942000000000007",
+            "unit": "ms",
+            "extra": "p95: 353.914 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter existing (large)",
+            "value": 351.948,
+            "range": "10.206000000000017",
+            "unit": "ms",
+            "extra": "p95: 362.154 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (small)",
+            "value": 370.926,
+            "range": "7.395000000000039",
+            "unit": "ms",
+            "extra": "p95: 378.321 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (large)",
+            "value": 374.783,
+            "range": "7.003999999999962",
+            "unit": "ms",
+            "extra": "p95: 381.787 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / prune dry run",
+            "value": 275.62,
+            "range": "9.007999999999981",
+            "unit": "ms",
+            "extra": "p95: 284.628 ms\nsamples: 20"
           }
         ]
       }
