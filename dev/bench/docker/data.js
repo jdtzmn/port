@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791257292166,
+  "lastUpdate": 1792205757437,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port Docker operations": [
@@ -1158,6 +1158,72 @@ window.BENCHMARK_DATA = {
             "range": "16.501000000000204",
             "unit": "ms",
             "extra": "p95: 10836.295 ms\nsamples: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e91332f3c617c79c37449ddfe844762f2468b826",
+          "message": "Enter worktrees from GitHub issue and PR URLs (#186)\n\n* Recognize GitHub issue and PR URLs for enter\n\n* Resolve GitHub issue and PR URLs into safe worktrees\n\n* Document GitHub URL entry behavior\n\n* Regenerate onboarding guide for URL entry\n\n* Update onboarding expectations for URL entry\n\n* Use GitHub-specific command handling for URL entry",
+          "timestamp": "2026-10-16T22:48:34-04:00",
+          "tree_id": "61b86e2850ec5f232a7bb3482ef296e74aa933a2",
+          "url": "https://github.com/jdtzmn/port/commit/e91332f3c617c79c37449ddfe844762f2468b826"
+        },
+        "date": 1792205757402,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Docker operations / status (small)",
+            "value": 323.576,
+            "range": "15.377999999999986",
+            "unit": "ms",
+            "extra": "p95: 338.954 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / status (large)",
+            "value": 2461.433,
+            "range": "25.860999999999876",
+            "unit": "ms",
+            "extra": "p95: 2487.294 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / up (warm)",
+            "value": 781.877,
+            "range": "8.19900000000007",
+            "unit": "ms",
+            "extra": "p95: 790.076 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / down",
+            "value": 10621.188,
+            "range": "113.05799999999908",
+            "unit": "ms",
+            "extra": "p95: 10734.246 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / remove (inactive services)",
+            "value": 426.551,
+            "range": "6.240000000000009",
+            "unit": "ms",
+            "extra": "p95: 432.791 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / remove (running services)",
+            "value": 10828.112,
+            "range": "23.423000000000684",
+            "unit": "ms",
+            "extra": "p95: 10851.535 ms\nsamples: 10"
           }
         ]
       }
