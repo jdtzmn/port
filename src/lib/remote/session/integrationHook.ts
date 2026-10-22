@@ -2,21 +2,52 @@
 export function generateSshIntegrationHook(): string {
   return `if ! alias ssh >/dev/null 2>&1 && ! declare -F ssh >/dev/null 2>&1; then
   function ssh () (
+    __port_ssh_allow_legacy=''
     if [ ! -t 0 ] || [ ! -t 1 ]; then
-      command ssh "$@"
-      exit $?
-    fi
-    __port_ssh_dir=''
-    if __port_ssh_dir="$(command port __remote-prepare -- "$@" 2>/dev/null)"; then
       :
     else
-      __port_ssh_dir=''
+      __port_ssh_allow_legacy='1'
     fi
-    case "$__port_ssh_dir" in
-      /tmp/port-ssh-[a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9]) ;;
+    __port_ssh_prepared=''
+    if __port_ssh_prepared="$(command port __remote-prepare --managed-only -- "$@" 2>/dev/null)"; then
+      :
+    else
+      __port_ssh_prepared=''
+    fi
+    if [ -z "$__port_ssh_prepared" ] && [ -n "$__port_ssh_allow_legacy" ]; then
+      if __port_ssh_prepared="$(command port __remote-prepare -- "$@" 2>/dev/null)"; then
+        :
+      else
+        __port_ssh_prepared=''
+      fi
+    fi
+    __port_ssh_mode=''
+    __port_ssh_dir=''
+    case "$__port_ssh_prepared" in
+      managed\\ /tmp/port-ssh-*)
+        __port_ssh_mode='managed'
+        __port_ssh_dir="\${__port_ssh_prepared#managed }"
+        __port_ssh_id="\${__port_ssh_dir#/tmp/port-ssh-}"
+        if ! [[ "$__port_ssh_id" =~ ^[a-f0-9]{40,64}$ ]]; then
+          command ssh "$@"
+          exit $?
+        fi
+        ;;
+      legacy\\ /tmp/port-ssh-[a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9])
+        __port_ssh_mode='legacy'
+        __port_ssh_dir="\${__port_ssh_prepared#legacy }"
+        if [ -z "$__port_ssh_allow_legacy" ]; then
+          command ssh "$@"
+          exit $?
+        fi
+        ;;
       *) command ssh "$@"; exit $? ;;
     esac
     if [ ! -d "$__port_ssh_dir" ] || [ -L "$__port_ssh_dir" ] || [ ! -O "$__port_ssh_dir" ]; then
+      command ssh "$@"
+      exit $?
+    fi
+    if [ "$__port_ssh_mode" = 'managed' ]; then
       command ssh "$@"
       exit $?
     fi

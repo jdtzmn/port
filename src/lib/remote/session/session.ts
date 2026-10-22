@@ -6,6 +6,7 @@ import {
   fchmodSync,
   fstatSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   openSync,
   readSync,
@@ -23,7 +24,8 @@ import {
   type SshConnectionIdentity,
 } from './connectionIdentity.ts'
 import { classifySshInvocation, isEligibleSshConfig } from './invocation.ts'
-import { isRemoteSessionDirectory } from './directory.ts'
+import { isManagedRemoteSessionDirectory, isRemoteSessionDirectory } from './directory.ts'
+import { parseManagedSshConfig } from './sshConfig.ts'
 import { parseRemoteSnapshot, type RemoteSnapshot } from './snapshot.ts'
 
 export interface RemoteHandshake {
@@ -183,6 +185,11 @@ function pause(milliseconds: number, signal?: AbortSignal): Promise<void> {
     signal?.addEventListener('abort', done, { once: true })
   })
 }
+function controlSocketPath(directory: string): string {
+  return isManagedRemoteSessionDirectory(directory)
+    ? `/tmp/port-control-${directory.slice('/tmp/port-ssh-'.length)}`
+    : `${directory}/s`
+}
 
 function sameSocket(
   directory: string,
@@ -198,7 +205,8 @@ async function observeSnapshots(
   original: Stats,
   pinned: Stats,
   signal?: AbortSignal,
-  onSnapshot?: () => Promise<void>
+  onSnapshot?: () => Promise<void>,
+  intervalMilliseconds = 2000
 ): Promise<void> {
   let last: RemoteSnapshot | null = null
   let revision = 0
@@ -241,7 +249,7 @@ async function observeSnapshots(
       }
       if (revision === Number.MAX_SAFE_INTEGER) break
       revision++
-      await pause(2000, signal)
+      await pause(intervalMilliseconds, signal)
     }
   } catch {
     /* Local ownership loss is terminal, never retarget or recreate. */
@@ -257,6 +265,8 @@ function readSession(directory: string): {
   metadata: Stats
   original: Stats
   destination: string
+  lifecycle: 'legacy' | 'openssh-managed'
+  connectionId?: string
   connectionIdentity?: SshConnectionIdentity
 } {
   const original = ownedDirectory(directory)
@@ -283,11 +293,25 @@ function readSession(directory: string): {
     if (size > 8192 || !privateFile(after) || !sameInode(stat, after) || after.size !== size)
       throw new Error('Invalid metadata')
     const value = JSON.parse(buffer.subarray(0, size).toString('utf8'))
+    const managed =
+      value?.version === 3 &&
+      exactData(
+        value,
+        'connectionId,connectionIdentity,destination,lifecycle,version'.split(',')
+      ) &&
+      value.lifecycle === 'openssh-managed' &&
+      typeof value.connectionId === 'string' &&
+      isManagedRemoteSessionDirectory(directory) &&
+      directory === `/tmp/port-ssh-${value.connectionId}` &&
+      isSshConnectionIdentity(value.connectionIdentity)
+    const legacy =
+      value &&
+      (value.version === 1 || value.version === 2) &&
+      (value.version === 2
+        ? isSshConnectionIdentity(value.connectionIdentity)
+        : !Object.hasOwn(value, 'connectionIdentity'))
     if (
-      !value ||
-      (value.version !== 1 && value.version !== 2) ||
-      (value.version === 2 && !isSshConnectionIdentity(value.connectionIdentity)) ||
-      (value.version === 1 && Object.hasOwn(value, 'connectionIdentity')) ||
+      (!managed && !legacy) ||
       typeof value.destination !== 'string' ||
       !classifySshInvocation([value.destination])
     )
@@ -296,7 +320,9 @@ function readSession(directory: string): {
       metadata: after,
       original,
       destination: value.destination,
-      ...(value.version === 2 ? { connectionIdentity: value.connectionIdentity } : {}),
+      lifecycle: managed ? 'openssh-managed' : 'legacy',
+      ...(managed ? { connectionId: value.connectionId as string } : {}),
+      ...(value.version === 2 || managed ? { connectionIdentity: value.connectionIdentity } : {}),
     }
   } finally {
     closeSync(fd)
@@ -565,7 +591,7 @@ function observationHandle(
   const checkPresence = (): void => {
     for (const [path, original] of [
       [directory, pinned.original],
-      [`${directory}/s`, control],
+      [controlSocketPath(directory), control],
     ] as const) {
       try {
         if (!sameInode(lstatSync(path), original)) disconnected = true
@@ -633,7 +659,7 @@ function observationHandle(
 function socket(directory: string, original: RemoteSessionFileIdentity): Stats | null {
   unchanged(directory, original)
   try {
-    const stat = lstatSync(`${directory}/s`)
+    const stat = lstatSync(controlSocketPath(directory))
     if (!stat.isSocket() || stat.uid !== process.getuid?.()) throw new Error('Invalid socket')
     return stat
   } catch (error) {
@@ -647,7 +673,7 @@ function companion(directory: string): string[] {
     '-F',
     '/dev/null',
     '-S',
-    `${directory}/s`,
+    controlSocketPath(directory),
     '-o',
     'ControlMaster=no',
     '-o',
@@ -862,16 +888,52 @@ export async function openRemoteStream(
   }
 }
 
-export async function prepareRemoteSession(argv: string[]): Promise<string | null> {
+export async function prepareRemoteSession(
+  argv: string[],
+  managedOnly = false
+): Promise<string | null> {
   let directory: string | undefined
+  let created = false
   try {
-    const invocation = classifySshInvocation(argv)
+    const invocation = classifySshInvocation(argv, managedOnly)
     if (!invocation) return null
     const config = await ssh(['-G', ...argv], 3000, 65536)
-    if (config === null || !isEligibleSshConfig(config)) return null
+    if (config === null) return null
     const connectionIdentity = parseSshConnectionIdentity(config)
     if (!connectionIdentity) return null
+    const managed = parseManagedSshConfig(config)
+    if (managed) {
+      directory = `/tmp/port-ssh-${managed.connectionId}`
+      try {
+        mkdirSync(directory, { mode: 0o700 })
+        created = true
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      }
+      const original = ownedDirectory(directory)
+      const metadata = {
+        version: 3,
+        lifecycle: 'openssh-managed',
+        connectionId: managed.connectionId,
+        destination: invocation.destination,
+        connectionIdentity,
+      } as const
+      if (created) publish(directory, original, 'metadata.json', metadata)
+      else {
+        const existing = readSession(directory)
+        if (
+          existing.lifecycle !== 'openssh-managed' ||
+          existing.connectionId !== managed.connectionId ||
+          existing.destination !== invocation.destination ||
+          JSON.stringify(existing.connectionIdentity) !== JSON.stringify(connectionIdentity)
+        )
+          throw new Error('Managed session identity mismatch')
+      }
+      return directory
+    }
+    if (managedOnly || !isEligibleSshConfig(config)) return null
     directory = mkdtempSync('/tmp/port-ssh-')
+    created = true
     const original = ownedDirectory(directory)
     publish(directory, original, 'metadata.json', {
       version: 2,
@@ -880,8 +942,8 @@ export async function prepareRemoteSession(argv: string[]): Promise<string | nul
     })
     return directory
   } catch {
-    // An incomplete prepare may leave only our exclusive temporary metadata file.
-    if (directory) {
+    // Only remove a directory created by this attempt; never adopt deterministic state.
+    if (directory && created) {
       try {
         const original = ownedDirectory(directory)
         removeKnownFiles(directory, original)
@@ -900,7 +962,10 @@ export async function observeRemoteSession(
   onSnapshot?: () => Promise<void>
 ): Promise<void> {
   try {
-    const original = session(directory)
+    const state = readSession(directory)
+    const { original } = state
+    // Managed companion sessions must leave a gap longer than ControlPersist (3s).
+    const snapshotInterval = state.lifecycle === 'openssh-managed' ? 5000 : 2000
     const deadline = Date.now() + 90_000
     let pinned: Stats | undefined
     while (!signal?.aborted && Date.now() < deadline) {
@@ -929,7 +994,7 @@ export async function observeRemoteSession(
           if (!validHandshake(value)) return
           if (!sameSocket(directory, original, pinned)) return
           ensureHandshake(directory, original)
-          await observeSnapshots(directory, original, pinned, signal, onSnapshot)
+          await observeSnapshots(directory, original, pinned, signal, onSnapshot, snapshotInterval)
           return
         }
       }
@@ -968,16 +1033,31 @@ function removeKnownFiles(directory: string, original: Stats): void {
   }
 }
 
+/** Removes settled managed state without ever signalling or unlinking an active SSH master. */
+export async function cleanupManagedRemoteSession(directory: string): Promise<void> {
+  try {
+    const state = readSession(directory)
+    if (state.lifecycle !== 'openssh-managed' || socket(directory, state.original)) return
+    removeKnownFiles(directory, state.original)
+    unchanged(directory, state.original)
+    rmdirSync(directory)
+  } catch {
+    /* Refuse unowned, active, or unexpected state. */
+  }
+}
+
 export async function cleanupRemoteSession(directory: string): Promise<void> {
   try {
-    const original = session(directory)
+    const state = readSession(directory)
+    const { original } = state
     const before = socket(directory, original)
+    if (state.lifecycle === 'openssh-managed' && before) return
     if (before) {
       const stopped = await ssh([...companion(directory), '-O', 'exit', 'dummy'], 1000, 8192)
       if (stopped === null) return // Retain the socket so a failed shutdown remains recoverable.
       const after = socket(directory, original)
       if (after && (after.dev !== before.dev || after.ino !== before.ino)) return
-      if (after) unlinkSync(`${directory}/s`)
+      if (after) unlinkSync(controlSocketPath(directory))
     }
     removeKnownFiles(directory, original)
     unchanged(directory, original)

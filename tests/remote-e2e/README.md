@@ -26,8 +26,11 @@ the closed forward's Unix pathname behind, so the future coordinator must remove
 Port-owned path after observing master shutdown. The same gate verifies that modern `scp`
 and `sftp` succeed without invoking `LocalCommand`.
 
-This is a prerequisite proof only. Production activation remains the opt-in Bash `ssh`
-integration described below until the coordinator and installer changes land.
+`scenarios/managed_local_command.py` then exercises the production installer with
+`--remote-host '*.od'`. It validates the rendered effective config, deterministic version-3
+session metadata, coordinator handshake, finite-persistence cleanup, and successful `scp` /
+`sftp` transfers that create no Port session state. The Bash wrapper remains as the metadata
+preparation side channel and compatibility fallback until its removal layer lands.
 
 ## Run
 
@@ -52,9 +55,11 @@ package metadata are copied into fixtures, not the repository or secret files.
 Enable once with `port install --remote-services` from Bash. This configures the
 normal `.port` and `.ssh` wildcard DNS suffixes, stores an owner-only local marker,
 and installs the ordinary shell hook; subsequent `port shell-hook bash` output adds
-the SSH integration automatically. Existing SSH aliases/functions are left alone.
-Other shells are not yet supported for remote services. Unsupported invocations or
-existing multiplexing policies pass through unchanged. `command ssh` bypasses integration.
+the SSH integration automatically. Repeatable `--remote-host` values additionally install
+an owner-only, host-scoped OpenSSH include with finite `ControlPersist` and
+`LocalCommand port __remote-register %C`. Existing SSH configuration is preserved.
+Other shells are not yet supported for remote services. Unsupported invocations pass
+through unchanged; `command ssh`, `scp`, and `sftp` never prepare new Port state.
 
 The explicit `port shell-hook bash --remote-services` bridge remains non-persistent: while its
 SSH session is active, the admission watchdog owns an observation-only coordinator child through

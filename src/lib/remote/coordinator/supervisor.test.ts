@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { maintainRemoteRuntimeObservation, stopRemoteRuntimeObservation } from './supervisor.ts'
+import {
+  maintainRemoteRuntimeObservation,
+  registerRemoteRuntimeObservation,
+  stopRemoteRuntimeObservation,
+} from './supervisor.ts'
 import type { RemoteCoordinatorRequest, RemoteCoordinatorResponse } from './control.ts'
 
 const directory = '/tmp/port-ssh-Ab1234'
@@ -45,6 +49,44 @@ describe('remote observation watchdog', () => {
 
     expect(actions.paths).toHaveBeenCalledOnce()
     expect(request).not.toHaveBeenCalled()
+    expect(actions.launch).not.toHaveBeenCalled()
+  })
+
+  it('registers once after launching a missing coordinator', async () => {
+    const pings = [null, response('a'.repeat(32))]
+    const request = vi.fn(async (_root: string, value: RemoteCoordinatorRequest) => {
+      if (value.action === 'ping') {
+        const next = pings.shift()
+        return next === undefined ? response('a'.repeat(32)) : next
+      }
+      return response(value.incarnation)
+    })
+    let now = 0
+    const actions = operations(request, {
+      now: vi.fn(() => now),
+      pause: vi.fn(async () => {
+        now += 250
+      }),
+    })
+
+    await expect(registerRemoteRuntimeObservation(directory, actions)).resolves.toBe(true)
+    expect(actions.launch).toHaveBeenCalledOnce()
+    expect(request.mock.calls.map(([, value]) => value.action)).toEqual(['ping', 'ping', 'observe'])
+  })
+
+  it('bounds a rejected registration without throwing', async () => {
+    let now = 0
+    const request = vi.fn(async (_root: string, value: RemoteCoordinatorRequest) =>
+      value.action === 'ping' ? response('a'.repeat(32)) : null
+    )
+    const actions = operations(request, {
+      now: vi.fn(() => now),
+      pause: vi.fn(async milliseconds => {
+        now += milliseconds + 5_000
+      }),
+    })
+
+    await expect(registerRemoteRuntimeObservation(directory, actions)).resolves.toBe(false)
     expect(actions.launch).not.toHaveBeenCalled()
   })
 
