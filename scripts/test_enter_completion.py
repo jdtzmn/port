@@ -1,4 +1,4 @@
-"""Exercise real `port enter` shutdown under fish in disposable repositories.
+"""Exercise explicit and shorthand Port entry shutdown under fish in disposable repos.
 
 Run: python3 -B -m unittest discover -s scripts -p test_enter_completion.py -v
 Requires fish, git, bun, and an installed port. No Docker or user hooks are used.
@@ -25,7 +25,7 @@ def fish_quote(value):
 
 
 class EnterCompletionTests(unittest.TestCase):
-    def exercise(self, runtime, with_hook):
+    def exercise(self, runtime, with_hook, shorthand=False):
         (ROOT / ".pi").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="enter-exit-", dir=ROOT / ".pi") as directory:
             fixture = pathlib.Path(directory)
@@ -63,15 +63,16 @@ class EnterCompletionTests(unittest.TestCase):
                 self.assertIsNotNone(installed, "An installed port is required for comparison")
                 executable.symlink_to(installed)
 
+            command = "port" if shorthand else "port enter"
             script = f"""
                 cd {fish_quote(repo)}; or exit 1
                 port shell-hook fish | source; or exit 1
                 functions -q port; or exit 1
                 for n in (seq 1 5)
-                    port enter diagnostic-$n; or exit 1
+                    {command} diagnostic-$n; or exit 1
                     test "$PORT_WORKTREE" = diagnostic-$n; or exit 1
                     test "$PWD" = {fish_quote(repo)}/.port/trees/diagnostic-$n; or exit 1
-                    port enter diagnostic-$n; or exit 1
+                    {command} diagnostic-$n; or exit 1
                     {"test -f hook-ran; or exit 1" if with_hook else "true"}
                 end
                 echo CHAIN_FINISHED
@@ -95,6 +96,18 @@ class EnterCompletionTests(unittest.TestCase):
 
     def test_installed_with_post_create_hook(self):
         self.exercise("installed", True)
+
+    def test_source_shorthand_without_hook(self):
+        self.exercise("source", False, shorthand=True)
+
+    def test_source_shorthand_with_post_create_hook(self):
+        self.exercise("source", True, shorthand=True)
+
+    def test_installed_shorthand_without_hook(self):
+        self.exercise("installed", False, shorthand=True)
+
+    def test_installed_shorthand_with_post_create_hook(self):
+        self.exercise("installed", True, shorthand=True)
 
 
 if __name__ == "__main__":
