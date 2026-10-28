@@ -1,98 +1,67 @@
 # Port
 
+[![npm version](https://img.shields.io/npm/v/@jdtzmn/port)](https://www.npmjs.com/package/@jdtzmn/port)
+[![CI](https://github.com/jdtzmn/port/actions/workflows/ci.yml/badge.svg)](https://github.com/jdtzmn/port/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/npm/l/@jdtzmn/port)](./LICENSE.md)
+[![Node.js](https://img.shields.io/node/v/@jdtzmn/port)](https://nodejs.org)
+
 **Port CLI runs Docker Compose services in parallel Git worktrees—no port conflicts, with Traefik-routed local branch domains.**
 
-<table>
-  <tr>
-    <th>Terminal A (<code>feature-1</code> worktree)</th>
-    <th>Terminal B (<code>feature-2</code> worktree)</th>
-  </tr>
-  <tr>
-    <td>
-      <pre><code>port feature-1
-port up
-# Services available at feature-1.port</code></pre>
-    </td>
-    <td>
-      <pre><code>port feature-2
-port up
-# Services available at feature-2.port</code></pre>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img src="./docs/assets/port-overview.svg" alt="Port routes feature-1.port:3000 and feature-2.port:3000 through Traefik to the same service port in two separate worktrees" width="880">
+</p>
 
-## The problem
+## Why Port
 
-A Docker Compose stack that publishes a host port can work in one worktree but fail when a second worktree starts the same service:
+A Docker Compose stack that publishes a host port works in one worktree but fails when a second worktree starts the same service:
 
 ```text
 Error starting userland proxy: listen tcp4 0.0.0.0:3000: bind: address already in use
 ```
 
-## How Port resolves it
+Port gives each worktree its own Compose project and removes conflicting host-port bindings. Traefik routes requests to the right worktree by hostname, so both stacks can use the same service ports at once.
 
-Port keeps each worktree's services on its own Compose project and removes conflicting host-port bindings. Traefik routes requests to the right worktree through a local branch domain, so both stacks can use the same service ports at once.
+- **Worktree management**: create, enter, rename, and remove Git worktrees with one command
+- **Branch domains**: `<branch>.port:3000` and `<service>.<branch>.port` instead of port numbers
+- **Host processes**: route non-Docker processes (like `npm run dev`) through the same domains with `port run`
+- **Lifecycle hooks**: run scripts after worktree creation, `port up`, and before `port run`
+- **Agent friendly**: ships an installable [Agent Skill](./docs/setup.md#agent-skill) for coding agents
 
-## Features
+Compared with other tools? See [alternatives](./docs/alternatives.md).
 
-- **Git Worktree Management**: Create and manage git worktrees with a single command
-- **Automatic Traefik Configuration**: Dynamically configure Traefik reverse proxy for local domain access
-- **Port Conflict Resolution**: Run multiple worktrees simultaneously without port conflicts
-- **Host Process Support**: Run non-Docker processes (like `npm serve`) with Traefik routing
-- **DNS Setup**: Automated DNS configuration for `*.port` domains
-- **Service Discovery**: Easy access to services via hostnames instead of port numbers
-- **Service Name Aliases**: First published ports are also available at `service.<branch>.port`
-- **Lifecycle Hooks**: Run custom scripts after worktree creation and after `port up`
+## Requirements
 
-## Alternatives
+- Node.js 22.5+
+- Git 2.7+
+- Docker & Docker Compose v2.24.0+
+- macOS or Linux
 
-Port is designed for Git worktrees that need both Docker Compose isolation and stable local branch domains. Other tools may be a better fit depending on the workflow:
-
-| Tool                                                                | Consider it when                                                                                                 | How it differs from Port                                                                                                                                                                                                    |
-| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [tug](https://github.com/mickamy/tug)                               | You want Docker Compose auto-routing with `*.localhost` HTTP URLs and deterministic host ports for TCP services. | Both tools auto-route worktree services. tug uses `*.localhost` for HTTP and deterministic host ports for TCP; Port uses a configurable local TLD (default `.port`) alongside worktree management and host-process routing. |
-| [worktree-compose](https://github.com/mostafasudo/worktree-compose) | You want zero-config, per-worktree stacks with automatically assigned host ports and an MCP server.              | worktree-compose assigns distinct host ports; Port removes conflicting bindings and routes services through stable branch domains.                                                                                          |
-| [Sprout](https://github.com/AgenticSec/sprout)                      | You want worktree creation with `.env` template generation and automatic port values.                            | Sprout generates environment files before you start Compose; Port manages Compose routing and lifecycle commands after entering a worktree.                                                                                 |
-| [Portman](https://github.com/iannuttall/portman)                    | You need a macOS menu-bar app to inspect, diagnose, and stop existing local dev servers.                         | Portman observes and controls running ports; Port prevents Compose port conflicts by isolating worktree services.                                                                                                           |
-
-## Installation
+## Install
 
 ```bash
-# Port is published on npm and runs on Node.js
 npm install -g @jdtzmn/port
-# or install globally with Bun
+# or
 bun add -g @jdtzmn/port
 ```
 
-### Agent Skill
-
-Port ships an installable Agent Skill that teaches compatible coding agents the safe Port workflow: setup, entering worktrees, starting services, viewing URLs, running host processes, and cleaning up.
+## Quick start
 
 ```bash
-npx skills add jdtzmn/port --skill port-cli -g
-# or from a local checkout
-npx skills add . --skill port-cli --copy -y
+# One-time: resolve *.port to 127.0.0.1 and add the shell hook
+port install
+
+# In your project: create (or enter) a worktree, then start its services
+port feature-1
+port up
+# Services available at feature-1.port
+
+# In another terminal, a second worktree with the same ports
+port feature-2
+port up
+# Services available at feature-2.port
 ```
 
-## Quick Start
-
-Want a guided workflow in the CLI?
-
-```bash
-port onboard
-```
-
-### 1. (Optional) Initialize Project
-
-```bash
-port init
-```
-
-This scaffolds `.port/config.jsonc`, hooks, and templates. Core worktree commands can run without this step.
-
-### 2. Configure Project
-
-Create `.port/config.jsonc` in your project:
+Port works with your existing `docker-compose.yml`. Optionally run `port init` to scaffold `.port/config.jsonc`, hooks, and templates, or set options by hand:
 
 ```jsonc
 {
@@ -104,719 +73,35 @@ Create `.port/config.jsonc` in your project:
 }
 ```
 
-### 3. Set Up DNS and Shell Integration (One-time)
-
-```bash
-port install
-```
-
-Configures your system to resolve your configured wildcard domain (default `*.port`) to `127.0.0.1`, then offers to add the shell hook to your shell profile (`~/.bashrc`, `~/.zshrc`, or `~/.config/fish/config.fish`).
-
-On macOS, `port install` runs privileged steps through a centralized elevation helper: it uses the native admin credential dialog when a GUI session is available and falls back to terminal `sudo` in headless/non-GUI environments.
-
-You can optionally specify a custom IP address:
-
-```bash
-# Resolve to a specific IP (useful for Docker networks, etc.)
-port install --dns-ip 172.25.0.2
-
-# Skip confirmation prompt
-port install --yes
-
-# Combine options
-port install --yes --dns-ip 192.168.1.100
-
-# Explicit custom domain
-port install --domain custom
-
-# Configure DNS only, leaving the shell profile untouched
-port install --no-shell-hook
-
-# Add the shell hook only, skipping DNS setup
-port install --shell-hook-only
-```
-
-### Remote VM services (optional, Bash)
-
-Enable remote service routing during the same one-time setup:
-
-```bash
-port install --remote-services
-
-# If DNS is already configured and only the shell hook needs updating
-port install --remote-services --shell-hook-only
-```
-
-Afterward, use ordinary SSH normally:
-
-```bash
-ssh devbox
-# On devbox
-port up
-```
-
-While that SSH session is active, remote services use the same local URLs as local worktrees, such as `ui.feature.port` and `feature.port:3000`. If the same worktree exists in more than one place, use the stable machine-qualified `.ssh` alias shown by Port, such as `ui.feature.devbox.ssh`. Ambiguous default URLs fail closed instead of selecting a machine silently.
-
-The initial integration supports Bash, HTTP routing, and TLS/SNI routing. `command ssh ...` bypasses Port's SSH integration. Plaintext protocols that do not carry a hostname remain limited by Port's existing routing model; broader support is tracked in [#149](https://github.com/jdtzmn/port/issues/149). The remote machine must have a compatible `port` executable, but missing or incompatible remote support never blocks the SSH login.
-
-#### macOS remote-services smoke test
-
-Before treating remote routing as released on macOS, verify it manually from a Bash shell:
-
-1. Run `port install --remote-services`, start a fresh Bash shell, and confirm `type ssh` reports the Port wrapper.
-2. Open an ordinary `ssh devbox` login, run `port up` in a remote worktree, and verify its HTTP, WebSocket, and PostgreSQL/TLS-SNI `.port` addresses.
-3. Start the same worktree locally or on another VM. Confirm the default address fails closed and `port urls --remote` shows the exact `.local.port` and `.ssh` alternatives.
-4. Close the remote login abruptly, confirm its qualified address becomes unavailable rather than retargeting, then reconnect and verify recovery.
-5. Run `command ssh devbox` and confirm the bypass behaves like unwrapped SSH.
-6. Confirm Traefik and relay listeners remain local/private and are not exposed on the LAN.
-
-Use a PostgreSQL client with TLS and SNI enabled (`sslmode=require`; libpq 14 or newer). Record the Port, macOS, Docker Desktop, and client versions with the release result.
-
-#### Linux DNS Setup
-
-On Linux systems with `systemd-resolved` running (most modern Ubuntu/Debian systems), the install command automatically:
-
-1. Detects that `systemd-resolved` is using port 53
-2. Runs `dnsmasq` on port 5354 to avoid conflicts
-3. Configures `systemd-resolved` to forward your wildcard domain queries to dnsmasq
-
-This "dual-mode" setup allows both services to coexist without conflicts.
-
-### 4. Shell Integration (Recommended)
-
-`port install` adds this for you. To set it up by hand instead, add the hook to your shell profile so `port enter` and `port exit` can change your working directory:
-
-```bash
-# ~/.bashrc
-eval "$(port shell-hook bash)"
-
-# ~/.zshrc
-eval "$(port shell-hook zsh)"
-
-# ~/.config/fish/config.fish
-port shell-hook fish | source
-```
-
-Without shell integration, `port enter` and `port exit` will print a `cd` command for you to run manually.
-
-The block `port install` writes is delimited by `# >>> port shell hook >>>` markers, so `port uninstall` can remove it again (pass `--no-shell-hook` to keep it).
-
-### 5. Shell Completions (Optional)
-
-Enable tab completion for port commands and options:
-
-```bash
-# Bash - add to ~/.bashrc
-eval "$(port completion bash)"
-
-# Zsh - add to ~/.zshrc
-eval "$(port completion zsh)"
-
-# Fish - add to ~/.config/fish/config.fish
-port completion fish | source
-```
-
-This enables tab completion for all port commands, options, and branch names.
-
-### 6. Enter a Worktree
-
-```bash
-port feature-1
-port enter feature-1
-```
-
-This creates a new worktree and changes into it (with shell integration) or prints the path to `cd` into.
-Use `port enter <branch>` when your branch name collides with a command (for example `status` or `install`).
-If a branch and command collide, running `port <command>` shows a hint to use `port enter <branch>`.
-If the branch is already checked out in another worktree, `port enter` shows you where it is and asks whether to enter that worktree instead (non-interactive terminals reuse it automatically).
-
-To enter from a GitHub link, use the explicit form (requires an authenticated `gh` CLI and a matching GitHub `origin`):
-
-```bash
-port enter 'https://github.com/owner/repo/issues/42' # <your-github-login>/issue-42
-port enter 'https://github.com/owner/repo/pull/57'   # PR head branch
-```
-
-Issue links create or reuse a branch named for your GitHub login and issue number. PR links reuse the head branch's worktree; for a new branch, Port fetches the PR head from the repository, including fork PRs. Existing branches are never reset. An unrelated branch with the same name, a conflicting worktree path, or a URL for another repository produces an error rather than entering the wrong worktree. Closed PRs require a previously associated local branch. Other URLs are not treated as branch names.
-
-### 7. Exit a Worktree
-
-```bash
-port exit
-```
-
-Returns to the repository root and clears the `PORT_WORKTREE` environment variable.
-
-### 8. Rename a Worktree
-
-```bash
-port rename feature-new
-# or use the shorthand
-port mv feature-new
-```
-
-Run this from inside the worktree after stopping its services. It renames the current worktree and branch in place and keeps Port state aligned.
-
-### 9. Start Services
-
-```bash
-port up [services...]
-```
-
-Starts docker-compose services and makes them available at `feature-1.port:PORT`.
-Omit `services...` to start everything, or pass specific service names to start a subset and their dependencies.
-For services with published ports, the first one is also reachable at `service.feature-1.port`.
-
-If `.port/hooks/post-up.sh` is executable, Port runs it after services are up. You can manually
-rerun that hook with:
-
-```bash
-port open
-```
-
-### 10. Stop Services
-
-```bash
-port down [services...]
-```
-
-Stops all services by default, or a selected subset when service names are provided. The selected containers are removed without tearing down the whole worktree.
-
-### 11. Run Host Processes (Non-Docker)
-
-```bash
-port run 3000 -- npm run dev
-```
-
-Runs a host process (not in Docker) and routes traffic through Traefik. The command receives the `PORT` environment variable set to an ephemeral port, while users access it via `<branch>.port:3000`.
-
-This is useful for:
-
-- Development servers that don't run in Docker
-- Quick testing without containerization
-- Running multiple instances of the same service on different worktrees
-
-### 12. Check Status
-
-```bash
-port status
-```
-
-Shows per-service status grouped by worktree, host services, and Traefik.
-
-Show URLs for services in the current worktree:
-
-```bash
-port urls
-port urls ui-frontend
-```
-
-`port urls` works in either a worktree or the main repository.
-
-### 13. Remove a Worktree
-
-```bash
-port remove feature-1
-# Skip confirmation for non-standard/stale worktree entries
-port rm -f feature-1
-# Keep the local branch name unchanged
-port rm --keep-branch feature-1
-# Clean up Docker images without prompting
-port rm --cleanup-images feature-1
-```
-
-Stops services, removes the worktree, and soft-deletes the local branch by archiving it under `archive/<name>-<timestamp>`.
-Use `--keep-branch` to preserve the local branch name.
-
-**Docker Cleanup Behavior:**
-
-- Always cleans up containers, networks, and volumes (low-risk resources)
-- Prompts for image cleanup with default **No** (images may be shared across projects)
-- Use `--cleanup-images` to clean up images without prompting
-- Image cleanup is opt-in to prevent accidentally removing shared base images
-
-### 14. Clean Up Archived Branches
-
-```bash
-port cleanup
-# Clean up images without prompting
-port cleanup --cleanup-images
-```
-
-Shows archived branches created by `port remove` and asks for confirmation before deleting all of them.
-
-**Docker Cleanup Behavior:**
-
-- Automatically cleans up containers, networks, and volumes for archived branches
-- Prompts for image cleanup with aggregate size estimate across all branches
-- Default answer is **No** to preserve shared images
-- Use `--cleanup-images` to clean up images without prompting
-
-## Commands
-
-| Command                                                             | Description                                                         |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `port init`                                                         | Initialize `.port/` directory structure                             |
-| `port onboard`                                                      | Print recommended workflow and command usage guide                  |
-| `port install [--dns-ip IP] [--domain DOMAIN]`                      | Set up DNS and shell hook for wildcard domain (default from config) |
-| `port shell-hook <bash\|zsh\|fish>`                                 | Print shell integration code for automatic cd                       |
-| `port completion <bash\|zsh\|fish>`                                 | Generate shell completion script for tab completion                 |
-| `port enter <branch>`                                               | Enter a worktree explicitly (including command names)               |
-| `port <branch>`                                                     | Enter a worktree (creates if doesn't exist)                         |
-| `port exit`                                                         | Exit the current worktree and return to repo root                   |
-| `port rename <branch>` / `port mv <branch>`                         | Rename the current worktree and branch in place                     |
-| `port up [services...]`                                             | Start docker-compose services in current worktree                   |
-| `port open`                                                         | Re-run the `post-up` hook in the current repo/worktree context      |
-| `port down [services...]`                                           | Stop docker-compose services and host processes selectively         |
-| `port run <port> [-d] -- <command...>`                              | Run a host process with Traefik routing (`-d` detaches)             |
-| `port kill [port]`                                                  | Stop host services (optionally by logical port)                     |
-| `port remove <branch> [--force] [--keep-branch] [--cleanup-images]` | Remove worktree, archive branch, clean up Docker resources          |
-| `port prune [--dry-run] [--force] [--cleanup-images]`               | Remove worktrees for merged branches, clean up Docker resources     |
-| `port cleanup [--cleanup-images]`                                   | Delete archived branches and their Docker resources                 |
-| `port compose <args...>` (alias: `dc`)                              | Run docker compose with auto `-f` flags                             |
-| `port list`                                                         | Print worktree names, one per line                                  |
-| `port status`                                                       | Show service status across all worktrees                            |
-| `port doctor [--verbose]`                                           | Diagnose Port prerequisites, routing, and project configuration     |
-| `port urls [service]`                                               | Show service URLs for current worktree                              |
-| `port uninstall [--yes] [--domain DOMAIN]`                          | Remove DNS configuration for wildcard domain                        |
-| `port hook [hook-name] [--list]`                                    | List or manually run a configured lifecycle hook                    |
-
-### Stale Worktree Warnings
-
-`port status` and `port list` may warn when the repo has 10 or more stale Port worktrees:
-
-`You have X stale port worktrees. Consider running port prune.`
-
-`port enter <branch>` shows the same warning only when the stale count is extreme (25+), and it never blocks worktree creation.
-
-## Hooks
-
-Port supports executable shell hooks in `.port/hooks/`:
-
-- `post-create.sh`: runs after a new worktree is created by `port enter <branch>`
-- `post-up.sh`: runs after `port up [services...]` successfully starts services
-- `pre-run.sh`: runs before `port run <port> -- <command...>` starts the host process
-
-Hooks receive these environment variables:
-
-- `PORT_ROOT_PATH`
-- `PORT_WORKTREE_PATH`
-- `PORT_BRANCH`
-- `PORT_DOMAIN`
-- `PORT_HOSTNAME_LABEL`: sanitized branch name, truncated to 63 characters (the same label Traefik routes on) — use this instead of re-deriving a hostname from `PORT_BRANCH`
-- `PORT_HOSTNAME`: `PORT_HOSTNAME_LABEL` + `.` + `PORT_DOMAIN`
-
-`pre-run.sh` also receives `PORT_LOGICAL_PORT`, `PORT_ACTUAL_PORT`, and `PORT_ENV_FILE`. Append `KEY=VALUE` lines to `$PORT_ENV_FILE` to override environment variables for the command spawned by `port run`:
-
-```bash
-if [ -n "${DATABASE_URL:-}" ]; then
-  echo "DATABASE_URL=${DATABASE_URL/localhost:5432/$PORT_HOSTNAME:5432}" >> "$PORT_ENV_FILE"
-fi
-```
-
-Manual hook commands:
-
-```bash
-port hook --list
-port hook post-create
-port hook post-up
-
-# shorthand for `port hook post-up`
-port open
-```
-
-## How It Works
-
-### Architecture
-
-```
-┌─────────────────────────────────┐
-│ CLI Tool: port                  │
-│ (installed globally)            │
-└─────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│ Your Project: ~/projects/my-app │
-│ ├── .port/                      │
-│ │   ├── config.jsonc            │
-│ │   └── trees/                  │
-│ │       ├── feature-1/          │
-│ │       └── feature-2/          │
-│ └── docker-compose.yml          │
-└─────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│ Traefik (global)                │
-│ ~/.port/traefik/                │
-│ - Routes by hostname            │
-│ - Manages all services          │
-└─────────────────────────────────┘
-```
-
-### Port Conflict Resolution
-
-Multiple worktrees can run simultaneously because:
-
-1. Host port bindings are disabled in worktree overrides
-2. Services only listen on internal container ports
-3. Traefik routes by Host header, not port number
-
-**Example:**
-
-```bash
-# feature-1 worktree
-port feature-1
-port up
-# Available at: feature-1.port:3000
-
-# In another terminal, feature-2 worktree (same ports!)
-port feature-2
-port up
-# Available at: feature-2.port:3000
-
-# No conflicts! Traefik routes both to the same internal port on different containers
-```
-
-### Custom 404 Handler
-
-Port includes a custom 404 handler that helps you discover what's actually running when you visit an unknown URL.
-
-When you navigate to a URL that doesn't match any running worktree (e.g., `http://nonexistent.port:3000`), instead of seeing a generic Traefik error, you'll receive a plain-text response showing:
-
-- **Running worktrees**: If any worktrees have services up, it lists their names
-- **Empty state**: If no worktrees are running, it displays "No running worktrees"
-
-**Example responses:**
-
-```
-404 - Worktree Not Found
-
-Running worktrees:
-feature-1
-feature-2
-main
-```
-
-Or when nothing is running:
-
-```
-404 - Worktree Not Found
-
-No running worktrees
-```
-
-The handler works by:
-
-1. Running as a lightweight Alpine Linux container alongside Traefik
-2. Querying Docker for containers with `traefik.enable=true` labels
-3. Extracting worktree names from the `Host()` routing rules
-4. Returning the list as plain text on every 404 request
-
-This makes it easy to:
-
-- Debug routing issues
-- See what's currently available
-- Quickly identify the correct worktree URL to access
-
-### Host Process Routing
-
-The `port run` command enables running non-Docker processes with Traefik routing:
-
-```bash
-# In .port/trees/feature-1 directory
-port run 3000 -- npm run dev
-# Service available at http://feature-1.port:3000
-
-# In another terminal, .port/trees/feature-2 directory
-port run 3000 -- npm run dev
-# Service available at http://feature-2.port:3000
-
-# No port conflicts! Both run simultaneously.
-```
-
-**How it works:**
-
-1. Allocates a unique ephemeral port (e.g., 49152)
-2. Sets `PORT=49152` environment variable for the command
-3. Registers with Traefik: `feature-1.port:3000` → `localhost:49152`
-4. Cleans up when the process exits (Ctrl+C, crash, etc.)
-
-Most frameworks (Express, Next.js, Vite, etc.) respect the `PORT` environment variable automatically.
-
-**Detached mode:**
-
-```bash
-port run 3000 -d -- npm run dev
-# CLI exits immediately; output goes to .port/logs/<branch>-<port>.log
-tail -f .port/logs/feature-1-3000.log
-port kill 3000  # stop the detached process
-```
-
-Detached processes survive closing the terminal, so they are cleaned up by `port kill` instead of Ctrl+C.
-
-### Docker Cleanup
-
-Port automatically manages Docker resources when removing worktrees or cleaning up archived branches.
-
-#### Safety Levels
-
-Docker resources are cleaned up in two phases with different safety levels:
-
-**1. Low-Risk Cleanup (Automatic)**
-
-Always runs without prompting for:
-
-- **Containers**: Stopped containers specific to the project
-- **Volumes**: Named volumes created by the project
-- **Networks**: Custom networks created by compose
-
-These resources are safe to remove because they're project-specific and can be recreated.
-
-**2. High-Risk Cleanup (Opt-In)**
-
-Prompts before removing:
-
-- **Images**: Container images that may be shared across projects
-
-Images require confirmation because:
-
-- Base images (e.g., `node:20`, `postgres:15`) are often shared
-- Rebuilding images takes time and bandwidth
-- Removing shared images affects other projects
-
-#### Interactive vs Non-Interactive Mode
-
-**Interactive Mode** (default when running commands manually):
-
-- Shows image count and size estimate
-- Prompts with default answer **No**
-- Example: `Clean up 3 image(s) (150.0 MB)? (y/N)`
-
-**Non-Interactive Mode** (CI, scripts, `--force` flag):
-
-- Skips image cleanup by default
-- Use `--cleanup-images` flag to clean up images
-- Example: `port remove feature-1 --cleanup-images`
-
-#### Commands with Docker Cleanup
-
-All three cleanup commands follow the same safety pattern:
-
-```bash
-# port remove - cleans up single worktree
-port remove feature-1              # Prompts for images (default No)
-port remove feature-1 --cleanup-images  # Cleans images without prompt
-
-# port prune - cleans up merged worktrees
-port prune                         # Shows aggregate image estimate
-port prune --force --cleanup-images     # Non-interactive with images
-
-# port cleanup - cleans up archived branches
-port cleanup                       # Shows aggregate across all branches
-port cleanup --cleanup-images      # Cleans images for all archived branches
-```
-
-#### Why Default to No?
-
-Images default to **No** because:
-
-1. Images are expensive to rebuild (time + bandwidth)
-2. Base images are typically shared across projects
-3. Docker's layer cache means images often cost less disk than expected
-4. Users can always run cleanup later with `--cleanup-images`
-
-The conservative default prevents accidental removal of shared resources while still providing automatic cleanup of project-specific resources.
-
-## Project Structure
-
-```
-port/
-├── package.json
-├── tsconfig.json
-├── eslint.config.ts
-├── prettier.config.js
-├── src/
-│   ├── index.ts                 # Entry point
-│   ├── commands/
-│   │   ├── init.ts
-│   │   ├── install.ts
-│   │   ├── enter.ts
-│   │   ├── exit.ts
-│   │   ├── shell-hook.ts        # Shell integration (bash/zsh/fish)
-│   │   ├── up.ts
-│   │   ├── down.ts
-│   │   ├── run.ts               # Host process runner
-│   │   ├── remove.ts
-│   │   ├── list.ts
-│   │   └── status.ts
-│   ├── lib/
-│   │   ├── config.ts
-│   │   ├── git.ts
-│   │   ├── compose.ts
-│   │   ├── shell.ts             # Shell command generation
-│   │   ├── traefik.ts
-│   │   ├── registry.ts
-│   │   ├── hostService.ts       # Host service management
-│   │   ├── dns.ts
-│   │   ├── sanitize.ts
-│   │   └── worktree.ts
-│   └── types.ts
-├── skills/
-│   └── port-cli/
-│       └── SKILL.md             # Installable Agent Skill for coding agents
-├── traefik/
-│   └── docker-compose.yml
-└── README.md
-```
-
-## Requirements
-
-- Node.js 22.5+ (required runtime for the `port` CLI)
-- Git 2.7+
-- Docker & Docker Compose v2.24.0+
-- macOS or Linux
-
-## Configuration
-
-See [PLAN.md](./PLAN.md) for detailed configuration options and examples.
-
-## Development
-
-```bash
-# Install dependencies
-bun install
-
-# Run in development
-bun run dev init
-
-# Build
-bun run build
-
-# Type check
-bun run typecheck
-
-# Format code
-bun run format
-
-# Lint
-bun run lint
-
-# Test
-bun run test
-
-# Run a single integration shard (matches CI sharding)
-bunx vitest --shard=1/4
-bunx vitest --shard=2/4
-bunx vitest --shard=3/4
-bunx vitest --shard=4/4
-```
-
-### Performance benchmarks
-
-```bash
-# Run deterministic CLI and worktree benchmarks
-bun run benchmark
-
-# Include Docker status and a warm `port up` lifecycle benchmark
-BENCHMARK_INCLUDE_DOCKER=1 bun run benchmark
-```
-
-The benchmark suite measures p50 and p95 command latency against small and 32-worktree fixtures. p95 budgets are defined in `src/lib/benchmarkPolicy.ts` and may be adjusted by the maintainer as expectations evolve.
-
-For per-command diagnosis, set `PORT_PROFILE=1`. Port emits one machine-readable JSON profile to stderr after the command finishes, including CLI startup, registration, Git/GitHub, and Docker/Compose phases:
-
-```bash
-PORT_PROFILE=1 port status
-```
-
-Profiling is opt-in, does not change normal command output, and records only the command name—not its arguments.
-
-CI keeps developer-facing CLI, worktree, and Docker history on the generated `gh-pages` branch. Pull requests compare the merge result against that history, upload raw samples and a non-persistent chart preview for 30 days, and fail only when an absolute p95 budget is exceeded. Relative regressions of 25% are reported but do not fail CI.
-
-### Testing in Ubuntu Container
-
-The project includes a Docker container running Ubuntu 24.04 with systemd for testing the CLI in a Linux environment. This is useful for testing DNS configuration and other Linux-specific features.
-
-```bash
-# Start the container and open a bash shell
-make ubuntu
-
-# Stop the container
-make down
-```
-
-Once inside the container, you can test the CLI:
-
-```bash
-# Set up DNS for *.port domains
-port install --yes
-
-# Test DNS resolution
-dig test.port
-```
-
-> **Note:** The container overrides `/etc/resolv.conf` to use systemd-resolved for DNS, which allows `*.port` domain resolution to work. However, this means the container does not have access to the outside network (e.g., `apt-get update` or `curl` to external URLs will fail).
-
-## Compose Overrides Reference
-
-Port isolates worktrees in layered compose files:
-
-1. Your base compose file (`docker-compose.yml` by default)
-2. A generated Port override (`.port/override.yml`)
-3. An optional rendered user override (`.port/override.user.yml`)
-
-Port runs compose with user overrides last so local customization wins:
-
-```bash
-docker compose -p <project-name> -f docker-compose.yml -f .port/override.yml -f .port/override.user.yml up -d
-```
-
-`.port/override.user.yml` is generated at runtime from `.port/override-compose.yml` if that file exists.
-
-Here are all Port-managed overrides/compose controls and why they exist:
-
-| Port-managed change                                                       | Why it is necessary                                                                                                                                                  |
-| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `-p <project-name>` (compose flag)                                        | Namespaces compose resources per repo/worktree so similarly named stacks do not collide.                                                                             |
-| `-f .port/override.yml` (compose flag)                                    | Applies Port's deterministic runtime adjustments without mutating your source compose file.                                                                          |
-| `-f .port/override.user.yml` (compose flag, optional)                     | Applies user-provided overrides rendered from `.port/override-compose.yml`, after Port defaults, so user rules win.                                                  |
-| `services.<name>.ports: !override []` (for services with published ports) | Removes host port binds so two worktrees can both run services that declare the same host ports.                                                                     |
-| `services.<name>.labels: [...]`                                           | Adds Traefik router/service metadata so requests route by hostname (`<branch>.port`) and service aliases (`<service>.<branch>.port`) instead of host port ownership. |
-| `services.<name>.networks: [traefik-network]`                             | Ensures Traefik can reach exposed services on the shared network.                                                                                                    |
-| `services.<name>.container_name` rewrite (only when upstream sets one)    | Prevents global Docker container name conflicts when upstream hard-codes a fixed `container_name`.                                                                   |
-| `networks.traefik-network.external: true`                                 | Connects project services to the globally managed Traefik network instead of creating per-project duplicates.                                                        |
-
-Notes:
-
-- For services without published ports, Port does not inject Traefik labels/ports/network wiring.
-- Port intentionally does not override `image`, `build`, `environment`, `volumes`, `depends_on`, or `command`.
-- `.port/override-compose.yml` is optional and user-editable; if missing, Port skips the user layer.
-- Supported user override variables: `PORT_ROOT_PATH`, `PORT_WORKTREE_PATH`, `PORT_BRANCH`, `PORT_DOMAIN`, `PORT_HOSTNAME_LABEL`, `PORT_HOSTNAME`, `PORT_PROJECT_NAME`, `PORT_COMPOSE_FILE`.
-
-Example generated shape:
-
-```yaml
-services:
-  web:
-    container_name: my-repo-feature-1-web
-    ports: !override []
-    networks:
-      - traefik-network
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.feature-1-web-3000.rule=Host(`feature-1.port`)
-      - traefik.http.routers.feature-1-web-3000.entrypoints=port3000
-      - traefik.http.routers.feature-1-web-3000.service=feature-1-web-3000
-      - traefik.http.services.feature-1-web-3000.loadbalancer.server.port=3000
-
-networks:
-  traefik-network:
-    external: true
-    name: traefik-network
-```
+For a guided walkthrough, run `port onboard`.
+
+## Everyday commands
+
+| Command                           | Description                                                |
+| --------------------------------- | ---------------------------------------------------------- |
+| `port <branch>`                   | Enter a worktree (creates it if needed)                    |
+| `port up [services...]`           | Start Compose services in the current worktree             |
+| `port down [services...]`         | Stop services                                              |
+| `port run <port> -- <command...>` | Run a host process routed through Traefik                  |
+| `port urls [service]`             | Show service URLs for the current worktree                 |
+| `port status`                     | Show service status across all worktrees                   |
+| `port exit`                       | Return to the repository root                              |
+| `port remove <branch>`            | Remove a worktree and clean up its Docker resources        |
+| `port doctor`                     | Diagnose prerequisites, routing, and project configuration |
+
+Use `port enter <branch>` when a branch name collides with a command (such as `status`). `port enter` also accepts GitHub issue and PR URLs.
+
+## Documentation
+
+- [Setup](./docs/setup.md): DNS, shell integration, completions, agent skill
+- [Commands](./docs/commands.md): full command reference and usage details
+- [Hooks](./docs/hooks.md): lifecycle hooks and environment variables
+- [How Port works](./docs/how-it-works.md): architecture, host process routing, custom 404 handler, compose overrides
+- [Docker cleanup](./docs/docker-cleanup.md): what `remove`, `prune`, and `cleanup` delete
+- [Remote VM services](./docs/remote-services.md): route services running on SSH hosts
+- [Development](./docs/development.md): contributing, benchmarks, Linux test container
+- [PLAN.md](./PLAN.md): design notes and detailed configuration options
 
 ## License
 
-MIT
+[MIT](./LICENSE.md)
