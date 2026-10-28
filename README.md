@@ -8,7 +8,7 @@
 **Port CLI runs Docker Compose services in parallel Git worktrees—no port conflicts, with Traefik-routed local branch domains.**
 
 <p align="center">
-  <img src="./docs/assets/port-overview.svg" alt="Port gives each worktree its own address on the same port: feature-1.port:3000 and feature-2.port:3000, with no conflicts" width="880">
+  <img src="./docs/assets/port-overview.svg" alt="Port gives every branch its own address on the same port: main.port:3000, feature-1.port:3000, and feature-2.port:3000, with no conflicts" width="880">
 </p>
 
 ## Why Port
