@@ -22,7 +22,7 @@ A Docker Compose stack that publishes a host port works in one worktree but fail
 Error starting userland proxy: listen tcp4 0.0.0.0:3000: bind: address already in use
 ```
 
-Port gives each worktree its own Compose project and removes conflicting host-port bindings. Traefik routes requests to the right worktree by hostname, so both stacks can use the same service ports at once.
+Port gives each worktree its own Compose project and removes conflicting host-port bindings. Requests are routed to the right worktree by hostname, so both stacks can use the same service ports at once.
 
 - **Worktree management**: create, enter, rename, and remove Git worktrees with one command
 - **Branch domains**: `<branch>.port:3000` and `<service>.<branch>.port` instead of port numbers
@@ -85,7 +85,7 @@ For a guided walkthrough, run `port onboard`.
 | `port <branch>`                   | Enter a worktree (creates it if needed)                    |
 | `port up [services...]`           | Start Compose services in the current worktree             |
 | `port down [services...]`         | Stop services                                              |
-| `port run <port> -- <command...>` | Run a host process routed through Traefik                  |
+| `port run <port> -- <command...>` | Run a host process on the same branch domains              |
 | `port urls [service]`             | Show service URLs for the current worktree                 |
 | `port status`                     | Show service status across all worktrees                   |
 | `port exit`                       | Return to the repository root                              |
