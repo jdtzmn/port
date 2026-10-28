@@ -5,10 +5,13 @@
 [![License: MIT](https://img.shields.io/github/license/jdtzmn/port)](./LICENSE.md)
 [![Node.js](https://img.shields.io/node/v/@jdtzmn/port)](https://nodejs.org)
 
-**Port CLI runs Docker Compose services in parallel Git worktrees—no port conflicts, with Traefik-routed local branch domains.**
+**Port CLI runs Docker Compose services in parallel Git worktrees—no port conflicts, each branch on its own local domain.**
 
 <p align="center">
-  <img src="./docs/assets/port-overview.svg" alt="Port gives every branch its own address on the same port: main.port:3000, feature-1.port:3000, and feature-2.port:3000, with no conflicts" width="880">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/port-overview-dark.svg">
+    <img src="./docs/assets/port-overview-light.svg" alt="Port gives every branch its own address on the same port: main.port:3000, feature-1.port:3000, and feature-2.port:3000, with no conflicts" width="880">
+  </picture>
 </p>
 
 ## Why Port

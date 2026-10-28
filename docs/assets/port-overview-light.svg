@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 290" width="880" height="290" role="img" aria-labelledby="title desc">
+  <title id="title">Port gives every branch its own address on the same port</title>
+  <desc id="desc">Port at the top connects to three addresses, main.port:3000, feature-1.port:3000 and feature-2.port:3000. Every branch runs the same service on the same port at its own address, with no conflicts.</desc>
+  <style>
+    .sans { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; text-anchor: middle; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-anchor: middle; font-weight: 600; }
+  </style>
+  <rect x="0.5" y="0.5" width="879" height="289" rx="14" fill="#f8fafc" stroke="#e2e8f0" />
+
+  <!-- Rail from Port to each address -->
+  <path d="M440 106 V132 M190 132 H690 M190 132 V158 M440 132 V158 M690 132 V158" fill="none" stroke="#94a3b8" stroke-width="1.5" />
+
+  <!-- Port -->
+  <rect x="340" y="46" width="200" height="60" rx="30" fill="#0284c7" />
+  <text class="sans" x="440" y="87.2" font-size="32" font-weight="700" fill="#ffffff">Port</text>
+
+  <!-- Addresses -->
+  <rect x="75" y="158" width="230" height="56" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" />
+  <text class="mono" x="190" y="191.6" font-size="16" fill="#0f172a">main.port:3000</text>
+  <rect x="325" y="158" width="230" height="56" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" />
+  <text class="mono" x="440" y="191.6" font-size="16" fill="#0f172a">feature-1.port:3000</text>
+  <rect x="575" y="158" width="230" height="56" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" />
+  <text class="mono" x="690" y="191.6" font-size="16" fill="#0f172a">feature-2.port:3000</text>
+
+  <text class="sans" x="440" y="250" font-size="16" fill="#475569">Every branch gets its own address, on the same port.</text>
+</svg>
