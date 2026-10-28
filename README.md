@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@jdtzmn/port)](https://www.npmjs.com/package/@jdtzmn/port)
 [![CI](https://github.com/jdtzmn/port/actions/workflows/ci.yml/badge.svg)](https://github.com/jdtzmn/port/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/npm/l/@jdtzmn/port)](./LICENSE.md)
+[![License: MIT](https://img.shields.io/github/license/jdtzmn/port)](./LICENSE.md)
 [![Node.js](https://img.shields.io/node/v/@jdtzmn/port)](https://nodejs.org)
 
 **Port CLI runs Docker Compose services in parallel Git worktrees—no port conflicts, with Traefik-routed local branch domains.**
