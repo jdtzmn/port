@@ -19,6 +19,22 @@ describe('enter URL matching', () => {
     })
   })
 
+  test.each([
+    'https://github.com/acme/api/pull/57/',
+    'https://github.com/acme/api/pull/57/files',
+    'https://github.com/acme/api/pull/57/commits?x=1#top',
+    'https://github.com/acme/api/pull/57/changes',
+    'https://github.com/acme/api/pull/57/changes/abc123..def456',
+    'https://github.com/acme/api/pull/57/changes/abc123/src/a.ts#diff-1',
+  ])('keeps PR sub-view URL %s on the same PR', input => {
+    expect(parseEnterUrl(input)).toEqual({
+      kind: 'github-pr',
+      owner: 'acme',
+      repo: 'api',
+      number: 57,
+    })
+  })
+
   test('returns null for ordinary branch names', () => {
     expect(parseEnterUrl('feature/auth')).toBeNull()
     expect(parseEnterUrl('my branch')).toBeNull()
@@ -33,6 +49,12 @@ describe('enter URL matching', () => {
     'https://github.com/acme/api/issues/0',
     'https://github.com/acme/api/issues/999999999999999999999',
     'https://github.com/acme/api/issues/%31',
+    'https://github.com/acme/api/issues/1/files',
+    'https://github.com/acme/api/pull/12junk',
+    'https://github.com/acme/api/pull/12junk/files',
+    'https://github.com/acme/api/pull/0/files',
+    'https://github.com/acme/api/pull/files',
+    'https://github.com/acme/api/pulls/57/files',
     'https://github.com/acme/api/tree/main',
     'https:/github.com/acme/api/issues/1',
   ])('rejects unsupported or malformed URL %s', input => {
