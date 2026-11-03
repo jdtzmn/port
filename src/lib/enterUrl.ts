@@ -9,7 +9,8 @@ export type EnterUrl = {
 // resolver without changing the branch/worktree lifecycle.
 const githubPaths = [
   { kind: 'github-issue', pattern: /^\/([^/]+)\/([^/]+)\/issues\/([1-9]\d*)\/?$/ },
-  { kind: 'github-pr', pattern: /^\/([^/]+)\/([^/]+)\/pull\/([1-9]\d*)\/?$/ },
+  // PR pages have sub-views (/files, /commits, /changes/<range>) that refer to the same PR.
+  { kind: 'github-pr', pattern: /^\/([^/]+)\/([^/]+)\/pull\/([1-9]\d*)(?:\/.*)?$/ },
 ] as const
 
 export function parseEnterUrl(input: string): EnterUrl | null {

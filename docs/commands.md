@@ -58,7 +58,7 @@ port enter 'https://github.com/owner/repo/issues/42' # <your-github-login>/issue
 port enter 'https://github.com/owner/repo/pull/57'   # PR head branch
 ```
 
-Issue links create or reuse a branch named for your GitHub login and issue number. PR links reuse the head branch's worktree; for a new branch, Port fetches the PR head from the repository, including fork PRs. Existing branches are never reset. An unrelated branch with the same name, a conflicting worktree path, or a URL for another repository produces an error rather than entering the wrong worktree. Closed PRs require a previously associated local branch. Other URLs are not treated as branch names.
+Issue links create or reuse a branch named for your GitHub login and issue number. PR links, including sub-pages such as `/files`, `/commits` and `/changes/...`, reuse the head branch's worktree; for a new branch, Port fetches the PR head from the repository, including fork PRs. Existing branches are never reset. An unrelated branch with the same name, a conflicting worktree path, or a URL for another repository produces an error rather than entering the wrong worktree. Closed PRs require a previously associated local branch. Other URLs are not treated as branch names.
 
 ## Exit a worktree
 

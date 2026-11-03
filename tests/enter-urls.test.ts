@@ -73,5 +73,6 @@ describe('enter GitHub URLs with a real Git remote and stubbed GitHub metadata',
     expect(git(path, 'rev-parse', 'HEAD')).toBe(oid)
     expect(git(root, 'config', '--get', 'branch.feature/auth.port-pr')).toBe('acme/app#57')
     enter(root, env, url)
+    enter(root, env, `${url}/changes/abc123..def456?w=1#diff`)
   }, 45000)
 })
