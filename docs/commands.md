@@ -51,6 +51,8 @@ Use `port enter <branch>` when your branch name collides with a command (for exa
 If a branch and command collide, running `port <command>` shows a hint to use `port enter <branch>`.
 If the branch is already checked out in another worktree, `port enter` shows you where it is and asks whether to enter that worktree instead (non-interactive terminals reuse it automatically).
 
+If you run `port enter` from a subdirectory (for example `apps/web`), Port takes you to the same relative directory in the target worktree when it exists there, including when you re-enter the worktree you are already in. Otherwise it enters the worktree root. Either way Port prints a short notice saying where you landed. Without shell integration, the printed `cd` command points at the same directory. `port exit` and `port rename` still go to the repository root and the renamed worktree root.
+
 To enter from a GitHub link, use the explicit form (requires an authenticated `gh` CLI and a matching GitHub `origin`):
 
 ```bash

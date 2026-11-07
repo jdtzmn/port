@@ -34,7 +34,8 @@ import inquirer from 'inquirer'
 import * as output from '../lib/output.ts'
 import { withProgress } from '../lib/progress.ts'
 import { findSimilarCommand } from '../lib/commands.ts'
-import { buildEnterCommands, getEvalContext, writeEvalFile } from '../lib/shell.ts'
+import { buildEnterCommands, getEvalContext, posixShellQuote, writeEvalFile } from '../lib/shell.ts'
+import { resolveEnterDirectory, type EnterDirectory } from '../lib/preserveCwd.ts'
 import {
   getCachedStaleWorktreeCandidates,
   invalidateStaleWorktreeCache,
@@ -55,12 +56,18 @@ import { withFileLock } from '../lib/state.ts'
  */
 export async function enter(input: string): Promise<void> {
   let repoRoot: string
+  let sourceRoot: string
   try {
-    repoRoot = detectWorktree().repoRoot
+    const current = detectWorktree()
+    repoRoot = current.repoRoot
+    sourceRoot = current.worktreePath
   } catch {
     output.error('Not in a git repository')
     process.exit(1)
   }
+
+  // Physical cwd at launch, used to keep the same relative directory in the target worktree
+  const source = { sourceRoot, sourceCwd: process.cwd() }
 
   const url = parseEnterUrl(input)
   const resolved = url ? await resolveGithubEnterUrl(repoRoot, input) : null
@@ -84,12 +91,16 @@ export async function enter(input: string): Promise<void> {
         }
         await preparePullRequest(repoRoot, resolved)
       }
-      return enterInRepo(repoRoot, branch)
+      return enterInRepo(repoRoot, branch, source)
     }
   )
 }
 
-async function enterInRepo(repoRoot: string, branch: string): Promise<void> {
+async function enterInRepo(
+  repoRoot: string,
+  branch: string,
+  source: { sourceRoot: string; sourceCwd: string }
+): Promise<void> {
   await ensurePortRuntimeDir(repoRoot)
 
   // Load config (defaults when config file is absent)
@@ -336,10 +347,15 @@ async function enterInRepo(repoRoot: string, branch: string): Promise<void> {
     }
   }
 
+  // Keep the user's relative directory when it exists in the target worktree.
+  // Resolved last so hooks and setup above keep running from the worktree root.
+  const destination = resolveEnterDirectory({ ...source, targetRoot: worktreePath })
+
   // If running inside the shell hook, write eval commands to the sideband file
   const evalCtx = getEvalContext()
   if (evalCtx) {
-    const commands = buildEnterCommands(evalCtx.shell, worktreePath, sanitized, repoRoot)
+    reportDestination(destination)
+    const commands = buildEnterCommands(evalCtx.shell, destination.path, sanitized, repoRoot)
     writeEvalFile(commands, evalCtx.evalFile)
     return
   }
@@ -354,7 +370,8 @@ async function enterInRepo(repoRoot: string, branch: string): Promise<void> {
     output.success(`Worktree ready: ${output.branch(sanitized)}`)
   }
   output.newline()
-  output.info(`Run: cd ${worktreePath}`)
+  reportDestination(destination)
+  output.info(`Run: cd ${displayPath(destination.path)}`)
   output.newline()
   output.dim('Tip: Add shell integration for automatic cd:')
   output.dim('  eval "$(port shell-hook bash)"   # in ~/.bashrc')
@@ -365,6 +382,20 @@ async function enterInRepo(repoRoot: string, branch: string): Promise<void> {
     output.newline()
     output.dim('Tip: Run "port init" to enable service routing, hooks and compose overrides.')
   }
+}
+
+function reportDestination(destination: EnterDirectory): void {
+  if (!destination.notice) return
+  if (destination.preserved) {
+    output.info(destination.notice)
+  } else {
+    output.warn(destination.notice)
+  }
+}
+
+/** Quote a path for the printed `cd` hint only when it contains shell-special characters. */
+function displayPath(path: string): string {
+  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(path) ? path : posixShellQuote(path)
 }
 
 function getForwardedArgs(branch: string): string[] {

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import type { EnterDirectory } from '../lib/preserveCwd.ts'
 
 const mocks = vi.hoisted(() => ({
   detectWorktree: vi.fn(),
@@ -32,6 +33,13 @@ const mocks = vi.hoisted(() => ({
   spawn: vi.fn(),
   findSimilarCommand: vi.fn(),
   writeEvalFile: vi.fn(),
+  // Default: enter the worktree root with no notice
+  resolveEnterDirectory: vi.fn(
+    ({ targetRoot }: { targetRoot: string }): EnterDirectory => ({
+      path: targetRoot,
+      preserved: false,
+    })
+  ),
   getCachedStaleWorktreeCandidates: vi.fn(),
   STALE_WORKTREE_EXTREME_THRESHOLD: 25,
   formatStaleWorktreeWarning: vi.fn(),
@@ -129,6 +137,10 @@ vi.mock('../lib/output.ts', () => ({
   newline: mocks.newline,
   branch: mocks.branch,
   command: mocks.command,
+}))
+
+vi.mock('../lib/preserveCwd.ts', () => ({
+  resolveEnterDirectory: mocks.resolveEnterDirectory,
 }))
 
 vi.mock('../lib/shell.ts', async () => {
@@ -612,6 +624,82 @@ describe('enter with shell hook eval file', () => {
     expect(mocks.info).toHaveBeenCalledWith('Run: cd /repo/.port/trees/feature-1')
   })
 
+  test('passes the physical source directory and target worktree to the resolver', async () => {
+    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue('/repo/apps/web')
+    try {
+      await enter('feature-1')
+    } finally {
+      cwdSpy.mockRestore()
+    }
+
+    expect(mocks.resolveEnterDirectory).toHaveBeenCalledWith({
+      sourceRoot: '/repo',
+      sourceCwd: '/repo/apps/web',
+      targetRoot: '/repo/.port/trees/feature-1',
+    })
+  })
+
+  test('cds into the preserved directory in the shell hook and reports it', async () => {
+    process.env.__PORT_EVAL = '/tmp/test-eval'
+    process.env.__PORT_SHELL = 'bash'
+    mocks.resolveEnterDirectory.mockReturnValueOnce({
+      path: "/repo/.port/trees/feature-1/my dir/it's",
+      preserved: true,
+      notice: "Entering my dir/it's, the same directory you were in before",
+    })
+
+    await enter('feature-1')
+
+    const commands = mocks.writeEvalFile.mock.calls[0]![0] as string
+    expect(commands).toContain("cd -- '/repo/.port/trees/feature-1/my dir/it'\\''s'")
+    expect(commands).toContain("export PORT_WORKTREE='feature-1'")
+    expect(commands).toContain("export PORT_REPO='/repo'")
+    expect(mocks.info).toHaveBeenCalledWith(expect.stringContaining('the same directory'))
+    expect(mocks.warn).not.toHaveBeenCalled()
+  })
+
+  test('warns and cds to the worktree root in the shell hook when the directory is unusable', async () => {
+    process.env.__PORT_EVAL = '/tmp/test-eval'
+    process.env.__PORT_SHELL = 'fish'
+    mocks.resolveEnterDirectory.mockReturnValueOnce({
+      path: '/repo/.port/trees/feature-1',
+      preserved: false,
+      notice: 'apps/web does not exist in the target worktree; entering the worktree root instead',
+    })
+
+    await enter('feature-1')
+
+    const commands = mocks.writeEvalFile.mock.calls[0]![0] as string
+    expect(commands).toContain("builtin cd '/repo/.port/trees/feature-1'")
+    expect(mocks.warn).toHaveBeenCalledWith(expect.stringContaining('apps/web does not exist'))
+  })
+
+  test('prints the preserved directory in the no-hook cd hint, quoting unsafe paths', async () => {
+    mocks.resolveEnterDirectory.mockReturnValueOnce({
+      path: '/repo/.port/trees/feature-1/apps/web',
+      preserved: true,
+      notice: 'Entering apps/web, the same directory you were in before',
+    })
+    await enter('feature-1')
+    expect(mocks.info).toHaveBeenCalledWith('Run: cd /repo/.port/trees/feature-1/apps/web')
+    expect(mocks.info).toHaveBeenCalledWith(expect.stringContaining('the same directory'))
+
+    mocks.resolveEnterDirectory.mockReturnValueOnce({
+      path: "/repo/.port/trees/feature-1/my dir/it's",
+      preserved: true,
+      notice: "Entering my dir/it's, the same directory you were in before",
+    })
+    await enter('feature-1')
+    expect(mocks.info).toHaveBeenCalledWith("Run: cd '/repo/.port/trees/feature-1/my dir/it'\\''s'")
+  })
+
+  test('stays quiet when entering the worktree root', async () => {
+    await enter('feature-1')
+
+    expect(mocks.warn).not.toHaveBeenCalled()
+    expect(mocks.info).not.toHaveBeenCalledWith(expect.stringContaining('same directory'))
+  })
+
   test('prints shell integration hint without shell hook', async () => {
     await enter('feature-1')
 
@@ -656,7 +744,7 @@ describe('enter with URL', () => {
   const url = 'https://github.com/acme/app/issues/42'
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.detectWorktree.mockReturnValue({ repoRoot: '/repo' })
+    mocks.detectWorktree.mockReturnValue({ repoRoot: '/repo', worktreePath: '/repo' })
     mocks.getWorktreePath.mockReturnValue('/repo/.port/trees/jdtzmn-issue-42')
     mocks.listWorktrees.mockResolvedValue([])
     mocks.worktreeExists.mockReturnValue(false)
