@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794033518082,
+  "lastUpdate": 1794034543198,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port Docker operations": [
@@ -1620,6 +1620,72 @@ window.BENCHMARK_DATA = {
             "range": "21.05500000000029",
             "unit": "ms",
             "extra": "p95: 10923.618 ms\nsamples: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3d5a856ee1d811a496534df4c27a776f46862ba8",
+          "message": "Bump version to 0.6.6 (#197)",
+          "timestamp": "2026-11-07T06:48:39Z",
+          "tree_id": "a88a5c4cf6a3521a43da068bdae375d816cc6334",
+          "url": "https://github.com/jdtzmn/port/commit/3d5a856ee1d811a496534df4c27a776f46862ba8"
+        },
+        "date": 1794034543164,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Docker operations / status (small)",
+            "value": 217.305,
+            "range": "5.659999999999997",
+            "unit": "ms",
+            "extra": "p95: 222.965 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / status (large)",
+            "value": 1315.672,
+            "range": "32.42000000000007",
+            "unit": "ms",
+            "extra": "p95: 1348.092 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / up (warm)",
+            "value": 682.115,
+            "range": "105.08000000000004",
+            "unit": "ms",
+            "extra": "p95: 787.195 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / down",
+            "value": 10538.132,
+            "range": "135.70700000000033",
+            "unit": "ms",
+            "extra": "p95: 10673.839 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / remove (inactive services)",
+            "value": 397.482,
+            "range": "176.44599999999997",
+            "unit": "ms",
+            "extra": "p95: 573.928 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / remove (running services)",
+            "value": 10854.499,
+            "range": "347.28100000000086",
+            "unit": "ms",
+            "extra": "p95: 11201.78 ms\nsamples: 10"
           }
         ]
       }
