@@ -1,4 +1,4 @@
-import { realpathSync, statSync } from 'fs'
+import { accessSync, constants, realpathSync, statSync } from 'fs'
 import { isAbsolute, join, relative, sep } from 'path'
 
 export interface EnterDirectory {
@@ -69,6 +69,13 @@ export function resolveEnterDirectory(options: {
   }
   if (escapes(relative(canonical(targetRoot), resolved))) {
     return fallback('resolves outside the target worktree')
+  }
+
+  // Being a directory is not enough: `cd` also needs search permission on it
+  try {
+    accessSync(candidate, constants.X_OK)
+  } catch {
+    return fallback('cannot be accessed in the target worktree')
   }
 
   return {

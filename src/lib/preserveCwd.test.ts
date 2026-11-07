@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'fs'
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
@@ -137,6 +145,30 @@ describe('resolveEnterDirectory', () => {
     expect(result.preserved).toBe(false)
     expect(result.notice).toContain('resolves outside the target worktree')
   })
+
+  // Root bypasses directory permission bits, so the fixture cannot make a directory unsearchable
+  test.skipIf(process.getuid?.() === 0)(
+    'falls back to the root when the target directory cannot be entered',
+    () => {
+      const cwd = mkdirIn(source, 'apps/web')
+      const locked = mkdirIn(target, 'apps/web')
+      chmodSync(locked, 0o600)
+
+      try {
+        const result = resolveEnterDirectory({
+          sourceRoot: source,
+          sourceCwd: cwd,
+          targetRoot: target,
+        })
+
+        expect(result.path).toBe(target)
+        expect(result.preserved).toBe(false)
+        expect(result.notice).toContain('apps/web cannot be accessed in the target worktree')
+      } finally {
+        chmodSync(locked, 0o700)
+      }
+    }
+  )
 
   test('allows a symlink that stays inside the worktree', () => {
     const cwd = mkdirIn(source, 'apps/web')
