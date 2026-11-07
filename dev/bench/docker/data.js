@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793728847094,
+  "lastUpdate": 1794033518082,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port Docker operations": [
@@ -1554,6 +1554,72 @@ window.BENCHMARK_DATA = {
             "range": "29.811000000001513",
             "unit": "ms",
             "extra": "p95: 10888.191 ms\nsamples: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "04998747ce911ad9e85a550b5f9ad4727cb69d1d",
+          "message": "Keep the relative directory when entering a worktree (#196)\n\n* Add resolver for preserving the relative directory when entering a worktree\n\n* Keep the relative directory when entering a worktree\n\n* Fall back to the worktree root when the target directory cannot be entered",
+          "timestamp": "2026-11-07T06:31:15Z",
+          "tree_id": "a0dff92bb090086e8c221896cc2fadfc94e575da",
+          "url": "https://github.com/jdtzmn/port/commit/04998747ce911ad9e85a550b5f9ad4727cb69d1d"
+        },
+        "date": 1794033518056,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Docker operations / status (small)",
+            "value": 268.915,
+            "range": "3.4739999999999895",
+            "unit": "ms",
+            "extra": "p95: 272.389 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / status (large)",
+            "value": 1696.976,
+            "range": "145.36599999999999",
+            "unit": "ms",
+            "extra": "p95: 1842.342 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / up (warm)",
+            "value": 815.911,
+            "range": "30.494000000000028",
+            "unit": "ms",
+            "extra": "p95: 846.405 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / down",
+            "value": 10640.824,
+            "range": "10.510000000000218",
+            "unit": "ms",
+            "extra": "p95: 10651.334 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / remove (inactive services)",
+            "value": 488.058,
+            "range": "5.662000000000035",
+            "unit": "ms",
+            "extra": "p95: 493.72 ms\nsamples: 10"
+          },
+          {
+            "name": "Docker operations / remove (running services)",
+            "value": 10902.563,
+            "range": "21.05500000000029",
+            "unit": "ms",
+            "extra": "p95: 10923.618 ms\nsamples: 10"
           }
         ]
       }
