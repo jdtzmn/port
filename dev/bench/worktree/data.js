@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793728837718,
+  "lastUpdate": 1794033516793,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port worktree operations": [
@@ -1554,6 +1554,65 @@ window.BENCHMARK_DATA = {
             "range": "16.712000000000018",
             "unit": "ms",
             "extra": "p95: 211.471 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "04998747ce911ad9e85a550b5f9ad4727cb69d1d",
+          "message": "Keep the relative directory when entering a worktree (#196)\n\n* Add resolver for preserving the relative directory when entering a worktree\n\n* Keep the relative directory when entering a worktree\n\n* Fall back to the worktree root when the target directory cannot be entered",
+          "timestamp": "2026-11-07T06:31:15Z",
+          "tree_id": "a0dff92bb090086e8c221896cc2fadfc94e575da",
+          "url": "https://github.com/jdtzmn/port/commit/04998747ce911ad9e85a550b5f9ad4727cb69d1d"
+        },
+        "date": 1794033516766,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Worktree operations / enter existing (small)",
+            "value": 218.394,
+            "range": "14.067999999999984",
+            "unit": "ms",
+            "extra": "p95: 232.462 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter existing (large)",
+            "value": 217.071,
+            "range": "8.929000000000002",
+            "unit": "ms",
+            "extra": "p95: 226 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (small)",
+            "value": 221.515,
+            "range": "13.122000000000014",
+            "unit": "ms",
+            "extra": "p95: 234.637 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / enter new (large)",
+            "value": 232.521,
+            "range": "19.247000000000014",
+            "unit": "ms",
+            "extra": "p95: 251.768 ms\nsamples: 20"
+          },
+          {
+            "name": "Worktree operations / prune dry run",
+            "value": 192.77,
+            "range": "4.5",
+            "unit": "ms",
+            "extra": "p95: 197.27 ms\nsamples: 20"
           }
         ]
       }
