@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793728828668,
+  "lastUpdate": 1794033515392,
   "repoUrl": "https://github.com/jdtzmn/port",
   "entries": {
     "Port CLI responsiveness": [
@@ -1260,6 +1260,51 @@ window.BENCHMARK_DATA = {
             "range": "8.199999999999996",
             "unit": "ms",
             "extra": "p95: 46.23 ms\nsamples: 20"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jdtzmn@gmail.com",
+            "name": "Jacob Daitzman",
+            "username": "jdtzmn"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "04998747ce911ad9e85a550b5f9ad4727cb69d1d",
+          "message": "Keep the relative directory when entering a worktree (#196)\n\n* Add resolver for preserving the relative directory when entering a worktree\n\n* Keep the relative directory when entering a worktree\n\n* Fall back to the worktree root when the target directory cannot be entered",
+          "timestamp": "2026-11-07T06:31:15Z",
+          "tree_id": "a0dff92bb090086e8c221896cc2fadfc94e575da",
+          "url": "https://github.com/jdtzmn/port/commit/04998747ce911ad9e85a550b5f9ad4727cb69d1d"
+        },
+        "date": 1794033514841,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "CLI responsiveness / help",
+            "value": 38.63,
+            "range": "4.576999999999998",
+            "unit": "ms",
+            "extra": "p95: 43.207 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (small)",
+            "value": 27.747,
+            "range": "4.868000000000002",
+            "unit": "ms",
+            "extra": "p95: 32.615 ms\nsamples: 20"
+          },
+          {
+            "name": "CLI responsiveness / list (large)",
+            "value": 30.001,
+            "range": "5.023",
+            "unit": "ms",
+            "extra": "p95: 35.024 ms\nsamples: 20"
           }
         ]
       }
